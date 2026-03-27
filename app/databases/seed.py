@@ -6,6 +6,7 @@ import asyncio
 import logging
 
 from app.core.database import get_db_session
+from app.databases.seeds.seed_admin import seed_admin
 from app.databases.seeds.seed_banks import seed_banks
 from app.databases.seeds.seed_cards import seed_cards
 
@@ -16,6 +17,7 @@ async def run_seeds() -> None:
     logger.info("Running seeds...")
     async for db in get_db_session():
         async with db:
+            await seed_admin(db)
             await seed_banks(db)
             await seed_cards(db)
             await db.commit()
