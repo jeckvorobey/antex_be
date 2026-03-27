@@ -32,6 +32,7 @@ class Settings(BaseSettings):
 
     # Redis
     redis_url: str = "redis://localhost:6379/0"
+    proxy: str | None = None
 
     # Telegram
     telegram_bot_token: str | None = None
