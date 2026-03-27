@@ -2,10 +2,9 @@
 
 from __future__ import annotations
 
-import asyncio
 import logging
 from collections.abc import AsyncGenerator
-from contextlib import asynccontextmanager, suppress
+from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -23,69 +22,34 @@ logging.basicConfig(level=settings.log_level.upper())
 logger = logging.getLogger(__name__)
 
 
-def _log_background_task_result(task: asyncio.Task[None]) -> None:
-    if task.cancelled():
-        return
-
-    try:
-        exception = task.exception()
-    except asyncio.CancelledError:
-        return
-
-    if exception is not None:
-        logger.error("Telegram polling task failed", exc_info=exception)
-
-
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncGenerator:
     logger.info("Starting AntEx...")
-    app.state.telegram_polling_task = None
-    app.state.telegram_polling_stop_event = None
+    bot_started = False
 
-    if settings.telegram_mode == "polling":
-        from app.telegram.bot import run_polling_supervisor
+    if settings.telegram_bot_token:
+        from app.telegram import bot as telegram_bot
 
-        stop_event = asyncio.Event()
-        task = asyncio.create_task(
-            run_polling_supervisor(stop_event=stop_event),
-            name="telegram-polling",
-        )
-        task.add_done_callback(_log_background_task_result)
-        app.state.telegram_polling_stop_event = stop_event
-        app.state.telegram_polling_task = task
-    elif settings.telegram_mode == "webhook":
-        from app.telegram.bot import set_webhook
+        await telegram_bot.init_bot()
+        if settings.telegram_mode == "polling":
+            await telegram_bot.start_polling()
+        else:
+            await telegram_bot.start_webhook()
+        bot_started = True
+    else:
+        logger.warning("TELEGRAM_BOT_TOKEN is not configured, Telegram bot startup skipped")
 
-        webhook_url = f"{settings.telegram_webhook_host}{settings.telegram_webhook_path}"
-        await set_webhook(webhook_url, settings.telegram_webhook_secret)
-        logger.info("Webhook set: %s", webhook_url)
+    try:
+        yield
+    finally:
+        logger.info("Shutting down AntEx...")
+        if bot_started:
+            from app.telegram import bot as telegram_bot
 
-    yield
-
-    logger.info("Shutting down AntEx...")
-    if settings.telegram_mode == "polling":
-        from app.telegram.bot import close_bot_session
-
-        stop_event = app.state.telegram_polling_stop_event
-        task = app.state.telegram_polling_task
-        if stop_event is not None:
-            stop_event.set()
-        if task is not None:
             try:
-                await asyncio.wait_for(task, timeout=5)
-            except (TimeoutError, asyncio.CancelledError):
-                pass
+                await telegram_bot.stop_bot()
             except Exception:
-                logger.warning("Telegram polling task had already failed before shutdown")
-            if not task.done():
-                task.cancel()
-                with suppress(asyncio.CancelledError):
-                    await task
-        await close_bot_session()
-    elif settings.telegram_mode == "webhook":
-        from app.telegram.bot import delete_webhook
-
-        await delete_webhook()
+                logger.exception("Failed to stop Telegram bot cleanly")
 
 
 app = FastAPI(
