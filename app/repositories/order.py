@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from sqlalchemy import select
+from sqlalchemy import desc, select
 from sqlalchemy.orm import selectinload
 
 from app.models.order import Order
@@ -66,3 +66,12 @@ class OrderRepository(BaseRepository[Order]):
             )
         )
         return result.scalar_one_or_none()
+
+    async def get_user_orders(self, user_id: int, limit: int = 10) -> list[Order]:
+        result = await self.session.execute(
+            select(Order)
+            .where(Order.UserId == user_id, Order.destroyTime.is_(None))
+            .order_by(desc(Order.createdAt))
+            .limit(limit)
+        )
+        return list(result.scalars().all())

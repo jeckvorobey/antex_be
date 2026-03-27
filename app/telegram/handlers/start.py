@@ -1,4 +1,4 @@
-"""Обработчик /start и основного меню."""
+"""Start and basic menu handlers."""
 
 from __future__ import annotations
 
@@ -10,6 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.database import get_db_session
 from app.repositories.config import ConfigRepository
 from app.telegram import messages
+from app.telegram.i18n import get_user_translator
 from app.telegram.keyboards import home, menu_operator
 from app.telegram.services.user_service import check_user
 
@@ -23,6 +24,7 @@ async def _get_db() -> AsyncSession:
 
 @router.message(CommandStart())
 async def cmd_start(message: Message) -> None:
+    translate = get_user_translator(message.from_user)
     db = await _get_db()
     async with db:
         config_repo = ConfigRepository(db)
@@ -32,16 +34,20 @@ async def cmd_start(message: Message) -> None:
         await db.commit()
 
     if not config.enabled:
-        await message.answer(messages.bot_disabled())
+        await message.answer(messages.bot_disabled(translator=translate))
         return
 
     from app.enums.user import UserRole
-    kb = menu_operator() if user.role >= UserRole.OPERATOR else home()
-    await message.answer(messages.welcome(message.from_user.first_name), reply_markup=kb)
+    kb = menu_operator(translate) if user.role >= UserRole.OPERATOR else home(translate)
+    await message.answer(
+        messages.welcome(message.from_user.first_name, translator=translate),
+        reply_markup=kb,
+    )
 
 
 @router.message(Command("on"))
 async def cmd_on(message: Message) -> None:
+    translate = get_user_translator(message.from_user)
     db = await _get_db()
     async with db:
         from app.enums.user import UserRole
@@ -53,11 +59,12 @@ async def cmd_on(message: Message) -> None:
         if not config.enabled:
             await repo.toggle_enabled()
             await db.commit()
-    await message.answer("✅ Бот включён.")
+    await message.answer(messages.bot_turned_on(translator=translate))
 
 
 @router.message(Command("off"))
 async def cmd_off(message: Message) -> None:
+    translate = get_user_translator(message.from_user)
     db = await _get_db()
     async with db:
         from app.enums.user import UserRole
@@ -69,4 +76,4 @@ async def cmd_off(message: Message) -> None:
         if config.enabled:
             await repo.toggle_enabled()
             await db.commit()
-    await message.answer("🔴 Бот выключен.")
+    await message.answer(messages.bot_turned_off(translator=translate))
