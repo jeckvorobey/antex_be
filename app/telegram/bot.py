@@ -32,6 +32,9 @@ polling_task: asyncio.Task[None] | None = None
 
 def parse_proxy_value(value: str) -> str:
     value = value.strip()
+    if len(value) >= 2 and value[0] == value[-1] and value[0] in {'"', "'"}:
+        value = value[1:-1].strip()
+
     if "://" in value:
         return value
 

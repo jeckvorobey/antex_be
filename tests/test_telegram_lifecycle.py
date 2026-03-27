@@ -21,6 +21,18 @@ def test_parse_proxy_value_from_compact_format() -> None:
     assert proxy == "http://jhtD1E2e:jUWKgx2U@135.106.25.252:63488"
 
 
+def test_parse_proxy_value_from_compact_format_with_double_quotes() -> None:
+    proxy = telegram_bot.parse_proxy_value('"135.106.25.252:63488:jhtD1E2e:jUWKgx2U"')
+
+    assert proxy == "http://jhtD1E2e:jUWKgx2U@135.106.25.252:63488"
+
+
+def test_parse_proxy_value_from_compact_format_with_single_quotes() -> None:
+    proxy = telegram_bot.parse_proxy_value("'135.106.25.252:63488:jhtD1E2e:jUWKgx2U'")
+
+    assert proxy == "http://jhtD1E2e:jUWKgx2U@135.106.25.252:63488"
+
+
 def test_parse_proxy_value_rejects_invalid_format() -> None:
     with pytest.raises(ValueError, match="PROXY"):
         telegram_bot.parse_proxy_value("bad-proxy-value")
