@@ -1,0 +1,132 @@
+[
+  {
+    "id": 1,
+    "code": "BBL",
+    "name": "Bangkok Bank"
+  },
+  {
+    "id": 2,
+    "code": "KBANK",
+    "name": "Kasikorn Bank"
+  },
+  {
+    "id": 3,
+    "code": "KTB",
+    "name": "Krung Thai Bank"
+  },
+  {
+    "id": 4,
+    "code": "SCB",
+    "name": "Siam Commercial Bank"
+  },
+  {
+    "id": 5,
+    "code": "BAY",
+    "name": "Krungsri Bank"
+  },
+  {
+    "id": 6,
+    "code": "TTB",
+    "name": "TMBThanachart Bank"
+  },
+  {
+    "id": 7,
+    "code": "CIMBT",
+    "name": "CIMB Thai Bank"
+  },
+  {
+    "id": 8,
+    "code": "UOBT",
+    "name": "United Overseas Bank (Thai)"
+  },
+  {
+    "id": 9,
+    "code": "GSB",
+    "name": "Government Savings Bank"
+  },
+  {
+    "id": 10,
+    "code": "LHBANK",
+    "name": "Land and Houses Bank"
+  },
+  {
+    "id": 11,
+    "code": "KKP",
+    "name": "Kiatnakin Phatra Bank"
+  },
+  {
+    "id": 12,
+    "code": "TISCO",
+    "name": "TISCO Bank"
+  },
+  {
+    "id": 13,
+    "code": "BAAC",
+    "name": "Bank for Agriculture and Agricultural Cooperatives"
+  },
+  {
+    "id": 14,
+    "code": "CITI",
+    "name": "Citibank N.A."
+  },
+  {
+    "id": 15,
+    "code": "GHB",
+    "name": "Government Housing Bank"
+  },
+  {
+    "id": 16,
+    "code": "ICBC",
+    "name": "Industrial and Commercial Bank of China (THAI)"
+  },
+  {
+    "id": 17,
+    "code": "TCRB",
+    "name": "The Thai Credit Retail Bank"
+  },
+  {
+    "id": 18,
+    "code": "SCBT",
+    "name": "Standard Chartered Bank (Thai)"
+  },
+  {
+    "id": 19,
+    "code": "HSBC",
+    "name": "Hongkong and Shanghai Banking Corporation"
+  },
+  {
+    "id": 20,
+    "code": "SMBC",
+    "name": "Sumitomo Mitsui Banking Corporation"
+  },
+  {
+    "id": 21,
+    "code": "MHCB",
+    "name": "Mizuho Corporate Bank"
+  },
+  {
+    "id": 22,
+    "code": "ISBT",
+    "name": "Islamic Bank of Thailand"
+  },
+  {
+    "id": 23,
+    "code": "DBBK",
+    "name": "DEUTSCHE BANK AG, BANGKOK BRANCH"
+  },
+  {
+    "id": 24,
+    "code": "BOC",
+    "name": "Bank of China (Thai) Public Company Limited"
+  },
+  {
+    "id": 25,
+    "code": "IOBA",
+    "name": "INDIAN OVERSEAS BANK"
+  },
+  {
+    "id": 26,
+    "code": "BNPP",
+    "name": "BNP PARIBAS, BANGKOK BRANCH"
+  }
+]

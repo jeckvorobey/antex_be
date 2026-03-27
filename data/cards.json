@@ -1,0 +1,37 @@
+[
+  {
+    "bank": "sber",
+    "name": "Сбер банк",
+    "number": "5469 6300 1118 9005"
+  },
+  {
+    "bank": "Ozon",
+    "name": "Ozon банк",
+    "number": "2204 3201 0410 4452"
+  },
+  {
+    "bank": "Tinkoff",
+    "name": "Tinkoff банк",
+    "number": "2200 7008 6168 7647"
+  },
+  {
+    "bank": "wallet",
+    "name": "BNB (BEP20, BYBIT)",
+    "number": "0x1d54449dfb9ec872277099551c614e2f8bd92f08"
+  },
+  {
+    "bank": "wallet",
+    "name": "Tron (TRC20, BYBIT)",
+    "number": "TG5vhTSg6Rk4XgaXnLmbPHTft4TJopUR2V"
+  },
+  {
+    "bank": "wallet",
+    "name": "BNB (BEP20, BINANCE)",
+    "number": "0xc14fe2f8d87bf087fbaffd9f4781bfed507e2794"
+  },
+  {
+    "bank": "wallet",
+    "name": "Tron (TRC20, BINANCE)",
+    "number": "TK3NL7brELTS3v3H1ETLne66xDSXgaa6hz"
+  }
+]
