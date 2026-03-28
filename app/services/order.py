@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.enums.order import OrderStatus
+from app.enums.order import MethodGet, OrderStatus
 from app.exceptions import AntExException
 from app.repositories.limitation import LimitationRepository
 from app.repositories.order import OrderRepository
@@ -29,6 +29,7 @@ async def create_order(db: AsyncSession, user_id: int, data: OrderCreate) -> Ord
         amountBuy=data.amountBuy,
         rate=data.rate,
         address=data.address,
+        contactTelegram=data.contactTelegram,
         methodGet=data.methodGet,
         status=OrderStatus.NEW,
     )
@@ -40,6 +41,7 @@ async def confirm_payment(db: AsyncSession, order_id: int) -> OrderOut:
     order = await repo.update_status(order_id, OrderStatus.CONFIRMED)
     if not order:
         raise AntExException("Order not found", code="ORDER_NOT_FOUND", status_code=404)
+    await db.refresh(order)
     return OrderOut.model_validate(order)
 
 
@@ -52,11 +54,14 @@ async def cancel_order(db: AsyncSession, order_id: int) -> OrderOut:
         raise AntExException("Order not found", code="ORDER_NOT_FOUND", status_code=404)
 
     # Если методGet == qr (ATM) — восстановить лимит
-    if order.methodGet == "qr" and order.bank:
-        await lim_repo.update_amount(order.BankId, order.amountBuy)
+    if order.methodGet == MethodGet.QR and order.bank:
+        await lim_repo.update_amount(order.BankId, int(round(order.amountBuy)))
 
-    await order_repo.cancel(order_id)
-    return OrderOut.model_validate(order)
+    cancelled = await order_repo.cancel(order_id)
+    if not cancelled:
+        raise AntExException("Order not found", code="ORDER_NOT_FOUND", status_code=404)
+    await db.refresh(cancelled)
+    return OrderOut.model_validate(cancelled)
 
 
 async def close_order(db: AsyncSession, order_id: int) -> OrderOut:
@@ -64,4 +69,5 @@ async def close_order(db: AsyncSession, order_id: int) -> OrderOut:
     order = await repo.update_status(order_id, OrderStatus.COMPLETED)
     if not order:
         raise AntExException("Order not found", code="ORDER_NOT_FOUND", status_code=404)
+    await db.refresh(order)
     return OrderOut.model_validate(order)

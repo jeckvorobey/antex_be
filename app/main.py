@@ -12,7 +12,7 @@ from fastapi.responses import JSONResponse
 from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 
-from app.api.routers import admin, auth, banks, cards, exchange, public, telegram, users
+from app.api.routers import admin, auth, banks, cards, exchange, miniapp, public, telegram, users
 from app.core.config import settings
 from app.core.rate_limit import limiter
 from app.core.security_headers import SecurityHeadersMiddleware
@@ -93,6 +93,7 @@ async def antex_exception_handler(request: Request, exc: AntExException) -> JSON
 app.include_router(auth.router)
 app.include_router(users.router)
 app.include_router(exchange.router)
+app.include_router(miniapp.router)
 app.include_router(cards.router)
 app.include_router(banks.router)
 app.include_router(admin.router)

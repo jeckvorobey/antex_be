@@ -11,11 +11,12 @@ class OrderCreate(BaseModel):
     currencySell: str
     amountSell: int
     currencyBuy: str
-    amountBuy: int
+    amountBuy: float
     rate: float
     BankId: int
     CardId: int | None = None
     address: str | None = None
+    contactTelegram: str | None = None
     methodGet: str | None = None
 
 
@@ -34,10 +35,11 @@ class OrderOut(BaseModel):
     currencySell: str
     amountSell: int
     currencyBuy: str
-    amountBuy: int
+    amountBuy: float
     rate: float
     status: int
     address: str | None
+    contactTelegram: str | None
     methodGet: str | None
     endTime: datetime | None
     destroyTime: datetime | None

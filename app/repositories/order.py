@@ -71,6 +71,10 @@ class OrderRepository(BaseRepository[Order]):
         result = await self.session.execute(
             select(Order)
             .where(Order.UserId == user_id, Order.destroyTime.is_(None))
+            .options(
+                selectinload(Order.bank),
+                selectinload(Order.card),
+            )
             .order_by(desc(Order.createdAt))
             .limit(limit)
         )
