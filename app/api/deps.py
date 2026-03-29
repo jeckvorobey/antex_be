@@ -15,6 +15,7 @@ from app.repositories.admin import AdminRepository
 from app.repositories.user import UserRepository
 
 DbDep = Annotated[AsyncSession, Depends(get_db_session)]
+MINIAPP_GUEST_USER_ID = 9_999_001
 
 
 async def get_current_user(
@@ -36,6 +37,34 @@ async def get_current_user(
     user = await repo.get_by_id(user_id)
     if not user:
         raise HTTPException(status_code=401, detail="User not found")
+    return user
+
+
+async def get_miniapp_user(
+    db: DbDep,
+    authorization: Annotated[str | None, Header()] = None,
+) -> User:
+    if authorization and authorization.startswith("Bearer "):
+        return await get_current_user(db, authorization)
+
+    repo = UserRepository(db)
+    user, _ = await repo.find_or_create(
+        MINIAPP_GUEST_USER_ID,
+        username="sergeywebdev",
+        first_name="Sergei",
+        last_name="V",
+        language_code="ru",
+        is_bot=False,
+        is_premium=True,
+        role=1,
+    )
+    user.username = "sergeywebdev"
+    user.first_name = "Sergei"
+    user.last_name = "V"
+    user.language_code = "ru"
+    user.is_bot = False
+    user.is_premium = True
+    user.role = 1
     return user
 
 
@@ -63,4 +92,5 @@ async def get_admin(
 
 
 CurrentUser = Annotated[User, Depends(get_current_user)]
+MiniappUser = Annotated[User, Depends(get_miniapp_user)]
 AdminUser = Annotated[object, Depends(get_admin)]

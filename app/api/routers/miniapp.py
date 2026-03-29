@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from fastapi import APIRouter, Query
 
-from app.api.deps import CurrentUser, DbDep
+from app.api.deps import DbDep, MiniappUser
 from app.repositories.allowance import AllowanceRepository
 from app.repositories.order import OrderRepository
 from app.schemas.miniapp import (
@@ -36,14 +36,14 @@ async def _load_rate_snapshot(db: DbDep) -> dict[str, float]:
 
 
 @router.get("/home", response_model=MiniappHomeResponse)
-async def get_home(db: DbDep, user: CurrentUser) -> MiniappHomeResponse:
+async def get_home(db: DbDep, user: MiniappUser) -> MiniappHomeResponse:
     """Возвращает данные главного экрана miniapp."""
     snapshot = await _load_rate_snapshot(db)
     return build_home_response(user, snapshot)
 
 
 @router.get("/exchange", response_model=MiniappExchangeScreenResponse)
-async def get_exchange_screen(db: DbDep, _user: CurrentUser) -> MiniappExchangeScreenResponse:
+async def get_exchange_screen(db: DbDep, _user: MiniappUser) -> MiniappExchangeScreenResponse:
     """Возвращает конфигурацию экрана обмена и стартовый quote."""
     snapshot = await _load_rate_snapshot(db)
     return build_exchange_screen(snapshot)
@@ -52,7 +52,7 @@ async def get_exchange_screen(db: DbDep, _user: CurrentUser) -> MiniappExchangeS
 @router.get("/exchange/quote", response_model=MiniappQuoteResponse)
 async def get_quote(
     db: DbDep,
-    _user: CurrentUser,
+    _user: MiniappUser,
     currency_sell: str = Query(..., alias="currencySell", min_length=3, max_length=10),
     currency_buy: str = Query(..., alias="currencyBuy", min_length=3, max_length=10),
     amount_sell: int = Query(..., alias="amountSell", gt=0),
@@ -63,14 +63,14 @@ async def get_quote(
 
 
 @router.get("/orders", response_model=MiniappOrdersResponse)
-async def get_orders(db: DbDep, user: CurrentUser) -> MiniappOrdersResponse:
+async def get_orders(db: DbDep, user: MiniappUser) -> MiniappOrdersResponse:
     """Возвращает список заявок текущего пользователя для истории miniapp."""
     orders = await OrderRepository(db).get_user_orders(user.id)
     return build_orders_response(orders)
 
 
 @router.post("/orders", response_model=MiniappOrderItem)
-async def post_order(body: MiniappOrderCreate, db: DbDep, user: CurrentUser) -> MiniappOrderItem:
+async def post_order(body: MiniappOrderCreate, db: DbDep, user: MiniappUser) -> MiniappOrderItem:
     """Создает заявку miniapp с серверным расчетом курса и суммы получения."""
     snapshot = await _load_rate_snapshot(db)
     order = await create_miniapp_order(db, user, body, snapshot)
@@ -79,6 +79,6 @@ async def post_order(body: MiniappOrderCreate, db: DbDep, user: CurrentUser) -> 
 
 
 @router.get("/profile", response_model=MiniappProfileResponse)
-async def get_profile(user: CurrentUser) -> MiniappProfileResponse:
+async def get_profile(user: MiniappUser) -> MiniappProfileResponse:
     """Возвращает профиль и вторичные действия для раздела profile."""
     return build_profile_response(user)

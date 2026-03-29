@@ -107,10 +107,31 @@ async def test_home_returns_hybrid_content(client, auth_headers, monkeypatch):
     payload = response.json()
     assert payload["profile"]["displayName"] == "Sergei V"
     assert payload["rates"]["featured"][0]["fromCurrency"] == "RUB"
-    assert payload["services"][0]["id"] == "exchange"
+    assert payload["services"][0]["id"] == "verification"
+    assert payload["quickActions"][0]["title"] == "На рабочий стол"
     assert payload["services"][0]["icon"].startswith("mdi-")
     assert payload["quickActions"][0]["icon"].startswith("mdi-")
     assert payload["locations"][0]["city"] == "Bang Tao"
+
+
+@pytest.mark.asyncio
+async def test_home_allows_guest_access_without_auth(client, monkeypatch):
+    async def fake_rates(_allowance: float | None = None) -> dict[str, float]:
+        return {
+            "USDTRUB": 90.5,
+            "USDTTHB": 33.4,
+            "RUBTHB": 2.71,
+            "allowance": 0.02,
+        }
+
+    monkeypatch.setattr("app.api.routers.miniapp.get_exchange_rates", fake_rates)
+
+    response = await client.get("/api/miniapp/home")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["profile"]["displayName"] == "Sergei V"
+    assert payload["profile"]["username"] == "sergeywebdev"
 
 
 @pytest.mark.asyncio
@@ -193,6 +214,16 @@ async def test_list_orders_returns_current_user_orders(client, auth_headers):
 
 
 @pytest.mark.asyncio
+async def test_profile_allows_guest_access_without_auth(client):
+    response = await client.get("/api/miniapp/profile")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["user"]["displayName"] == "Sergei V"
+    assert payload["menu"][0]["title"] == "Мои заявки"
+
+
+@pytest.mark.asyncio
 async def test_create_order_uses_server_side_quote_and_contact(
     client,
     auth_headers_without_order,
@@ -226,6 +257,35 @@ async def test_create_order_uses_server_side_quote_and_contact(
     assert payload["amountBuy"] == 21000
     assert payload["contactTelegram"] == "@new-contact"
     assert payload["bank"]["code"] == seeded_user_without_order["bank"].code
+
+
+@pytest.mark.asyncio
+async def test_create_order_allows_guest_without_auth(client, monkeypatch):
+    async def fake_rates(_allowance: float | None = None) -> dict[str, float]:
+        return {
+            "USDTRUB": 90.0,
+            "USDTTHB": 30.0,
+            "RUBTHB": 3.0,
+            "allowance": 0.02,
+        }
+
+    monkeypatch.setattr("app.api.routers.miniapp.get_exchange_rates", fake_rates)
+
+    response = await client.post(
+        "/api/miniapp/orders",
+        json={
+            "currencySell": "RUB",
+            "currencyBuy": "THB",
+            "amountSell": 7000,
+            "contactTelegram": "@guest-contact",
+            "methodGet": "cash",
+        },
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["amountBuy"] == 21000
+    assert payload["contactTelegram"] == "@guest-contact"
 
 
 @pytest.mark.asyncio
