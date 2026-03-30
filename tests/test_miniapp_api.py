@@ -204,6 +204,30 @@ async def test_quote_preserves_fractional_amount_for_rub_to_usdt(client, auth_he
 
 
 @pytest.mark.asyncio
+async def test_quote_supports_reverse_thb_to_rub(client, auth_headers, monkeypatch):
+    async def fake_rates(_allowance: float | None = None) -> dict[str, float]:
+        return {
+            "USDTRUB": 90.0,
+            "USDTTHB": 30.0,
+            "RUBTHB": 3.0,
+            "allowance": 0.02,
+        }
+
+    monkeypatch.setattr("app.api.routers.miniapp.get_exchange_rates", fake_rates)
+
+    response = await client.get(
+        "/api/miniapp/exchange/quote",
+        params={"currencySell": "THB", "currencyBuy": "RUB", "amountSell": 12000},
+        headers=auth_headers,
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["amountBuy"] == 4000
+    assert payload["rate"] == pytest.approx(1 / 3)
+
+
+@pytest.mark.asyncio
 async def test_list_orders_returns_current_user_orders(client, auth_headers):
     response = await client.get("/api/miniapp/orders", headers=auth_headers)
 

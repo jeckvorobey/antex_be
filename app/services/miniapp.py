@@ -93,10 +93,16 @@ def _now() -> datetime:
 def _format_rate_text(rate: float, sell: str, buy: str) -> str:
     if sell == "RUB" and buy == "THB":
         return f"{rate:.1f} ฿ за 1 ₽"
+    if sell == "THB" and buy == "RUB":
+        return f"{rate:.4f} ₽ за 1 ฿"
     if sell == "USDT" and buy == "THB":
         return f"{rate:.1f} ฿ за 1 USDT"
+    if sell == "THB" and buy == "USDT":
+        return f"{rate:.4f} USDT за 1 ฿"
     if sell == "RUB" and buy == "USDT":
         return f"{rate:.4f} USDT за 1 ₽"
+    if sell == "USDT" and buy == "RUB":
+        return f"{rate:.1f} ₽ за 1 USDT"
     return f"{rate:.4f} {buy} за 1 {sell}"
 
 
@@ -107,13 +113,25 @@ def resolve_pair_rate(snapshot: dict[str, float], currency_sell: str, currency_b
 
     if currency_sell == "RUB" and currency_buy == "THB":
         return snapshot["RUBTHB"]
+    if currency_sell == "THB" and currency_buy == "RUB":
+        rubthb = snapshot["RUBTHB"]
+        if rubthb <= 0:
+            return 0.0
+        return 1 / rubthb
     if currency_sell == "USDT" and currency_buy == "THB":
         return snapshot["USDTTHB"]
+    if currency_sell == "THB" and currency_buy == "USDT":
+        usdtthb = snapshot["USDTTHB"]
+        if usdtthb <= 0:
+            return 0.0
+        return 1 / usdtthb
     if currency_sell == "RUB" and currency_buy == "USDT":
         usdtrub = snapshot["USDTRUB"]
         if usdtrub <= 0:
             return 0.0
         return 1 / usdtrub
+    if currency_sell == "USDT" and currency_buy == "RUB":
+        return snapshot["USDTRUB"]
 
     raise AntExException(
         "Unsupported currency pair",
@@ -134,7 +152,7 @@ def calculate_quote(
     if rate <= 0:
         raise AntExException("Exchange rate unavailable", code="RATE_UNAVAILABLE", status_code=503)
 
-    if currency_sell == "RUB" and currency_buy == "USDT":
+    if currency_buy == "USDT":
         amount_buy: float = round(amount_sell * rate, 2)
     else:
         amount_buy = float(round(amount_sell * rate))
