@@ -14,6 +14,7 @@ from app.models.base import Base
 
 # Импорт всех моделей для автогенерации миграций
 import app.models  # noqa: F401
+import app.modules.broadcasts.models  # noqa: F401
 
 config = context.config
 config.set_main_option("sqlalchemy.url", settings.database_url)
