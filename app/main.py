@@ -9,23 +9,17 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
-from slowapi import _rate_limit_exceeded_handler
-from slowapi.errors import RateLimitExceeded
 
 from app.api.routers import (
     admin,
     auth,
-    banks,
-    broadcasts,
-    cards,
-    exchange,
     miniapp,
+    orders,
     public,
     telegram,
     users,
 )
 from app.core.config import settings
-from app.core.rate_limit import limiter
 from app.core.security_headers import SecurityHeadersMiddleware
 from app.exceptions import AntExException
 
@@ -37,9 +31,6 @@ logger = logging.getLogger(__name__)
 async def lifespan(app: FastAPI) -> AsyncGenerator:
     logger.info("Starting AntEx...")
     bot_started = False
-    from app.modules.broadcasts.runner import recover_stale_broadcasts_on_startup
-
-    await recover_stale_broadcasts_on_startup()
 
     if settings.telegram_bot_token:
         from app.telegram import bot as telegram_bot
@@ -74,10 +65,6 @@ app = FastAPI(
     redoc_url="/redoc" if settings.app_env != "production" else None,
 )
 
-# Rate limiting
-app.state.limiter = limiter
-app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
-
 # Security headers
 app.add_middleware(
     SecurityHeadersMiddleware,
@@ -106,12 +93,9 @@ async def antex_exception_handler(request: Request, exc: AntExException) -> JSON
 # Routers
 app.include_router(auth.router)
 app.include_router(users.router)
-app.include_router(exchange.router)
+app.include_router(orders.router)
 app.include_router(miniapp.router)
-app.include_router(cards.router)
-app.include_router(banks.router)
 app.include_router(admin.router)
-app.include_router(broadcasts.router)
 app.include_router(public.router)
 app.include_router(telegram.router)
 

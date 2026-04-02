@@ -1,4 +1,5 @@
 """Схемы конфигурации."""
+# ruff: noqa: N815
 
 from __future__ import annotations
 
@@ -14,3 +15,7 @@ class AppConfigOut(BaseModel):
     updatedAt: datetime
 
     model_config = {"from_attributes": True}
+
+
+class AppConfigUpdate(BaseModel):
+    enabled: bool

@@ -36,6 +36,7 @@ async def telegram_auth(db: AsyncSession, init_data: str) -> TokenResponse:
         language_code=user_data.get("language_code"),
         is_bot=user_data.get("is_bot", False),
         is_premium=user_data.get("is_premium", False),
+        chatId=tg_id,
     )
 
     token = create_access_token({"sub": str(user.id), "role": user.role})

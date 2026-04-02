@@ -1,1 +1,1 @@
-"""Database utilities."""
+"""DB helpers."""

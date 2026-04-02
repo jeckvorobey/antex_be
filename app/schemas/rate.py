@@ -1,10 +1,11 @@
 """Схемы курса валют."""
+# ruff: noqa: N815
 
 from __future__ import annotations
 
 from datetime import datetime
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 class RateOut(BaseModel):
@@ -17,7 +18,11 @@ class RateOut(BaseModel):
     model_config = {"from_attributes": True}
 
 
-class RatesResponse(BaseModel):
-    rates: list[RateOut]
-    rubthb: float
-    allowance: float
+class RateCreate(BaseModel):
+    currency: str = Field(min_length=3, max_length=20)
+    price: float
+
+
+class RateUpdate(BaseModel):
+    currency: str | None = Field(default=None, min_length=3, max_length=20)
+    price: float | None = None

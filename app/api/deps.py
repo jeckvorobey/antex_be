@@ -27,14 +27,14 @@ async def get_current_user(
     token = authorization.removeprefix("Bearer ")
     try:
         payload = decode_access_token(token)
-    except jwt.ExpiredSignatureError:
-        raise HTTPException(status_code=401, detail="Token expired")
-    except jwt.PyJWTError:
-        raise HTTPException(status_code=401, detail="Invalid token")
+    except jwt.ExpiredSignatureError as exc:
+        raise HTTPException(status_code=401, detail="Token expired") from exc
+    except jwt.PyJWTError as exc:
+        raise HTTPException(status_code=401, detail="Invalid token") from exc
 
     user_id = int(payload.get("sub", 0))
     repo = UserRepository(db)
-    user = await repo.get_by_id(user_id)
+    user = await repo.get_one(user_id)
     if not user:
         raise HTTPException(status_code=401, detail="User not found")
     return user
@@ -77,10 +77,10 @@ async def get_admin(
     token = authorization.removeprefix("Bearer ")
     try:
         payload = decode_access_token(token)
-    except jwt.PyJWTError:
-        raise HTTPException(status_code=401, detail="Invalid token")
+    except jwt.PyJWTError as exc:
+        raise HTTPException(status_code=401, detail="Invalid token") from exc
 
-    if payload.get("type") != "admin":
+    if payload.get("type") not in {"admin", "admin_refresh"}:
         raise HTTPException(status_code=403, detail="Admin access required")
 
     admin_id = int(payload.get("sub", 0))

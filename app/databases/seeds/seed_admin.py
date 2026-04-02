@@ -1,4 +1,4 @@
-"""Создание дефолтного администратора для dev-окружения."""
+"""Создание дефолтного администратора."""
 
 from __future__ import annotations
 
@@ -15,14 +15,12 @@ DEFAULT_USERNAME = "admin"
 DEFAULT_PASSWORD = "admin"
 
 
-async def seed_admin(db: AsyncSession) -> int:
+async def seed_admin(db: AsyncSession) -> None:
     repo = AdminRepository(db)
     existing = await repo.get_by_username(DEFAULT_USERNAME)
     if existing:
-        logger.info("Admin '%s' already exists, skipping", DEFAULT_USERNAME)
-        return 0
+        return
 
     password_hash = hashlib.sha256(DEFAULT_PASSWORD.encode()).hexdigest()
     await repo.create(username=DEFAULT_USERNAME, password_hash=password_hash)
-    logger.info("Created default admin '%s'", DEFAULT_USERNAME)
-    return 1
+    logger.info("Created default admin")

@@ -1,35 +1,42 @@
-"""Сервис уведомлений (оператору и пользователю)."""
+"""Низкоуровневая доставка Telegram-уведомлений."""
 
 from __future__ import annotations
 
 import logging
+from dataclasses import dataclass
 
-from aiogram.exceptions import TelegramForbiddenError
+from aiogram.exceptions import TelegramBadRequest, TelegramForbiddenError
 
-from app.core.config import settings
-from app.telegram import messages
-from app.telegram.keyboards import confirm_order
+from app.telegram import bot as telegram_bot
 
 logger = logging.getLogger(__name__)
 
 
-async def notify_operator(bot, order_id: int, user_id: int, amount_sell: int,
-                          currency_sell: str, amount_buy: int, currency_buy: str, method: str) -> None:
-    if not settings.operator_chat_id:
+@dataclass(slots=True)
+class NotificationMessage:
+    chat_id: int | None
+    text: str
+
+
+async def _send_message(message: NotificationMessage) -> None:
+    if not message.chat_id:
+        logger.warning("Notification skipped: no chat_id")
         return
-    text = messages.new_order_operator(order_id, user_id, amount_sell, currency_sell, amount_buy, currency_buy, method)
+    if telegram_bot.bot is None:
+        logger.warning("Notification skipped: bot is not initialized")
+        return
+
     try:
-        await bot.send_message(
-            chat_id=settings.operator_chat_id,
-            text=text,
-            reply_markup=confirm_order(order_id),
-        )
+        await telegram_bot.bot.send_message(chat_id=message.chat_id, text=message.text)
     except TelegramForbiddenError:
-        logger.warning("Operator chat %s is not accessible", settings.operator_chat_id)
+        logger.warning("Chat %s is not accessible", message.chat_id)
+    except TelegramBadRequest:
+        logger.exception("Telegram rejected notification for chat %s", message.chat_id)
 
 
-async def notify_user(bot, user_id: int, text: str) -> None:
-    try:
-        await bot.send_message(chat_id=user_id, text=text)
-    except TelegramForbiddenError:
-        logger.warning("User %s blocked the bot", user_id)
+async def send_order_created_to_user(message: NotificationMessage) -> None:
+    await _send_message(message)
+
+
+async def send_order_created_to_manager(message: NotificationMessage) -> None:
+    await _send_message(message)

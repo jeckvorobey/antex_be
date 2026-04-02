@@ -1,4 +1,4 @@
-"""Базовые классы моделей."""
+"""Базовые SQLAlchemy-модели."""
 
 from __future__ import annotations
 
@@ -9,17 +9,19 @@ from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 
 class Base(DeclarativeBase):
-    pass
+    """Базовый declarative class."""
 
 
 class TimestampMixin:
-    createdAt: Mapped[datetime] = mapped_column(
+    """Стандартные timestamps проекта."""
+
+    createdAt: Mapped[datetime] = mapped_column(  # noqa: N815
         "createdAt",
         DateTime(timezone=True),
         server_default=func.now(),
         nullable=False,
     )
-    updatedAt: Mapped[datetime] = mapped_column(
+    updatedAt: Mapped[datetime] = mapped_column(  # noqa: N815
         "updatedAt",
         DateTime(timezone=True),
         server_default=func.now(),

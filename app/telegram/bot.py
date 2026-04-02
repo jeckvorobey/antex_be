@@ -16,7 +16,7 @@ from aiohttp import ClientError
 
 from app.core.config import settings
 from app.core.redis import redis_client
-from app.telegram.handlers import exchange, operator, start
+from app.telegram.handlers import start
 from app.telegram.middlewares.logging import LoggingMiddleware
 
 logger = logging.getLogger(__name__)
@@ -71,8 +71,6 @@ def _create_dispatcher() -> Dispatcher:
     dispatcher.message.middleware(LoggingMiddleware())
     dispatcher.callback_query.middleware(LoggingMiddleware())
     dispatcher.include_router(start.router)
-    dispatcher.include_router(exchange.router)
-    dispatcher.include_router(operator.router)
     return dispatcher
 
 

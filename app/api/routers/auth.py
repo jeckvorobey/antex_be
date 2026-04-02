@@ -13,4 +13,6 @@ router = APIRouter(prefix="/api/auth", tags=["auth"])
 
 @router.post("/telegram", response_model=TokenResponse)
 async def auth_telegram(body: TelegramAuthRequest, db: DbDep) -> TokenResponse:
-    return await telegram_auth(db, body.init_data)
+    token = await telegram_auth(db, body.init_data)
+    await db.commit()
+    return token

@@ -1,142 +1,106 @@
-"""Pydantic-схемы miniapp API."""
+"""Схемы miniapp API."""
+# ruff: noqa: N815
 
 from __future__ import annotations
 
 from datetime import datetime
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
+
+from app.schemas.city import CityOut
+from app.schemas.rate import RateOut
 
 
-class MiniappProfileSummary(BaseModel):
+class MiniappProfileResponse(BaseModel):
     id: int
-    displayName: str
     username: str | None
-    isPremium: bool
-    languageCode: str
+    first_name: str | None
+    last_name: str | None
+    language_code: str | None
+    role: int
+    is_premium: bool
+    city: CityOut | None = None
 
 
-class MiniappQuickAction(BaseModel):
-    id: str
-    title: str
-    subtitle: str
-    icon: str
-    route: str | None = None
-    tone: str = "default"
+class MiniappRatesResponse(BaseModel):
+    items: list[RateOut]
 
 
-class MiniappRateCard(BaseModel):
-    id: str
-    label: str
-    fromCurrency: str
-    toCurrency: str
-    rate: float
-    rateText: str
-    amountSellExample: int
-    amountBuyExample: float
-    updatedAt: datetime
+class MiniappCitiesResponse(BaseModel):
+    items: list[CityOut]
 
 
-class MiniappRatesSection(BaseModel):
-    featured: list[MiniappRateCard]
-    chips: list[str]
-    updatedAt: datetime
-    allowance: float
+class MiniappOrderCreate(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
 
-
-class MiniappServiceItem(BaseModel):
-    id: str
-    title: str
-    subtitle: str
-    icon: str
-
-
-class MiniappLocationItem(BaseModel):
-    id: str
-    city: str
-    hours: str
-    accent: str
-
-
-class MiniappBanner(BaseModel):
-    title: str
-    actionLabel: str
-
-
-class MiniappHomeResponse(BaseModel):
-    profile: MiniappProfileSummary
-    quickActions: list[MiniappQuickAction]
-    rates: MiniappRatesSection
-    banner: MiniappBanner
-    services: list[MiniappServiceItem]
-    locations: list[MiniappLocationItem]
-
-
-class MiniappQuoteResponse(BaseModel):
-    currencySell: str
-    currencyBuy: str
-    amountSell: int
-    amountBuy: float
-    rate: float
-    rateText: str
-    updatedAt: datetime
-    availableMethods: list[str]
-
-
-class MiniappCalculatorState(BaseModel):
-    fromCurrency: str
-    toCurrency: str
-    amountSell: int
-
-
-class MiniappExchangeScreenResponse(BaseModel):
-    calculator: MiniappCalculatorState
-    chips: list[str]
-    pairs: list[MiniappRateCard]
-    quote: MiniappQuoteResponse
-
-
-class MiniappBankSummary(BaseModel):
-    id: int
-    code: str
-    name: str
+    city_id: int = Field(alias="cityId")
+    currency_sell: str = Field(alias="currencySell", min_length=3, max_length=20)
+    amount_sell: int = Field(alias="amountSell", gt=0)
+    currency_buy: str = Field(alias="currencyBuy", min_length=3, max_length=20)
+    amount_buy: float | None = Field(default=None, alias="amountBuy")
+    rate: float | None = None
+    address: str | None = None
+    contact_telegram: str | None = Field(default=None, alias="contactTelegram", max_length=255)
+    method_get: str | None = Field(default=None, alias="methodGet", max_length=20)
 
 
 class MiniappOrderItem(BaseModel):
     id: int
+    cityId: int
     currencySell: str
     amountSell: int
     currencyBuy: str
-    amountBuy: float
-    rate: float
+    amountBuy: float | None
+    rate: float | None
     status: int
-    methodGet: str | None
+    address: str | None
     contactTelegram: str | None
+    methodGet: str | None
     createdAt: datetime
-    bank: MiniappBankSummary
+    updatedAt: datetime
+    city: CityOut
 
 
 class MiniappOrdersResponse(BaseModel):
     items: list[MiniappOrderItem]
 
 
-class MiniappOrderCreate(BaseModel):
-    currencySell: str = Field(min_length=3, max_length=10)
-    currencyBuy: str = Field(min_length=3, max_length=10)
-    amountSell: int = Field(gt=0)
-    contactTelegram: str | None = Field(default=None, max_length=255)
-    methodGet: str | None = Field(default="cash", max_length=20)
+class MiniappOrderCreatedResponse(BaseModel):
+    success: bool = True
+    orderId: int
 
 
-class MiniappMenuItem(BaseModel):
-    id: str
-    title: str
-    icon: str
-    action: str
-    route: str | None = None
-    href: str | None = None
+def build_miniapp_profile(user) -> MiniappProfileResponse:
+    from app.schemas.city import build_city_out
+
+    return MiniappProfileResponse(
+        id=user.id,
+        username=user.username,
+        first_name=user.first_name,
+        last_name=user.last_name,
+        language_code=user.language_code,
+        role=user.role,
+        is_premium=user.is_premium,
+        city=build_city_out(user.city) if user.city else None,
+    )
 
 
-class MiniappProfileResponse(BaseModel):
-    user: MiniappProfileSummary
-    menu: list[MiniappMenuItem]
-    version: str
+def build_miniapp_order_item(order) -> MiniappOrderItem:
+    from app.schemas.city import build_city_out
+
+    return MiniappOrderItem(
+        id=order.id,
+        cityId=order.CityId,
+        currencySell=order.currencySell,
+        amountSell=order.amountSell,
+        currencyBuy=order.currencyBuy,
+        amountBuy=order.amountBuy,
+        rate=order.rate,
+        status=order.status,
+        address=order.address,
+        contactTelegram=order.contactTelegram,
+        methodGet=order.methodGet,
+        createdAt=order.createdAt,
+        updatedAt=order.updatedAt,
+        city=build_city_out(order.city),
+    )

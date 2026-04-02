@@ -15,7 +15,11 @@ from app.core.config import settings
 
 def create_access_token(data: dict[str, Any], ttl: int | None = None) -> str:
     expire = time.time() + (ttl or settings.jwt_ttl_seconds)
-    return jwt.encode({**data, "exp": expire}, settings.jwt_secret, algorithm=settings.jwt_algorithm)
+    return jwt.encode(
+        {**data, "exp": expire},
+        settings.jwt_secret,
+        algorithm=settings.jwt_algorithm,
+    )
 
 
 def decode_access_token(token: str) -> dict[str, Any]:

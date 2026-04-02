@@ -21,4 +21,11 @@ async def check_user(db: AsyncSession, tg_user: TgUser) -> tuple[User, bool]:
         is_premium=getattr(tg_user, "is_premium", False) or False,
         chatId=tg_user.id,
     )
+    user.username = tg_user.username
+    user.first_name = tg_user.first_name
+    user.last_name = tg_user.last_name
+    user.language_code = tg_user.language_code
+    user.is_bot = tg_user.is_bot
+    user.is_premium = getattr(tg_user, "is_premium", False) or False
+    user.chatId = tg_user.id
     return user, created

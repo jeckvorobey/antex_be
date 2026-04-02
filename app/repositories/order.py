@@ -20,10 +20,7 @@ class OrderRepository(BaseRepository[Order]):
             .where(Order.id == order_id, Order.destroyTime.is_(None))
             .options(
                 selectinload(Order.user),
-                selectinload(Order.bank),
-                selectinload(Order.card),
-                selectinload(Order.bank_account),
-                selectinload(Order.review),
+                selectinload(Order.city),
             )
         )
         return result.scalar_one_or_none()
@@ -71,11 +68,17 @@ class OrderRepository(BaseRepository[Order]):
         result = await self.session.execute(
             select(Order)
             .where(Order.UserId == user_id, Order.destroyTime.is_(None))
-            .options(
-                selectinload(Order.bank),
-                selectinload(Order.card),
-            )
+            .options(selectinload(Order.city))
             .order_by(desc(Order.createdAt))
             .limit(limit)
+        )
+        return list(result.scalars().all())
+
+    async def list_all(self) -> list[Order]:
+        result = await self.session.execute(
+            select(Order)
+            .where(Order.destroyTime.is_(None))
+            .options(selectinload(Order.user), selectinload(Order.city))
+            .order_by(desc(Order.createdAt))
         )
         return list(result.scalars().all())
