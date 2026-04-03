@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from sqlalchemy import Boolean, Integer
+from sqlalchemy import Boolean, Float, Integer
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.models.base import Base, TimestampMixin
@@ -13,3 +13,4 @@ class Config(Base, TimestampMixin):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=False)
     enabled: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    allowance: Mapped[float] = mapped_column(Float, default=2.0, nullable=False)

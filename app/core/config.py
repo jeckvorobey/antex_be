@@ -64,8 +64,6 @@ class Settings(BaseSettings):
     operator_chat_id: int | None = None
 
     # Exchange / Rate
-    reducing_factor: float = 0.6
-    default_allowance: float = 0.02
     rate_cache_ttl_seconds: int = 1800
 
     # CoinGecko

@@ -5,12 +5,13 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 class AppConfigOut(BaseModel):
     id: int
     enabled: bool
+    allowance: float
     createdAt: datetime
     updatedAt: datetime
 
@@ -18,4 +19,13 @@ class AppConfigOut(BaseModel):
 
 
 class AppConfigUpdate(BaseModel):
-    enabled: bool
+    enabled: bool | None = None
+    allowance: float | None = None
+
+
+class AllowanceOut(BaseModel):
+    value: float
+
+
+class AllowanceUpdate(BaseModel):
+    value: float = Field(ge=0.0, le=100.0)

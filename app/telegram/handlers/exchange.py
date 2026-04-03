@@ -40,7 +40,7 @@ async def _get_db():
 
 
 async def _get_rate_snapshot() -> tuple[float, float]:
-    allowance = settings.default_allowance
+    allowance = 2.0  # fallback, если БД недоступна
     try:
         db = await _get_db()
         async with db:

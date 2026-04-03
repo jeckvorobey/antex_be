@@ -19,7 +19,7 @@ from app.repositories.rate import RateRepository
 from app.repositories.user import UserRepository
 from app.schemas.admin import AdminLogin, AdminTokenResponse
 from app.schemas.city import CityCreate, CityOut, CityUpdate, build_city_out
-from app.schemas.config import AppConfigOut, AppConfigUpdate
+from app.schemas.config import AllowanceOut, AllowanceUpdate, AppConfigOut, AppConfigUpdate
 from app.schemas.order import OrderOut, OrderStatusUpdate, build_order_out
 from app.schemas.rate import RateCreate, RateOut, RateUpdate
 from app.schemas.user import UserOut, UserUpdate, build_user_out
@@ -248,6 +248,32 @@ async def get_config(db: DbDep, _: AdminUser) -> AppConfigOut:
 
 @router.patch("/config", response_model=AppConfigOut)
 async def update_config(body: AppConfigUpdate, db: DbDep, _: AdminUser) -> AppConfigOut:
-    config = await ConfigRepository(db).set_enabled(body.enabled)
+    repo = ConfigRepository(db)
+    if body.enabled is not None:
+        await repo.set_enabled(body.enabled)
+    if body.allowance is not None:
+        await repo.set_allowance(body.allowance)
+    config = await repo.get_or_create()
     await db.commit()
     return AppConfigOut.model_validate(config)
+
+
+@router.get("/allowance", response_model=AllowanceOut)
+async def get_allowance(db: DbDep, _: AdminUser) -> AllowanceOut:
+    config = await ConfigRepository(db).get_or_create()
+    return AllowanceOut(value=config.allowance)
+
+
+@router.put("/allowance", response_model=AllowanceOut)
+async def update_allowance(body: AllowanceUpdate, db: DbDep, _: AdminUser) -> AllowanceOut:
+    config = await ConfigRepository(db).set_allowance(body.value)
+    await db.commit()
+    return AllowanceOut(value=config.allowance)
+
+
+@router.post("/rates/refresh")
+async def refresh_rates(db: DbDep, _: AdminUser) -> dict[str, object]:
+    from app.services.rate_fetcher import fetch_and_save_rates
+
+    rates = await fetch_and_save_rates(db)
+    return {"ok": True, "rates": rates}

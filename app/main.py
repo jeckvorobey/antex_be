@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
@@ -27,6 +28,22 @@ logging.basicConfig(level=settings.log_level.upper())
 logger = logging.getLogger(__name__)
 
 
+async def _rate_updater_loop() -> None:
+    """Фоновая задача: периодически обновляет курсы из CoinGecko."""
+    from app.core.database import async_session
+    from app.services.rate_fetcher import fetch_and_save_rates
+
+    while True:
+        try:
+            async with async_session() as db:
+                rates = await fetch_and_save_rates(db)
+            logger.info("Курсы обновлены: %s", rates)
+        except Exception:
+            ttl = settings.rate_cache_ttl_seconds
+            logger.exception("Ошибка обновления курсов, повтор через %ds", ttl)
+        await asyncio.sleep(settings.rate_cache_ttl_seconds)
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncGenerator:
     logger.info("Starting AntEx...")
@@ -44,9 +61,12 @@ async def lifespan(app: FastAPI) -> AsyncGenerator:
     else:
         logger.warning("TELEGRAM_BOT_TOKEN is not configured, Telegram bot startup skipped")
 
+    rate_task = asyncio.create_task(_rate_updater_loop())
+
     try:
         yield
     finally:
+        rate_task.cancel()
         logger.info("Shutting down AntEx...")
         if bot_started:
             from app.telegram import bot as telegram_bot
