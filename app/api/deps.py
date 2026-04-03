@@ -10,6 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db_session
 from app.core.security import decode_access_token
+from app.enums.user import UserRole
 from app.models.user import User
 from app.repositories.admin import AdminRepository
 from app.repositories.user import UserRepository
@@ -56,7 +57,7 @@ async def get_miniapp_user(
         language_code="ru",
         is_bot=False,
         is_premium=True,
-        role=1,
+        role=int(UserRole.USER),
     )
     user.username = "sergeywebdev"
     user.first_name = "Sergei"
@@ -64,7 +65,8 @@ async def get_miniapp_user(
     user.language_code = "ru"
     user.is_bot = False
     user.is_premium = True
-    user.role = 1
+    user.role = int(UserRole.USER)
+    user.language_code_app = "ru"
     return user
 
 

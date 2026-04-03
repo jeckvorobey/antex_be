@@ -1,5 +1,4 @@
 """Модель пользователя."""
-# ruff: noqa: N815
 
 from __future__ import annotations
 
@@ -8,6 +7,7 @@ from typing import TYPE_CHECKING
 from sqlalchemy import BigInteger, Boolean, ForeignKey, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
+from app.enums.user import UserRole
 from app.models.base import Base, TimestampMixin
 
 if TYPE_CHECKING:
@@ -26,10 +26,15 @@ class User(Base, TimestampMixin):
     language_code: Mapped[str | None] = mapped_column(String(10), nullable=True)
     is_bot: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     session: Mapped[str | None] = mapped_column(Text, nullable=True)
-    chatId: Mapped[int | None] = mapped_column("chatId", BigInteger, nullable=True)
-    role: Mapped[int] = mapped_column(Integer, default=1, nullable=False)
+    role: Mapped[int] = mapped_column(Integer, default=int(UserRole.USER), nullable=False)
     is_premium: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     city_id: Mapped[int | None] = mapped_column(ForeignKey("Cities.id"), nullable=True)
+    language_code_app: Mapped[str] = mapped_column(
+        String(10),
+        default="ru",
+        server_default="ru",
+        nullable=False,
+    )
 
     orders: Mapped[list[Order]] = relationship("Order", back_populates="user")
     city: Mapped[City | None] = relationship("City", back_populates="users")

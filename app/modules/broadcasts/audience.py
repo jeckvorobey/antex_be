@@ -26,11 +26,13 @@ class TelegramUserAudienceProvider:
         result = await self.session.execute(
             select(User)
             .where(User.is_bot.is_(False))
+            .where(User.telegram_id.is_not(None))
             .where(User.id != MINIAPP_GUEST_USER_ID)
             .order_by(User.id.asc())
         )
         users = result.scalars().all()
         return [
-            BroadcastRecipient(user_id=user.id, chat_id=user.chatId or user.id)
+            BroadcastRecipient(user_id=user.id, chat_id=user.telegram_id)
             for user in users
+            if user.telegram_id is not None
         ]

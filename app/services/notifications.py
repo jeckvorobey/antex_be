@@ -11,7 +11,7 @@ from app.telegram.services.notification_service import (
 
 async def notify_order_created(order, user, manager) -> None:
     user_message = NotificationMessage(
-        chat_id=user.chatId or user.telegram_id,
+        chat_id=user.telegram_id,
         text=(
             f"Заявка #{order.id} создана.\n"
             f"Город: {order.city.name}\n"
@@ -20,7 +20,7 @@ async def notify_order_created(order, user, manager) -> None:
         ),
     )
     manager_message = NotificationMessage(
-        chat_id=manager.chatId or manager.telegram_id,
+        chat_id=manager.telegram_id,
         text=(
             f"Новая заявка #{order.id}\n"
             f"Город: {order.city.name}\n"

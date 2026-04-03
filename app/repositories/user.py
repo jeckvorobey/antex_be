@@ -19,6 +19,13 @@ class UserRepository(BaseRepository[User]):
         result = await self.session.execute(select(User).where(User.telegram_id == tg_id))
         user = result.scalar_one_or_none()
         if user:
+            for field, value in defaults.items():
+                if value is not None and hasattr(User, field):
+                    setattr(user, field, value)
+            if user.language_code_app is None:
+                user.language_code_app = "ru"
+            await self.session.flush()
+            await self.session.refresh(user)
             return user, False
         user = User(telegram_id=tg_id, **defaults)
         self.session.add(user)

@@ -8,7 +8,7 @@ from aiogram import F, Router
 from aiogram.types import CallbackQuery
 
 from app.core.database import get_db_session
-from app.enums.user import UserRole
+from app.enums.user import has_operator_access
 from app.repositories.order import OrderRepository
 from app.telegram import messages
 from app.telegram.services.notification_service import notify_user
@@ -25,7 +25,7 @@ async def operator_confirm(callback: CallbackQuery) -> None:
     db = await db_gen.__anext__()
     async with db:
         user, _ = await check_user(db, callback.from_user)
-        if user.role < UserRole.OPERATOR:
+        if not has_operator_access(user.role):
             await callback.answer("Нет прав", show_alert=True)
             return
 
@@ -51,7 +51,7 @@ async def operator_cancel(callback: CallbackQuery) -> None:
     db = await db_gen.__anext__()
     async with db:
         user, _ = await check_user(db, callback.from_user)
-        if user.role < UserRole.OPERATOR:
+        if not has_operator_access(user.role):
             await callback.answer("Нет прав", show_alert=True)
             return
 
