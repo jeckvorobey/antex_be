@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class AdminLogin(BaseModel):
@@ -13,12 +13,12 @@ class AdminLogin(BaseModel):
 
 
 class AdminOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True, populate_by_name=True)
+
     id: int
     username: str
-    createdAt: datetime
-    updatedAt: datetime
-
-    model_config = {"from_attributes": True}
+    created_at: datetime = Field(alias="createdAt")
+    updated_at: datetime = Field(alias="updatedAt")
 
 
 class AdminTokenResponse(BaseModel):

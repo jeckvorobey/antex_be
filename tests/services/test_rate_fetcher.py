@@ -78,6 +78,5 @@ class TestFetchAndSaveRates:
 
         repo = RateRepository(db_session)
         all_rates = await repo.get_all()
-        # Не должно быть дублей — upsert
         currencies = [r.currency for r in all_rates]
         assert len(currencies) == len(set(currencies))

@@ -9,7 +9,6 @@ from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.types import CallbackQuery, Message
 
-from app.core.config import settings
 from app.core.database import get_db_session
 from app.enums.order import OrderStatus
 from app.repositories.allowance import AllowanceRepository

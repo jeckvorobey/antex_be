@@ -1,9 +1,14 @@
 """TDD тесты для rate_calculator — чистая математика, нет I/O."""
+
 from __future__ import annotations
 
 import pytest
 
-from app.services.rate_calculator import build_rates, calculate_rate_with_allowance, calculate_rubthb
+from app.services.rate_calculator import (
+    build_rates,
+    calculate_rate_with_allowance,
+    calculate_rubthb,
+)
 
 
 class TestCalculateRubthb:
@@ -25,7 +30,10 @@ class TestCalculateRateWithAllowance:
         assert result == pytest.approx(0.03 * 0.98, rel=1e-6)
 
     def test_zero_allowance_returns_unchanged_rate(self) -> None:
-        assert calculate_rate_with_allowance(base_rate=0.03, allowance_pct=0.0) == pytest.approx(0.03)
+        assert calculate_rate_with_allowance(
+            base_rate=0.03,
+            allowance_pct=0.0,
+        ) == pytest.approx(0.03)
 
     def test_half_percent_allowance(self) -> None:
         result = calculate_rate_with_allowance(base_rate=35.5, allowance_pct=0.5)

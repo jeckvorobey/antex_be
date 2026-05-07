@@ -1,4 +1,5 @@
 #!/usr/bin/env python
+# ruff: noqa: RUF001,RUF002
 """Ручная проверка получения курсов из CoinGecko API.
 
 Запуск из папки back/:
