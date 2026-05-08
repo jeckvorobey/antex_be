@@ -14,6 +14,7 @@ from fastapi.responses import JSONResponse
 from app.api.routers import (
     admin,
     auth,
+    broadcasts,
     miniapp,
     orders,
     public,
@@ -60,6 +61,10 @@ async def lifespan(app: FastAPI) -> AsyncGenerator:
         bot_started = True
     else:
         logger.warning("TELEGRAM_BOT_TOKEN is not configured, Telegram bot startup skipped")
+
+    from app.modules.broadcasts.runner import recover_stale_broadcasts_on_startup
+
+    await recover_stale_broadcasts_on_startup()
 
     rate_task = asyncio.create_task(_rate_updater_loop())
 
@@ -116,6 +121,7 @@ app.include_router(users.router)
 app.include_router(orders.router)
 app.include_router(miniapp.router)
 app.include_router(admin.router)
+app.include_router(broadcasts.router)
 app.include_router(public.router)
 app.include_router(telegram.router)
 

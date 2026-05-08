@@ -3,21 +3,25 @@
 from __future__ import annotations
 
 import hashlib
-from datetime import datetime
+from datetime import UTC, datetime, time
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from fastapi import APIRouter, HTTPException, status
+from sqlalchemy import func, select
 
 from app.api.deps import AdminUser, DbDep
 from app.core.config import settings
 from app.core.security import create_access_token
 from app.enums.user import UserRole
+from app.models.order import Order
+from app.models.user import User
 from app.repositories.admin import AdminRepository
 from app.repositories.city import CityRepository
 from app.repositories.config import ConfigRepository
 from app.repositories.order import OrderRepository
 from app.repositories.rate import RateRepository
 from app.repositories.user import UserRepository
-from app.schemas.admin import AdminLogin, AdminTokenResponse
+from app.schemas.admin import AdminLogin, AdminSummaryOut, AdminTokenResponse
 from app.schemas.city import CityCreate, CityOut, CityUpdate, build_city_out
 from app.schemas.config import AllowanceOut, AllowanceUpdate, AppConfigOut, AppConfigUpdate
 from app.schemas.order import OrderOut, OrderStatusUpdate, build_order_out
@@ -25,6 +29,23 @@ from app.schemas.rate import RateCreate, RateOut, RateUpdate
 from app.schemas.user import UserOut, UserUpdate, build_user_out
 
 router = APIRouter(prefix="/api/admin", tags=["admin"])
+
+
+def get_today_start_for_timezone(
+    timezone_name: str,
+    *,
+    now: datetime | None = None,
+) -> datetime:
+    """Возвращает UTC-момент локальной полуночи для заданной timezone."""
+    try:
+        timezone = ZoneInfo(timezone_name)
+    except ZoneInfoNotFoundError:
+        timezone = UTC
+
+    current_time = now or datetime.now(UTC)
+    local_today = current_time.astimezone(timezone).date()
+    local_start = datetime.combine(local_today, time.min, tzinfo=timezone)
+    return local_start.astimezone(UTC)
 
 
 @router.post("/login", response_model=AdminTokenResponse)
@@ -62,6 +83,26 @@ async def admin_refresh(_: DbDep, admin: AdminUser) -> AdminTokenResponse:
 @router.post("/logout")
 async def admin_logout(_: AdminUser) -> dict[str, bool]:
     return {"ok": True}
+
+
+@router.get("/summary", response_model=AdminSummaryOut)
+async def get_admin_summary(db: DbDep, _: AdminUser) -> AdminSummaryOut:
+    """Возвращает MVP-метрики для дашборда админки."""
+    today_start = get_today_start_for_timezone(settings.timezone)
+    orders_today_result = await db.execute(
+        select(func.count(Order.id)).where(
+            Order.createdAt >= today_start,
+            Order.destroyTime.is_(None),
+        )
+    )
+    users_total_result = await db.execute(select(func.count(User.id)))
+    rub_thb_rate = await RateRepository(db).find_by_currency("RUBTHB")
+
+    return AdminSummaryOut(
+        orders_today=orders_today_result.scalar_one(),
+        users_total=users_total_result.scalar_one(),
+        rub_thb_rate=rub_thb_rate.price if rub_thb_rate else None,
+    )
 
 
 @router.get("/cities", response_model=list[CityOut])

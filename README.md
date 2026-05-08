@@ -61,7 +61,9 @@ cd back
 uv run python app/databases/seed.py
 ```
 
-Сидирование добавляет стартовые банки и карты.
+Сидирование создаёт дефолтного администратора `admin/admin`.
+Банки, карты, города, менеджеры и курсы нужно добавить отдельно через админку,
+миграции или отдельный seed-скрипт.
 
 ### 7. Запуск backend
 
@@ -90,6 +92,7 @@ uv run python run.py --host 0.0.0.0 --port 8000
 - `PROXY` поддерживает форматы `host:port:user:pass` и `http://user:pass@host:port`.
 - При временной сетевой ошибке Telegram polling в dev-режиме не падает безвозвратно, а переподключается с backoff.
 - Если меняете схему базы, повторно запустите `uv run alembic upgrade head`.
+- Актуальный контракт miniapp/admin API описан в `docs/api-contract.md`.
 - Если нужны проверки перед коммитом:
 
 ```bash

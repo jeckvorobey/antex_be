@@ -11,6 +11,13 @@ from app.repositories.base import BaseRepository
 class RateRepository(BaseRepository[Rate]):
     model = Rate
 
+    async def find_by_currency(self, currency: str) -> Rate | None:
+        """Ищет курс по коду валютной пары."""
+        result = await self.session.execute(
+            select(Rate).where(Rate.currency == currency.upper())
+        )
+        return result.scalar_one_or_none()
+
     async def find_or_create(self, currency: str, price: float) -> tuple[Rate, bool]:
         result = await self.session.execute(select(Rate).where(Rate.currency == currency))
         rate = result.scalar_one_or_none()

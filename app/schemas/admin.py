@@ -25,3 +25,11 @@ class AdminTokenResponse(BaseModel):
     access_token: str
     refresh_token: str
     token_type: str = "bearer"
+
+
+class AdminSummaryOut(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
+    orders_today: int = Field(alias="ordersToday")
+    users_total: int = Field(alias="usersTotal")
+    rub_thb_rate: float | None = Field(alias="rubThbRate")

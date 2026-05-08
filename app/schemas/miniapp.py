@@ -22,6 +22,109 @@ class MiniappProfileResponse(BaseModel):
     city: CityOut | None = None
 
 
+class MiniappProfileSummary(BaseModel):
+    id: int
+    displayName: str
+    username: str | None
+    isPremium: bool
+    languageCode: str
+
+
+class MiniappQuickAction(BaseModel):
+    id: str
+    title: str
+    subtitle: str
+    icon: str
+    route: str | None = None
+    tone: str
+
+
+class MiniappRateCard(BaseModel):
+    id: str
+    label: str
+    fromCurrency: str
+    toCurrency: str
+    rate: float
+    rateText: str
+    amountSellExample: int
+    amountBuyExample: float
+    updatedAt: datetime
+
+
+class MiniappRatesSection(BaseModel):
+    featured: list[MiniappRateCard]
+    chips: list[str]
+    updatedAt: datetime | None
+    allowance: float
+
+
+class MiniappServiceItem(BaseModel):
+    id: str
+    title: str
+    subtitle: str
+    icon: str
+
+
+class MiniappLocationItem(BaseModel):
+    id: str
+    city: str
+    hours: str
+    accent: str
+
+
+class MiniappBanner(BaseModel):
+    title: str
+    actionLabel: str
+
+
+class MiniappHomeResponse(BaseModel):
+    profile: MiniappProfileSummary
+    quickActions: list[MiniappQuickAction]
+    rates: MiniappRatesSection
+    banner: MiniappBanner
+    services: list[MiniappServiceItem]
+    locations: list[MiniappLocationItem]
+
+
+class MiniappQuoteResponse(BaseModel):
+    currencySell: str
+    currencyBuy: str
+    amountSell: int
+    amountBuy: float
+    rate: float
+    rateText: str
+    updatedAt: datetime
+    availableMethods: list[str]
+
+
+class MiniappCalculatorState(BaseModel):
+    fromCurrency: str
+    toCurrency: str
+    amountSell: int
+
+
+class MiniappExchangeScreenResponse(BaseModel):
+    calculator: MiniappCalculatorState
+    chips: list[str]
+    pairs: list[MiniappRateCard]
+    quote: MiniappQuoteResponse
+
+
+class MiniappMenuItem(BaseModel):
+    id: str
+    title: str
+    icon: str
+    action: str
+    route: str | None = None
+    href: str | None = None
+
+
+class MiniappProfileScreenResponse(BaseModel):
+    user: MiniappProfileSummary
+    menu: list[MiniappMenuItem]
+    version: str
+
+
 class MiniappRatesResponse(BaseModel):
     items: list[RateOut]
 
@@ -33,7 +136,7 @@ class MiniappCitiesResponse(BaseModel):
 class MiniappOrderCreate(BaseModel):
     model_config = ConfigDict(populate_by_name=True)
 
-    city_id: int = Field(alias="cityId")
+    city_id: int | None = Field(default=None, alias="cityId")
     currency_sell: str = Field(alias="currencySell", min_length=3, max_length=20)
     amount_sell: int = Field(alias="amountSell", gt=0)
     currency_buy: str = Field(alias="currencyBuy", min_length=3, max_length=20)
@@ -70,7 +173,25 @@ class MiniappOrderCreatedResponse(BaseModel):
     orderId: int
 
 
+def build_miniapp_profile_summary(user) -> MiniappProfileSummary:
+    """Строит компактный профиль для backend-driven экранов miniapp."""
+    display_name = " ".join(
+        part for part in (user.first_name, user.last_name) if part
+    ).strip()
+    if not display_name:
+        display_name = user.username or "Гость AntEx"
+
+    return MiniappProfileSummary(
+        id=user.id,
+        displayName=display_name,
+        username=user.username,
+        isPremium=user.is_premium,
+        languageCode=user.language_code_app or user.language_code or "ru",
+    )
+
+
 def build_miniapp_profile(user) -> MiniappProfileResponse:
+    """Строит legacy-профиль пользователя miniapp."""
     from app.schemas.city import build_city_out
 
     return MiniappProfileResponse(
@@ -86,6 +207,7 @@ def build_miniapp_profile(user) -> MiniappProfileResponse:
 
 
 def build_miniapp_order_item(order) -> MiniappOrderItem:
+    """Строит карточку заявки miniapp из ORM-модели."""
     from app.schemas.city import build_city_out
 
     return MiniappOrderItem(

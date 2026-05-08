@@ -2,19 +2,26 @@
 
 from __future__ import annotations
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Query, status
 
 from app.api.deps import DbDep, MiniappUser
 from app.schemas.miniapp import (
     MiniappCitiesResponse,
+    MiniappExchangeScreenResponse,
+    MiniappHomeResponse,
     MiniappOrderCreate,
-    MiniappOrderCreatedResponse,
+    MiniappOrderItem,
     MiniappOrdersResponse,
-    MiniappProfileResponse,
+    MiniappProfileScreenResponse,
+    MiniappQuoteResponse,
     MiniappRatesResponse,
-    build_miniapp_profile,
+    build_miniapp_order_item,
 )
 from app.services.miniapp import (
+    calculate_miniapp_quote,
+    get_miniapp_exchange,
+    get_miniapp_home,
+    get_miniapp_profile_screen,
     list_miniapp_cities,
     list_miniapp_orders,
     list_miniapp_rates,
@@ -22,6 +29,27 @@ from app.services.miniapp import (
 from app.services.order_flow import create_order_for_user
 
 router = APIRouter(prefix="/api/miniapp", tags=["miniapp"])
+
+
+@router.get("/home", response_model=MiniappHomeResponse)
+async def get_home(db: DbDep, user: MiniappUser) -> MiniappHomeResponse:
+    return await get_miniapp_home(db, user)
+
+
+@router.get("/exchange", response_model=MiniappExchangeScreenResponse)
+async def get_exchange(db: DbDep, _: MiniappUser) -> MiniappExchangeScreenResponse:
+    return await get_miniapp_exchange(db)
+
+
+@router.get("/exchange/quote", response_model=MiniappQuoteResponse)
+async def get_exchange_quote(
+    db: DbDep,
+    _: MiniappUser,
+    currency_sell: str = Query(alias="currencySell", min_length=3, max_length=20),
+    currency_buy: str = Query(alias="currencyBuy", min_length=3, max_length=20),
+    amount_sell: int = Query(alias="amountSell", gt=0),
+) -> MiniappQuoteResponse:
+    return await calculate_miniapp_quote(db, currency_sell, currency_buy, amount_sell)
 
 
 @router.get("/cities", response_model=MiniappCitiesResponse)
@@ -39,16 +67,20 @@ async def get_orders(db: DbDep, user: MiniappUser) -> MiniappOrdersResponse:
     return await list_miniapp_orders(db, user.id)
 
 
-@router.post("/orders", response_model=MiniappOrderCreatedResponse)
+@router.post(
+    "/orders",
+    response_model=MiniappOrderItem,
+    status_code=status.HTTP_201_CREATED,
+)
 async def create_order(
     body: MiniappOrderCreate,
     db: DbDep,
     user: MiniappUser,
-) -> MiniappOrderCreatedResponse:
+) -> MiniappOrderItem:
     order = await create_order_for_user(db, user, body)
-    return MiniappOrderCreatedResponse(orderId=order.id)
+    return build_miniapp_order_item(order)
 
 
-@router.get("/profile", response_model=MiniappProfileResponse)
-async def get_profile(user: MiniappUser) -> MiniappProfileResponse:
-    return build_miniapp_profile(user)
+@router.get("/profile", response_model=MiniappProfileScreenResponse)
+async def get_profile(user: MiniappUser) -> MiniappProfileScreenResponse:
+    return await get_miniapp_profile_screen(user)
