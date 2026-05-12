@@ -36,6 +36,7 @@ btn-transfer = 🏦 Transfer
 btn-cash = 💵 Cash
 btn-rub-thb = 🇷🇺 RUB → THB
 btn-usdt-thb = 💎 USDT → THB
+menu-open-site = 🚀 Open site
 
 ## Orders
 orders-header = 📋 Your orders:

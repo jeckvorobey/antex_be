@@ -8,11 +8,11 @@ from aiogram.types import Message
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db_session
-from app.enums.user import has_admin_access, has_operator_access
+from app.enums.user import has_admin_access
 from app.repositories.config import ConfigRepository
 from app.telegram import messages
 from app.telegram.i18n import get_user_translator
-from app.telegram.keyboards import home, menu_operator
+from app.telegram.keyboards import home
 from app.telegram.services.user_service import check_user
 
 router = Router(name="start")
@@ -38,10 +38,9 @@ async def cmd_start(message: Message) -> None:
         await message.answer(messages.bot_disabled(translator=translate))
         return
 
-    kb = menu_operator(translate) if has_operator_access(user.role) else home(translate)
     await message.answer(
         messages.welcome(message.from_user.first_name, translator=translate),
-        reply_markup=kb,
+        reply_markup=home(translate),
     )
 
 

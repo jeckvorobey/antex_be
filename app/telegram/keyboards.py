@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
-from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
+from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup, WebAppInfo
 
+from app.core.config import settings
 from app.telegram.i18n import get_translator
 
 
@@ -15,39 +16,31 @@ def home(_, **kwargs) -> InlineKeyboardMarkup:
     """Главное меню пользователя: обмен + заявки."""
     del kwargs
     translate = _resolve_translator(_)
-    return InlineKeyboardMarkup(
-        inline_keyboard=[
+    inline_keyboard = [
+        [
+            InlineKeyboardButton(
+                text=translate("menu-exchange"),
+                callback_data="menu:exchange",
+            ),
+            InlineKeyboardButton(
+                text=translate("menu-orders"),
+                callback_data="menu:orders",
+            ),
+        ]
+    ]
+
+    if settings.frontend_webapp_url:
+        inline_keyboard.append(
             [
                 InlineKeyboardButton(
-                    text=translate("menu-exchange"),
-                    callback_data="menu:exchange",
-                ),
-                InlineKeyboardButton(
-                    text=translate("menu-orders"),
-                    callback_data="menu:orders",
-                ),
+                    text=translate("menu-open-site"),
+                    web_app=WebAppInfo(url=settings.frontend_webapp_url),
+                )
             ]
-        ]
-    )
+        )
 
-
-def menu_operator(_, **kwargs) -> InlineKeyboardMarkup:
-    """Меню оператора."""
-    del kwargs
-    translate = _resolve_translator(_)
     return InlineKeyboardMarkup(
-        inline_keyboard=[
-            [
-                InlineKeyboardButton(
-                    text=translate("menu-orders"),
-                    callback_data="menu:orders",
-                ),
-                InlineKeyboardButton(
-                    text=translate("menu-exchange"),
-                    callback_data="menu:exchange",
-                ),
-            ]
-        ]
+        inline_keyboard=inline_keyboard
     )
 
 
