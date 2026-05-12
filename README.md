@@ -54,6 +54,13 @@ cd back
 uv run alembic upgrade head
 ```
 
+Проверить SQL без подключения к базе:
+
+```bash
+cd back
+uv run alembic upgrade head --sql
+```
+
 ### 6. Заполнить базу начальными данными
 
 ```bash
@@ -85,6 +92,33 @@ uv run python run.py --host 0.0.0.0 --port 8000
 - API: `http://127.0.0.1:8000`
 - Swagger: `http://127.0.0.1:8000/docs`
 - Healthcheck: `http://127.0.0.1:8000/health`
+
+## Диагностика и сброс локальной dev-БД
+
+Если локальная база не совпадает с текущими моделями, пересоздайте dev-БД и
+примените миграции с нуля:
+
+```bash
+cd back
+dropdb antex
+createdb antex
+uv run alembic upgrade head
+uv run python app/databases/seed.py
+```
+
+После reset в схеме должны быть:
+
+- колонка `Configs.allowance`;
+- таблица `Broadcasts`.
+
+Минимальная проверка миграций:
+
+```bash
+cd back
+uv run alembic upgrade head --sql
+uv run alembic upgrade head
+uv run python app/databases/seed.py
+```
 
 ## Примечания
 

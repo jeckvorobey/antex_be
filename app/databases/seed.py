@@ -3,6 +3,12 @@
 from __future__ import annotations
 
 import asyncio
+import sys
+from pathlib import Path
+
+if __package__ in {None, ""}:
+    # Позволяет запускать сидирование документированной командой из README.
+    sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 from app.core.database import async_session
 from app.databases.seeds.seed_admin import seed_admin

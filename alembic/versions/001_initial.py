@@ -10,13 +10,20 @@ from __future__ import annotations
 
 import sqlalchemy as sa
 from alembic import op
+from sqlalchemy.dialects import postgresql
 
 revision = "001"
 down_revision = None
 branch_labels = None
 depends_on = None
 
-country_enum = sa.Enum("thailand", "vietnam", name="country_enum")
+country_enum = postgresql.ENUM("thailand", "vietnam", name="country_enum")
+country_enum_existing = postgresql.ENUM(
+    "thailand",
+    "vietnam",
+    name="country_enum",
+    create_type=False,
+)
 
 
 def upgrade() -> None:
@@ -37,7 +44,7 @@ def upgrade() -> None:
         "Cities",
         sa.Column("id", sa.Integer(), nullable=False),
         sa.Column("name", sa.String(length=255), nullable=False),
-        sa.Column("country", country_enum, nullable=False),
+        sa.Column("country", country_enum_existing, nullable=False),
         sa.Column("createdAt", sa.DateTime(timezone=True), server_default=sa.text("now()"), nullable=False),
         sa.Column("updatedAt", sa.DateTime(timezone=True), server_default=sa.text("now()"), nullable=False),
         sa.PrimaryKeyConstraint("id"),
