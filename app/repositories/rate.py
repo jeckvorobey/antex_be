@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from sqlalchemy import delete, select
 
+from app.enums.country import Country
 from app.models.rate import Rate
 from app.repositories.base import BaseRepository
 
@@ -23,13 +24,20 @@ class RateRepository(BaseRepository[Rate]):
         currency: str,
         price: float,
         *,
+        country: Country,
         margin: float | None = None,
     ) -> tuple[Rate, bool]:
         result = await self.session.execute(select(Rate).where(Rate.currency == currency))
         rate = result.scalar_one_or_none()
         if rate:
+            if rate.country != country:
+                rate.country = country
             return rate, False
-        payload: dict[str, float | str] = {"currency": currency, "price": price}
+        payload: dict[str, float | str | Country] = {
+            "currency": currency,
+            "price": price,
+            "country": country,
+        }
         if margin is not None:
             payload["margin"] = margin
         rate = Rate(**payload)
@@ -37,15 +45,27 @@ class RateRepository(BaseRepository[Rate]):
         await self.session.flush()
         return rate, True
 
-    async def upsert(self, currency: str, price: float, *, margin: float | None = None) -> Rate:
+    async def upsert(
+        self,
+        currency: str,
+        price: float,
+        *,
+        country: Country,
+        margin: float | None = None,
+    ) -> Rate:
         result = await self.session.execute(select(Rate).where(Rate.currency == currency))
         rate = result.scalar_one_or_none()
         if rate:
             rate.price = price
+            rate.country = country
             if margin is not None:
                 rate.margin = margin
         else:
-            payload: dict[str, float | str] = {"currency": currency, "price": price}
+            payload: dict[str, float | str | Country] = {
+                "currency": currency,
+                "price": price,
+                "country": country,
+            }
             if margin is not None:
                 payload["margin"] = margin
             rate = Rate(**payload)

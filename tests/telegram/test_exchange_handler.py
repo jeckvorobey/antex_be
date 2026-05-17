@@ -96,8 +96,11 @@ async def test_confirm_exchange_creates_order_without_bank_dependency(monkeypatc
         {
             "currency_sell": "RUB",
             "amount_sell": 15000,
-            "amount_buy": 5100,
-            "rate": 0.34,
+            "currency_buy": "THB",
+            "quote": {
+                "amountBuy": 5100,
+                "rate": 0.34,
+            },
             "method": "cash",
         }
     )

@@ -13,7 +13,7 @@ from app.repositories.city import CityRepository
 from app.repositories.order import OrderRepository
 from app.repositories.user import UserRepository
 from app.schemas.miniapp import MiniappOrderCreate
-from app.services.miniapp import calculate_miniapp_quote
+from app.services.exchange import ExchangeQuoteInput, ExchangeService
 from app.services.notifications import notify_order_created
 
 logger = logging.getLogger(__name__)
@@ -50,19 +50,21 @@ async def create_order_for_user(
             status_code=409,
         )
 
-    quote = await calculate_miniapp_quote(
+    quote = await ExchangeService().get_quote(
         db,
-        payload.currency_sell,
-        payload.currency_buy,
-        payload.amount_sell,
+        ExchangeQuoteInput(
+            currency_sell=payload.currency_sell,
+            currency_buy=payload.currency_buy,
+            amount_sell=payload.amount_sell,
+        ),
     )
     order = await order_repo.create(
         UserId=user.id,
         CityId=city_id,
-        currencySell=quote.currencySell,
-        amountSell=quote.amountSell,
-        currencyBuy=quote.currencyBuy,
-        amountBuy=quote.amountBuy,
+        currencySell=quote.currency_sell,
+        amountSell=quote.amount_sell,
+        currencyBuy=quote.currency_buy,
+        amountBuy=quote.amount_buy,
         rate=quote.rate,
         status=int(OrderStatus.NEW),
         address=payload.address,

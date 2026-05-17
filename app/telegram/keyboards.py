@@ -44,21 +44,18 @@ def home(_, **kwargs) -> InlineKeyboardMarkup:
     )
 
 
-def choose_currency(_, **kwargs) -> InlineKeyboardMarkup:
-    """FSM шаг 1/4: выбор валюты + cancel."""
+def choose_currency(_, currencies: list[str], **kwargs) -> InlineKeyboardMarkup:
+    """FSM шаг выбора валюты продажи."""
     del kwargs
     translate = _resolve_translator(_)
     return InlineKeyboardMarkup(
         inline_keyboard=[
             [
                 InlineKeyboardButton(
-                    text=translate("btn-rub-thb"),
-                    callback_data="exchange:currency:RUB",
-                ),
-                InlineKeyboardButton(
-                    text=translate("btn-usdt-thb"),
-                    callback_data="exchange:currency:USDT",
-                ),
+                    text=currency,
+                    callback_data=f"exchange:currency:{currency}",
+                )
+                for currency in currencies
             ],
             [
                 InlineKeyboardButton(
@@ -70,25 +67,52 @@ def choose_currency(_, **kwargs) -> InlineKeyboardMarkup:
     )
 
 
-def obtaining(_, **kwargs) -> InlineKeyboardMarkup:
-    """FSM шаг 3/4: способ получения + back/cancel."""
+def choose_buy_currency(_, currencies: list[str], **kwargs) -> InlineKeyboardMarkup:
+    """FSM шаг выбора валюты получения."""
     del kwargs
     translate = _resolve_translator(_)
     return InlineKeyboardMarkup(
         inline_keyboard=[
             [
                 InlineKeyboardButton(
-                    text=translate("btn-qr"),
-                    callback_data="method:qr",
+                    text=currency,
+                    callback_data=f"exchange:buy:{currency}",
+                )
+                for currency in currencies
+            ],
+            [
+                InlineKeyboardButton(
+                    text=translate("btn-back"),
+                    callback_data="fsm:back",
                 ),
                 InlineKeyboardButton(
-                    text=translate("btn-transfer"),
-                    callback_data="method:rs",
+                    text=translate("btn-cancel"),
+                    callback_data="fsm:cancel",
                 ),
+            ],
+        ]
+    )
+
+
+def obtaining(_, methods: list[str], **kwargs) -> InlineKeyboardMarkup:
+    """FSM шаг выбора способа получения."""
+    del kwargs
+    translate = _resolve_translator(_)
+    method_labels = {
+        "qr": translate("btn-qr"),
+        "rs": translate("btn-transfer"),
+        "cash": translate("btn-cash"),
+        "wallet": translate("btn-wallet"),
+        "card": translate("btn-card"),
+    }
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
                 InlineKeyboardButton(
-                    text=translate("btn-cash"),
-                    callback_data="method:cash",
-                ),
+                    text=method_labels.get(method, method.upper()),
+                    callback_data=f"method:{method}",
+                )
+                for method in methods
             ],
             [
                 InlineKeyboardButton(

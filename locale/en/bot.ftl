@@ -2,6 +2,7 @@
 welcome = 👋 Hello, { $name }!
 menu-exchange = 💱 New exchange
 menu-orders = 📋 My orders
+menu-rate-header = 📊 Available pairs:
 menu-rate-info =
     📊 Current rate:
     • 1 RUB = { $rub_rate } THB
@@ -15,6 +16,7 @@ bot-turned-off = 🔴 Bot disabled.
 ## FSM — exchange flow
 exchange-step = Step { $current } of { $total }
 exchange-choose-currency = Choose the currency to exchange:
+exchange-choose-buy-currency = Choose what to receive for { $currency }:
 exchange-enter-amount = Enter the amount in { $currency }:
 exchange-amount-invalid = ❌ Invalid amount. Enter a number greater than 0.
 exchange-choose-method = How would you like to receive { $currency }?
@@ -34,6 +36,8 @@ btn-home = 🏠 Main menu
 btn-qr = 📱 QR code
 btn-transfer = 🏦 Transfer
 btn-cash = 💵 Cash
+btn-wallet = 👛 Wallet
+btn-card = 💳 Card
 btn-rub-thb = 🇷🇺 RUB → THB
 btn-usdt-thb = 💎 USDT → THB
 menu-open-site = 🚀 Open site

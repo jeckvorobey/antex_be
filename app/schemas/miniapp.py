@@ -42,6 +42,8 @@ class MiniappQuickAction(BaseModel):
 class MiniappRateCard(BaseModel):
     id: str
     label: str
+    country: str
+    countryLabel: str
     fromCurrency: str
     toCurrency: str
     rate: float
@@ -50,6 +52,15 @@ class MiniappRateCard(BaseModel):
     amountSellExample: int
     amountBuyExample: float
     updatedAt: datetime
+    availableMethods: list[str]
+
+
+class MiniappCountryFilterItem(BaseModel):
+    id: str
+    label: str
+    currency: str
+    code: str
+    flag: str
 
 
 class MiniappRatesSection(BaseModel):
@@ -69,6 +80,8 @@ class MiniappServiceItem(BaseModel):
 class MiniappLocationItem(BaseModel):
     id: str
     city: str
+    country: str
+    countryLabel: str
     hours: str
     accent: str
 
@@ -81,6 +94,7 @@ class MiniappBanner(BaseModel):
 class MiniappHomeResponse(BaseModel):
     profile: MiniappProfileSummary
     quickActions: list[MiniappQuickAction]
+    countries: list[MiniappCountryFilterItem]
     rates: MiniappRatesSection
     banner: MiniappBanner
     services: list[MiniappServiceItem]
@@ -136,14 +150,12 @@ class MiniappCitiesResponse(BaseModel):
 
 
 class MiniappOrderCreate(BaseModel):
-    model_config = ConfigDict(populate_by_name=True)
+    model_config = ConfigDict(populate_by_name=True, extra="forbid")
 
     city_id: int | None = Field(default=None, alias="cityId")
     currency_sell: str = Field(alias="currencySell", min_length=3, max_length=20)
     amount_sell: int = Field(alias="amountSell", gt=0)
     currency_buy: str = Field(alias="currencyBuy", min_length=3, max_length=20)
-    amount_buy: float | None = Field(default=None, alias="amountBuy")
-    rate: float | None = None
     address: str | None = None
     contact_telegram: str | None = Field(default=None, alias="contactTelegram", max_length=255)
     method_get: str | None = Field(default=None, alias="methodGet", max_length=20)

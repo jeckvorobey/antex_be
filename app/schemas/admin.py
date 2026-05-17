@@ -27,9 +27,18 @@ class AdminTokenResponse(BaseModel):
     token_type: str = "bearer"
 
 
+class AdminSummaryRateOut(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
+    pair_id: str = Field(alias="pairId")
+    label: str
+    final_rate: float = Field(alias="finalRate")
+    final_rate_display: str = Field(alias="finalRateDisplay")
+
+
 class AdminSummaryOut(BaseModel):
     model_config = ConfigDict(populate_by_name=True)
 
     orders_today: int = Field(alias="ordersToday")
     users_total: int = Field(alias="usersTotal")
-    rub_thb_rate: float | None = Field(alias="rubThbRate")
+    featured_rates: list[AdminSummaryRateOut] = Field(alias="featuredRates")

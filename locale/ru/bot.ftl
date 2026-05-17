@@ -2,6 +2,7 @@
 welcome = 👋 Привет, { $name }!
 menu-exchange = 💱 Новый обмен
 menu-orders = 📋 Мои заявки
+menu-rate-header = 📊 Актуальные пары:
 menu-rate-info =
     📊 Текущий курс:
     • 1 RUB = { $rub_rate } THB
@@ -15,6 +16,7 @@ bot-turned-off = 🔴 Бот выключен.
 ## FSM — exchange flow
 exchange-step = Шаг { $current } из { $total }
 exchange-choose-currency = Выберите валюту для обмена:
+exchange-choose-buy-currency = Выберите, что получить за { $currency }:
 exchange-enter-amount = Введите сумму в { $currency }:
 exchange-amount-invalid = ❌ Неверная сумма. Введите число больше 0.
 exchange-choose-method = Как вы хотите получить { $currency }?
@@ -34,6 +36,8 @@ btn-home = 🏠 Главное меню
 btn-qr = 📱 QR-код
 btn-transfer = 🏦 Перевод
 btn-cash = 💵 Наличные
+btn-wallet = 👛 Кошелек
+btn-card = 💳 Карта
 btn-rub-thb = 🇷🇺 RUB → THB
 btn-usdt-thb = 💎 USDT → THB
 menu-open-site = 🚀 Открыть сайт

@@ -5,12 +5,12 @@ from __future__ import annotations
 
 from app.repositories.city import CityRepository
 from app.repositories.order import OrderRepository
-from app.repositories.rate import RateRepository
 from app.schemas.city import build_city_out
 from app.schemas.miniapp import (
     MiniappBanner,
     MiniappCalculatorState,
     MiniappCitiesResponse,
+    MiniappCountryFilterItem,
     MiniappExchangeScreenResponse,
     MiniappHomeResponse,
     MiniappLocationItem,
@@ -27,20 +27,19 @@ from app.schemas.miniapp import (
     build_miniapp_profile_summary,
 )
 from app.schemas.rate import build_rate_out
-from app.services.rate import format_rate_value, get_client_rate, round_rate_value
+from app.services.exchange import (
+    COUNTRY_CURRENCY,
+    COUNTRY_PRIORITY,
+    HOME_RATE_PREVIEW_LIMIT,
+    ExchangePairSnapshot,
+    ExchangeQuote,
+    ExchangeQuoteInput,
+    ExchangeService,
+)
 
 DEFAULT_AMOUNT_SELL = 5000
 DEFAULT_PAIR = ("RUB", "THB")
-HOME_RATE_PREVIEW_LIMIT = 3
 HOME_RATE_PRIORITY = ("usdt-thb", "usdt-vnd", "usdt-gel")
-HOME_CHIP_PRIORITY = ("USDT", "THB", "RUB", "GEL", "VND")
-METHODS_BY_BUY_CURRENCY = {
-    "THB": ["cash"],
-    "GEL": ["cash"],
-    "VND": ["cash"],
-    "USDT": ["wallet"],
-    "RUB": ["card"],
-}
 
 
 async def list_miniapp_cities(db) -> MiniappCitiesResponse:
@@ -51,7 +50,7 @@ async def list_miniapp_cities(db) -> MiniappCitiesResponse:
 
 async def list_miniapp_rates(db) -> MiniappRatesResponse:
     """Возвращает пользовательские итоговые курсы для обратной совместимости miniapp."""
-    rates = await RateRepository(db).get_all()
+    rates = await ExchangeService().load_rates(db)
     return MiniappRatesResponse(items=[build_rate_out(rate) for rate in rates])
 
 
@@ -63,9 +62,11 @@ async def list_miniapp_orders(db, user_id: int) -> MiniappOrdersResponse:
 
 async def get_miniapp_home(db, user) -> MiniappHomeResponse:
     """Собирает backend-driven данные главного экрана miniapp."""
-    rates = await RateRepository(db).get_all()
+    exchange_service = ExchangeService()
+    rates = await exchange_service.load_rates(db)
     cities = await CityRepository(db).get_all()
-    featured = _build_home_rate_cards(rates)
+    snapshots = exchange_service.build_pair_snapshots(rates)
+    featured = _build_home_rate_cards(snapshots)
 
     return MiniappHomeResponse(
         profile=build_miniapp_profile_summary(user),
@@ -102,9 +103,19 @@ async def get_miniapp_home(db, user) -> MiniappHomeResponse:
                 tone="neutral",
             ),
         ],
+        countries=[
+            MiniappCountryFilterItem(
+                id=country.value,
+                label=country.ru_name,
+                currency=COUNTRY_CURRENCY[country],
+                code=country.code,
+                flag=country.flag,
+            )
+            for country in COUNTRY_PRIORITY
+        ],
         rates=MiniappRatesSection(
             featured=featured,
-            chips=_build_home_currency_chips(featured),
+            chips=exchange_service.build_home_chips(snapshots),
             previewLimit=HOME_RATE_PREVIEW_LIMIT,
             updatedAt=max((rate.updatedAt for rate in rates), default=None),
         ),
@@ -130,6 +141,8 @@ async def get_miniapp_home(db, user) -> MiniappHomeResponse:
             MiniappLocationItem(
                 id=str(city.id),
                 city=city.name,
+                country=city.country.value,
+                countryLabel=city.country.ru_name,
                 hours="Ежедневно",
                 accent="ocean" if index % 2 == 0 else "gold",
             )
@@ -140,8 +153,9 @@ async def get_miniapp_home(db, user) -> MiniappHomeResponse:
 
 async def get_miniapp_exchange(db) -> MiniappExchangeScreenResponse:
     """Собирает начальное состояние экрана обмена miniapp."""
-    rates = await RateRepository(db).get_all()
-    featured = _build_rate_cards(rates)
+    exchange_service = ExchangeService()
+    snapshots = await exchange_service.list_pair_snapshots(db)
+    featured = _build_rate_cards(snapshots)
     quote = await calculate_miniapp_quote(
         db,
         DEFAULT_PAIR[0],
@@ -167,46 +181,16 @@ async def calculate_miniapp_quote(
     currency_buy: str,
     amount_sell: int,
 ) -> MiniappQuoteResponse:
-    """Рассчитывает quote по актуальному серверному курсу."""
-    from app.exceptions import AntExException
-
-    sell = currency_sell.upper()
-    buy = currency_buy.upper()
-    if sell == buy or amount_sell <= 0:
-        raise AntExException(
-            "Unsupported currency pair",
-            code="UNSUPPORTED_PAIR",
-            status_code=422,
-        )
-
-    rates = await RateRepository(db).get_all()
-    if not rates:
-        raise AntExException(
-            "Rate is unavailable",
-            code="RATE_UNAVAILABLE",
-            status_code=503,
-        )
-
-    rate, updated_at = _resolve_pair_rate(rates, sell, buy)
-    if rate is None or updated_at is None:
-        raise AntExException(
-            "Unsupported currency pair",
-            code="UNSUPPORTED_PAIR",
-            status_code=422,
-        )
-
-    amount_buy = amount_sell * rate
-    return MiniappQuoteResponse(
-        currencySell=sell,
-        currencyBuy=buy,
-        amountSell=amount_sell,
-        amountBuy=round(amount_buy, 2),
-        rate=rate,
-        rateDisplay=format_rate_value(rate),
-        rateText=f"1 {sell} = {format_rate_value(rate)} {buy}",
-        updatedAt=updated_at,
-        availableMethods=METHODS_BY_BUY_CURRENCY.get(buy, ["cash"]),
+    """Рассчитывает quote через единый exchange-domain."""
+    quote = await ExchangeService().get_quote(
+        db,
+        ExchangeQuoteInput(
+            currency_sell=currency_sell,
+            currency_buy=currency_buy,
+            amount_sell=amount_sell,
+        ),
     )
+    return _build_quote_response(quote)
 
 
 async def get_miniapp_profile_screen(user) -> MiniappProfileScreenResponse:
@@ -232,35 +216,31 @@ async def get_miniapp_profile_screen(user) -> MiniappProfileScreenResponse:
     )
 
 
-def _build_rate_cards(rates) -> list[MiniappRateCard]:
-    """Преобразует сохранённые курсы в карточки поддерживаемых пар."""
-    cards: list[MiniappRateCard] = []
-    for rate in rates:
-        parsed = _parse_pair(rate.currency)
-        if not parsed:
-            continue
-        sell, buy = parsed
-        amount_sell = 5000 if sell == "RUB" else 100
-        cards.append(
-            MiniappRateCard(
-                id=f"{sell.lower()}-{buy.lower()}",
-                label=f"{sell}/{buy}",
-                fromCurrency=sell,
-                toCurrency=buy,
-                rate=get_client_rate(rate),
-                rateDisplay=format_rate_value(get_client_rate(rate)),
-                rateText=f"1 {sell} = {format_rate_value(get_client_rate(rate))} {buy}",
-                amountSellExample=amount_sell,
-                amountBuyExample=round(amount_sell * get_client_rate(rate), 2),
-                updatedAt=rate.updatedAt,
-            )
+def _build_rate_cards(snapshots: list[ExchangePairSnapshot]) -> list[MiniappRateCard]:
+    """Преобразует доменные пары в карточки miniapp."""
+    return [
+        MiniappRateCard(
+            id=snapshot.pair_id,
+            label=snapshot.label,
+            country=snapshot.country.value,
+            countryLabel=snapshot.country.ru_name,
+            fromCurrency=snapshot.currency_sell,
+            toCurrency=snapshot.currency_buy,
+            rate=snapshot.client_rate,
+            rateDisplay=snapshot.rate_display,
+            rateText=snapshot.rate_text,
+            amountSellExample=snapshot.amount_sell_example,
+            amountBuyExample=snapshot.amount_buy_example,
+            updatedAt=snapshot.updated_at,
+            availableMethods=snapshot.available_methods,
         )
-    return cards
+        for snapshot in snapshots
+    ]
 
 
-def _build_home_rate_cards(rates) -> list[MiniappRateCard]:
+def _build_home_rate_cards(snapshots: list[ExchangePairSnapshot]) -> list[MiniappRateCard]:
     """Строит карточки курсов для главной с фиксированным порядком превью."""
-    cards = _build_rate_cards(rates)
+    cards = _build_rate_cards(snapshots)
     priority = {
         pair_id: index
         for index, pair_id in enumerate(HOME_RATE_PRIORITY)
@@ -282,36 +262,15 @@ def _build_currency_chips(cards: list[MiniappRateCard]) -> list[str]:
             if currency not in currencies:
                 currencies.append(currency)
     return currencies
-
-
-def _build_home_currency_chips(cards: list[MiniappRateCard]) -> list[str]:
-    """Возвращает стабильный порядок валют для home-блока."""
-    available = set(_build_currency_chips(cards))
-    return [currency for currency in HOME_CHIP_PRIORITY if currency in available]
-
-
-def _parse_pair(currency: str) -> tuple[str, str] | None:
-    """Разбирает pair-key вида RUBTHB или USDTTHB."""
-    supported = ("USDT", "RUB", "THB", "GEL", "VND")
-    upper = currency.upper()
-    for sell in supported:
-        if not upper.startswith(sell):
-            continue
-        buy = upper.removeprefix(sell)
-        if buy in supported and buy != sell:
-            return sell, buy
-    return None
-
-
-def _resolve_pair_rate(rates, sell: str, buy: str) -> tuple[float | None, object | None]:
-    """Находит прямой курс или обратный курс по сохранённой паре."""
-    direct_key = f"{sell}{buy}"
-    reverse_key = f"{buy}{sell}"
-    for rate in rates:
-        currency = rate.currency.upper()
-        if currency == direct_key:
-            return get_client_rate(rate), rate.updatedAt
-        client_rate = get_client_rate(rate)
-        if currency == reverse_key and client_rate:
-            return round_rate_value(1 / client_rate), rate.updatedAt
-    return None, None
+def _build_quote_response(quote: ExchangeQuote) -> MiniappQuoteResponse:
+    return MiniappQuoteResponse(
+        currencySell=quote.currency_sell,
+        currencyBuy=quote.currency_buy,
+        amountSell=quote.amount_sell,
+        amountBuy=quote.amount_buy,
+        rate=quote.rate,
+        rateDisplay=quote.rate_display,
+        rateText=quote.rate_text,
+        updatedAt=quote.updated_at,
+        availableMethods=quote.available_methods,
+    )

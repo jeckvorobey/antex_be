@@ -12,11 +12,13 @@ if __package__ in {None, ""}:
 
 from app.core.database import async_session
 from app.databases.seeds.seed_admin import seed_admin
+from app.databases.seeds.seed_cities import seed_cities
 
 
 async def main() -> None:
     async with async_session() as session, session.begin():
         await seed_admin(session)
+        await seed_cities(session)
 
 
 if __name__ == "__main__":

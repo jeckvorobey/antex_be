@@ -77,5 +77,6 @@ def test_model_metadata_contains_required_migration_columns() -> None:
     load_alembic_env_module().load_models()
 
     assert "margin" in Base.metadata.tables["Rates"].columns
+    assert "country" in Base.metadata.tables["Rates"].columns
     assert "allowance" not in Base.metadata.tables["Configs"].columns
     assert set(Base.metadata.tables["Broadcasts"].columns.keys()) >= EXPECTED_BROADCAST_COLUMNS

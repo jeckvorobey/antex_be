@@ -63,12 +63,12 @@ async def seed_exchange_data(db_session: AsyncSession) -> tuple[City, User, User
         city,
         manager,
         customer,
-        Rate(currency="RUBTHB", price=0.41, margin=3.0),
-        Rate(currency="RUBGEL", price=0.03, margin=3.0),
-        Rate(currency="RUBVND", price=280.0, margin=3.0),
-        Rate(currency="USDTTHB", price=36.2, margin=3.0),
-        Rate(currency="USDTGEL", price=2.7, margin=3.0),
-        Rate(currency="USDTVND", price=25500.0, margin=3.0),
+        Rate(currency="RUBTHB", price=0.41, margin=3.0, country=Country.THAILAND),
+        Rate(currency="RUBGEL", price=0.03, margin=3.0, country=Country.GEORGIA),
+        Rate(currency="RUBVND", price=280.0, margin=3.0, country=Country.VIETNAM),
+        Rate(currency="USDTTHB", price=36.2, margin=3.0, country=Country.THAILAND),
+        Rate(currency="USDTGEL", price=2.7, margin=3.0, country=Country.GEORGIA),
+        Rate(currency="USDTVND", price=25500.0, margin=3.0, country=Country.VIETNAM),
     ])
     await db_session.flush()
 
@@ -105,7 +105,17 @@ async def test_miniapp_home_and_exchange_are_backend_driven(
         "usdt-gel",
     ]
     assert home["rates"]["chips"] == ["USDT", "THB", "RUB", "GEL", "VND"]
+    assert [country["label"] for country in home["countries"]] == [
+        "Тайланд",
+        "Вьетнам",
+        "Грузия",
+    ]
+    assert home["countries"][0]["currency"] == "THB"
+    assert home["locations"][0]["country"] == "thailand"
+    assert home["locations"][0]["countryLabel"] == "Тайланд"
     assert home["locations"][0]["id"] == str(city.id)
+    assert home["rates"]["featured"][0]["country"] == "thailand"
+    assert home["rates"]["featured"][0]["availableMethods"] == ["qrcode", "cash"]
 
     assert exchange_response.status_code == 200
     exchange = exchange_response.json()
@@ -188,14 +198,14 @@ async def test_miniapp_quote_supports_gel_and_vnd_pairs(
     assert rub_gel_response.json()["rateDisplay"] == "0.03"
     assert rub_gel_response.json()["rateText"] == "1 RUB = 0.03 GEL"
     assert rub_gel_response.json()["amountBuy"] == pytest.approx(10000 * 0.03)
-    assert rub_gel_response.json()["availableMethods"] == ["cash"]
+    assert rub_gel_response.json()["availableMethods"] == ["qrcode", "cash"]
 
     assert usdt_vnd_response.status_code == 200
     assert usdt_vnd_response.json()["rate"] == 24735.0
     assert usdt_vnd_response.json()["rateDisplay"] == "24735.00"
     assert usdt_vnd_response.json()["rateText"] == "1 USDT = 24735.00 VND"
     assert usdt_vnd_response.json()["amountBuy"] == pytest.approx(2 * 24735.0)
-    assert usdt_vnd_response.json()["availableMethods"] == ["cash"]
+    assert usdt_vnd_response.json()["availableMethods"] == ["qrcode", "cash"]
 
     assert reverse_response.status_code == 200
     assert reverse_response.json()["rate"] == 33.33
@@ -219,8 +229,6 @@ async def test_miniapp_order_is_created_with_server_side_quote(
             "currencySell": "rub",
             "amountSell": 10000,
             "currencyBuy": "thb",
-            "amountBuy": 999999,
-            "rate": 99,
             "contactTelegram": "@customer",
             "methodGet": "cash",
         },
@@ -252,8 +260,6 @@ async def test_miniapp_order_supports_new_pair_with_server_side_quote(
             "currencySell": "rub",
             "amountSell": 10000,
             "currencyBuy": "gel",
-            "amountBuy": 999999,
-            "rate": 99,
             "contactTelegram": "@customer",
             "methodGet": "cash",
         },
@@ -331,7 +337,8 @@ async def test_admin_summary_returns_mvp_dashboard_metrics(
     summary = response.json()
     assert summary["ordersToday"] == 1
     assert summary["usersTotal"] == 2
-    assert summary["rubThbRate"] == 0.41
+    assert summary["featuredRates"][0]["pairId"] == "rub-thb"
+    assert summary["featuredRates"][0]["finalRateDisplay"] == "0.40"
 
 
 def test_admin_summary_today_start_uses_configured_timezone() -> None:

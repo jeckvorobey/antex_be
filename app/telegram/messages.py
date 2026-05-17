@@ -5,7 +5,7 @@ from __future__ import annotations
 from collections.abc import Callable
 from datetime import datetime
 
-from app.services.rate import format_rate_value
+from app.services.exchange import ExchangePairSnapshot, format_rate_value
 from app.telegram.i18n import get_translator
 
 Translate = Callable[[str], str]
@@ -78,6 +78,18 @@ def choose_currency_prompt(
     return _resolve_translator(translator, locale)("exchange-choose-currency")
 
 
+def choose_buy_currency_prompt(
+    currency: str,
+    *,
+    translator: Translate | None = None,
+    locale: str | None = None,
+) -> str:
+    return _resolve_translator(translator, locale)(
+        "exchange-choose-buy-currency",
+        currency=currency,
+    )
+
+
 def enter_amount_prompt(
     currency: str,
     *,
@@ -129,6 +141,23 @@ def exchange_confirm_summary(
         method=method,
         current=current,
         total=total,
+    )
+
+
+def exchange_pair_rates(
+    pairs: list[ExchangePairSnapshot],
+    *,
+    translator: Translate | None = None,
+    locale: str | None = None,
+) -> str:
+    translate = _resolve_translator(translator, locale)
+    if not pairs:
+        return translate("exchange-rate-unavailable")
+    return "\n".join(
+        [
+            translate("menu-rate-header"),
+            *[f"• {pair.label}: {pair.rate_display}" for pair in pairs],
+        ]
     )
 
 

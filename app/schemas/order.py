@@ -12,12 +12,12 @@ from app.schemas.user import UserOut
 
 
 class OrderCreate(BaseModel):
+    model_config = {"extra": "forbid"}
+
     CityId: int
     currencySell: str = Field(min_length=3, max_length=20)
     amountSell: int = Field(gt=0)
     currencyBuy: str = Field(min_length=3, max_length=20)
-    amountBuy: float | None = None
-    rate: float | None = None
     address: str | None = None
     contactTelegram: str | None = None
     methodGet: str | None = None

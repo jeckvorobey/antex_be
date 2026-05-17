@@ -15,6 +15,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
 from app.repositories.rate import RateRepository
+from app.services.exchange import ExchangeService
 from app.services.rate_calculator import build_market_rates
 
 logger = logging.getLogger(__name__)
@@ -70,8 +71,13 @@ async def fetch_and_save_rates(db: AsyncSession) -> dict[str, float]:
     logger.info("Сохраняем рыночные курсы в БД: %s", rates)
 
     repo = RateRepository(db)
+    exchange_service = ExchangeService()
     for currency, price in rates.items():
-        await repo.upsert(currency, price)
+        await repo.upsert(
+            currency,
+            price,
+            country=exchange_service.infer_country_from_pair(currency),
+        )
 
     await db.commit()
     return rates

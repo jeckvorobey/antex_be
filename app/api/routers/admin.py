@@ -21,12 +21,18 @@ from app.repositories.config import ConfigRepository
 from app.repositories.order import OrderRepository
 from app.repositories.rate import RateRepository
 from app.repositories.user import UserRepository
-from app.schemas.admin import AdminLogin, AdminSummaryOut, AdminTokenResponse
+from app.schemas.admin import (
+    AdminLogin,
+    AdminSummaryOut,
+    AdminSummaryRateOut,
+    AdminTokenResponse,
+)
 from app.schemas.city import CityCreate, CityOut, CityUpdate, build_city_out
 from app.schemas.config import AppConfigOut, AppConfigUpdate
 from app.schemas.order import OrderOut, OrderStatusUpdate, build_order_out
 from app.schemas.rate import AdminRateOut, RateCreate, RateUpdate, build_admin_rate_out
 from app.schemas.user import UserOut, UserUpdate, build_user_out
+from app.services.exchange import ExchangeService
 
 router = APIRouter(prefix="/api/admin", tags=["admin"])
 
@@ -96,12 +102,20 @@ async def get_admin_summary(db: DbDep, _: AdminUser) -> AdminSummaryOut:
         )
     )
     users_total_result = await db.execute(select(func.count(User.id)))
-    rub_thb_rate = await RateRepository(db).find_by_currency("RUBTHB")
+    featured_rates = await ExchangeService().get_featured_pair_snapshots(db)
 
     return AdminSummaryOut(
         orders_today=orders_today_result.scalar_one(),
         users_total=users_total_result.scalar_one(),
-        rub_thb_rate=rub_thb_rate.price if rub_thb_rate else None,
+        featured_rates=[
+            AdminSummaryRateOut(
+                pairId=pair.pair_id,
+                label=pair.label,
+                finalRate=pair.client_rate,
+                finalRateDisplay=pair.rate_display,
+            )
+            for pair in featured_rates[:3]
+        ],
     )
 
 

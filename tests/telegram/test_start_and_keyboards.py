@@ -9,7 +9,7 @@ os.environ.setdefault("DATABASE_URL", "sqlite+aiosqlite:///:memory:")
 
 from app.telegram.handlers import start as start_handler
 from app.telegram.i18n import get_translator
-from app.telegram.keyboards import home
+from app.telegram.keyboards import choose_buy_currency, choose_currency, home, obtaining
 
 
 class _FakeDbSession:
@@ -100,3 +100,25 @@ async def test_start_always_uses_home_keyboard(monkeypatch) -> None:
     assert reply_markup.inline_keyboard[0][1].callback_data == "menu:orders"
     assert reply_markup.inline_keyboard[1][0].web_app is not None
     assert reply_markup.inline_keyboard[1][0].web_app.url == "https://example.com/app"
+
+
+async def test_exchange_keyboards_are_backend_driven() -> None:
+    translator = get_translator("ru")
+
+    sell_kb = choose_currency(translator, ["RUB", "USDT", "THB"])
+    buy_kb = choose_buy_currency(translator, ["THB", "GEL"])
+    methods_kb = obtaining(translator, ["cash", "card"])
+
+    assert [button.callback_data for button in sell_kb.inline_keyboard[0]] == [
+        "exchange:currency:RUB",
+        "exchange:currency:USDT",
+        "exchange:currency:THB",
+    ]
+    assert [button.callback_data for button in buy_kb.inline_keyboard[0]] == [
+        "exchange:buy:THB",
+        "exchange:buy:GEL",
+    ]
+    assert [button.callback_data for button in methods_kb.inline_keyboard[0]] == [
+        "method:cash",
+        "method:card",
+    ]

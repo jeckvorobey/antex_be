@@ -35,8 +35,6 @@ async def create_order(body: OrderCreate, db: DbDep, user: CurrentUser) -> Order
         currencySell=body.currencySell,
         amountSell=body.amountSell,
         currencyBuy=body.currencyBuy,
-        amountBuy=body.amountBuy,
-        rate=body.rate,
         address=body.address,
         contactTelegram=body.contactTelegram,
         methodGet=body.methodGet,

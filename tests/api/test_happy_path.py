@@ -117,7 +117,7 @@ async def test_rates_and_order_happy_path(
         first_name="Happy",
         role=int(UserRole.USER),
     )
-    rate = Rate(currency="RUBTHB", price=0.41, margin=3.0)
+    rate = Rate(currency="RUBTHB", price=0.41, margin=3.0, country=Country.THAILAND)
 
     db_session.add_all([city, manager, customer, rate])
     await db_session.flush()
@@ -140,8 +140,6 @@ async def test_rates_and_order_happy_path(
             "currencySell": "rub",
             "amountSell": 10000,
             "currencyBuy": "thb",
-            "amountBuy": 4100,
-            "rate": 0.41,
             "address": "Sukhumvit",
             "contactTelegram": "@customer",
             "methodGet": "cash",
