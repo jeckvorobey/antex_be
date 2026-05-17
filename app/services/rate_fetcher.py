@@ -14,9 +14,8 @@ from pycoingecko import CoinGeckoAPI
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
-from app.repositories.allowance import AllowanceRepository
 from app.repositories.rate import RateRepository
-from app.services.rate_calculator import build_rates
+from app.services.rate_calculator import build_market_rates
 
 logger = logging.getLogger(__name__)
 TARGET_CURRENCIES = ("THB", "GEL", "VND")
@@ -44,17 +43,14 @@ async def fetch_raw_rates() -> dict[str, float]:
 
 
 async def fetch_and_save_rates(db: AsyncSession) -> dict[str, float]:
-    """Оркестратор: получает курсы → считает с надбавкой → сохраняет в БД.
+    """Оркестратор: получает курсы → считает рыночные пары → сохраняет в БД.
 
     Args:
         db: активная AsyncSession.
 
     Returns:
-        Словарь сохранённых курсов для USDT/RUB к THB/GEL/VND.
+        Словарь сохранённых рыночных курсов для USDT/RUB к THB/GEL/VND.
     """
-    allowance_pct = await AllowanceRepository(db).get_value()
-    logger.debug("Надбавка: %.2f%%", allowance_pct)
-
     raw = await fetch_raw_rates()
     logger.debug(
         "Сырые данные CoinGecko: usdt_thb=%.4f usdt_rub=%.4f usdt_gel=%.4f usdt_vnd=%.4f",
@@ -64,15 +60,14 @@ async def fetch_and_save_rates(db: AsyncSession) -> dict[str, float]:
         raw["usdt_vnd"],
     )
 
-    rates = build_rates(
+    rates = build_market_rates(
         {
             currency: raw[f"usdt_{currency.lower()}"]
             for currency in TARGET_CURRENCIES
         },
         raw["usdt_rub"],
-        allowance_pct,
     )
-    logger.info("Сохраняем курсы в БД: %s", rates)
+    logger.info("Сохраняем рыночные курсы в БД: %s", rates)
 
     repo = RateRepository(db)
     for currency, price in rates.items():

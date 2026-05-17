@@ -26,10 +26,12 @@ Machine-readable коды ошибок miniapp:
 
 ## Admin
 
-- `PATCH /api/admin/config` остаётся единым endpoint для изменения `enabled`
-  и `allowance`.
+- `PATCH /api/admin/config` используется только для изменения `enabled`.
 - `GET /api/admin/summary` возвращает метрики dashboard:
   `ordersToday`, `usersTotal`, `rubThbRate`.
+- `GET /api/admin/rates` возвращает административное представление курсов:
+  базовый `price` и `margin` по каждой паре.
+- `PATCH /api/admin/rates/{rate_id}` позволяет менять `margin` конкретной пары.
 - `GET /api/admin/orders` возвращает список заявок с пользователем и городом.
 - `PATCH /api/admin/orders/{order_id}/status` меняет статус заявки и возвращает
   обновлённую заявку.

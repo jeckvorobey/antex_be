@@ -1,5 +1,5 @@
 # ruff: noqa: RUF002
-"""Расчёт курсов валют с применением надбавки.
+"""Расчёт курсов валют и пользовательских значений.
 
 Все функции — чистые (pure functions), без I/O и зависимостей.
 """
@@ -16,40 +16,33 @@ def calculate_rub_cross_rate(usdt_target: float, usdt_rub: float) -> float:
     return usdt_target / usdt_rub
 
 
-def calculate_rate_with_allowance(base_rate: float, allowance_pct: float) -> float:
-    """Применяет надбавку обменника к рыночному курсу.
+def apply_margin_to_rate(base_rate: float, margin_pct: float) -> float:
+    """Применяет наценку обменника к рыночному курсу.
 
     Args:
         base_rate: рыночный курс.
-        allowance_pct: надбавка в процентах (2.0 = 2%).
+        margin_pct: наценка в процентах (3.0 = 3%).
 
     Returns:
-        base_rate * (1 - allowance_pct/100).
-        При 2% клиент получает на 2% меньше целевой валюты.
+        base_rate * (1 - margin_pct / 100).
+        При 3% клиент получает на 3% меньше целевой валюты.
     """
-    return base_rate * (1 - allowance_pct / 100)
+    return base_rate * (1 - margin_pct / 100)
 
 
-def build_rates(
+def build_market_rates(
     usdt_targets: dict[str, float],
     usdt_rub: float,
-    allowance_pct: float,
 ) -> dict[str, float]:
-    """Строит итоговые курсы с надбавкой для сохранения в БД.
+    """Строит рыночные курсы для сохранения в БД.
 
     Returns:
-        Пары USDTXXX и RUBXXX для всех переданных целевых валют.
+        Пары USDTXXX и RUBXXX для всех переданных целевых валют без применения наценки.
     """
     rates: dict[str, float] = {}
     for target_currency, usdt_target_rate in usdt_targets.items():
         currency = target_currency.upper()
-        rates[f"USDT{currency}"] = calculate_rate_with_allowance(
-            usdt_target_rate,
-            allowance_pct,
-        )
-        rates[f"RUB{currency}"] = calculate_rate_with_allowance(
-            calculate_rub_cross_rate(usdt_target_rate, usdt_rub),
-            allowance_pct,
-        )
+        rates[f"USDT{currency}"] = usdt_target_rate
+        rates[f"RUB{currency}"] = calculate_rub_cross_rate(usdt_target_rate, usdt_rub)
 
     return rates

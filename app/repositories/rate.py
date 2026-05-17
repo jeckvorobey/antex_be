@@ -18,23 +18,37 @@ class RateRepository(BaseRepository[Rate]):
         )
         return result.scalar_one_or_none()
 
-    async def find_or_create(self, currency: str, price: float) -> tuple[Rate, bool]:
+    async def find_or_create(
+        self,
+        currency: str,
+        price: float,
+        *,
+        margin: float | None = None,
+    ) -> tuple[Rate, bool]:
         result = await self.session.execute(select(Rate).where(Rate.currency == currency))
         rate = result.scalar_one_or_none()
         if rate:
             return rate, False
-        rate = Rate(currency=currency, price=price)
+        payload: dict[str, float | str] = {"currency": currency, "price": price}
+        if margin is not None:
+            payload["margin"] = margin
+        rate = Rate(**payload)
         self.session.add(rate)
         await self.session.flush()
         return rate, True
 
-    async def upsert(self, currency: str, price: float) -> Rate:
+    async def upsert(self, currency: str, price: float, *, margin: float | None = None) -> Rate:
         result = await self.session.execute(select(Rate).where(Rate.currency == currency))
         rate = result.scalar_one_or_none()
         if rate:
             rate.price = price
+            if margin is not None:
+                rate.margin = margin
         else:
-            rate = Rate(currency=currency, price=price)
+            payload: dict[str, float | str] = {"currency": currency, "price": price}
+            if margin is not None:
+                payload["margin"] = margin
+            rate = Rate(**payload)
             self.session.add(rate)
         await self.session.flush()
         return rate

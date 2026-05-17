@@ -11,7 +11,6 @@ from aiogram.types import CallbackQuery, Message
 
 from app.core.database import get_db_session
 from app.enums.order import OrderStatus
-from app.repositories.allowance import AllowanceRepository
 from app.repositories.bank import BankRepository
 from app.repositories.order import OrderRepository
 from app.telegram import messages
@@ -39,18 +38,10 @@ async def _get_db():
 
 
 async def _get_rate_snapshot() -> tuple[float, float]:
-    allowance = 2.0  # fallback, если БД недоступна
-    try:
-        db = await _get_db()
-        async with db:
-            allowance = await AllowanceRepository(db).get_value()
-    except Exception:
-        logger.exception("Failed to load allowance for Telegram exchange flow")
-
     try:
         from app.services.rate import get_exchange_rates
 
-        rates = await get_exchange_rates(allowance)
+        rates = await get_exchange_rates()
         return rates["RUBTHB"], rates["USDTTHB"]
     except Exception:
         logger.exception("Failed to load exchange rates for Telegram exchange flow")

@@ -8,18 +8,20 @@ import logging
 from sqlalchemy import select
 
 from app.models.rate import Rate
+from app.services.rate_calculator import apply_margin_to_rate
 
 logger = logging.getLogger(__name__)
 
 _REQUIRED_CURRENCIES = ("RUBTHB", "USDTTHB")
 
 
-async def get_exchange_rates(allowance: float) -> dict[str, float]:
-    """Читает актуальные курсы из таблицы Rates.
+def get_client_rate(rate: Rate) -> float:
+    """Возвращает пользовательский курс с применённой margin строки."""
+    return apply_margin_to_rate(rate.price, rate.margin)
 
-    Курсы уже хранятся с применённой надбавкой (записывает rate_fetcher).
-    Параметр allowance принимается для совместимости с exchange.py,
-    но не используется — надбавка уже учтена при записи.
+
+async def get_exchange_rates() -> dict[str, float]:
+    """Читает актуальные курсы из таблицы Rates.
 
     Returns:
         {"RUBTHB": float, "USDTTHB": float}
@@ -31,7 +33,7 @@ async def get_exchange_rates(allowance: float) -> dict[str, float]:
         result = await db.execute(
             select(Rate).where(Rate.currency.in_(_REQUIRED_CURRENCIES))
         )
-        rates_in_db = {r.currency: r.price for r in result.scalars().all()}
+        rates_in_db = {r.currency: get_client_rate(r) for r in result.scalars().all()}
 
     if not rates_in_db:
         logger.warning("Курсы не найдены в БД, возвращаем нули")

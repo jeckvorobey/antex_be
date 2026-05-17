@@ -63,12 +63,12 @@ async def seed_exchange_data(db_session: AsyncSession) -> tuple[City, User, User
         city,
         manager,
         customer,
-        Rate(currency="RUBTHB", price=0.41),
-        Rate(currency="RUBGEL", price=0.03),
-        Rate(currency="RUBVND", price=280.0),
-        Rate(currency="USDTTHB", price=36.2),
-        Rate(currency="USDTGEL", price=2.7),
-        Rate(currency="USDTVND", price=25500.0),
+        Rate(currency="RUBTHB", price=0.41, margin=3.0),
+        Rate(currency="RUBGEL", price=0.03, margin=3.0),
+        Rate(currency="RUBVND", price=280.0, margin=3.0),
+        Rate(currency="USDTTHB", price=36.2, margin=3.0),
+        Rate(currency="USDTGEL", price=2.7, margin=3.0),
+        Rate(currency="USDTVND", price=25500.0, margin=3.0),
     ])
     await db_session.flush()
 
@@ -114,8 +114,8 @@ async def test_miniapp_home_and_exchange_are_backend_driven(
         "toCurrency": "THB",
         "amountSell": 5000,
     }
-    assert exchange["quote"]["rate"] == 0.41
-    assert exchange["quote"]["amountBuy"] == 2050
+    assert exchange["quote"]["rate"] == pytest.approx(0.41 * 0.97)
+    assert exchange["quote"]["amountBuy"] == pytest.approx(5000 * 0.41 * 0.97)
     assert exchange["pairs"][0]["id"] == "rub-thb"
     assert {"rub-gel", "rub-vnd", "usdt-gel", "usdt-vnd"} <= {
         pair["id"] for pair in exchange["pairs"]
@@ -142,11 +142,11 @@ async def test_miniapp_quote_supports_direct_and_reverse_pairs(
     )
 
     assert direct_response.status_code == 200
-    assert direct_response.json()["amountBuy"] == 4100
+    assert direct_response.json()["amountBuy"] == pytest.approx(10000 * 0.41 * 0.97)
 
     assert reverse_response.status_code == 200
-    assert reverse_response.json()["rate"] == pytest.approx(1 / 0.41)
-    assert reverse_response.json()["amountBuy"] == pytest.approx(1000)
+    assert reverse_response.json()["rate"] == pytest.approx(1 / (0.41 * 0.97))
+    assert reverse_response.json()["amountBuy"] == pytest.approx(410 / (0.41 * 0.97))
 
 
 @pytest.mark.asyncio
@@ -174,16 +174,16 @@ async def test_miniapp_quote_supports_gel_and_vnd_pairs(
     )
 
     assert rub_gel_response.status_code == 200
-    assert rub_gel_response.json()["amountBuy"] == pytest.approx(300)
+    assert rub_gel_response.json()["amountBuy"] == pytest.approx(10000 * 0.03 * 0.97)
     assert rub_gel_response.json()["availableMethods"] == ["cash"]
 
     assert usdt_vnd_response.status_code == 200
-    assert usdt_vnd_response.json()["amountBuy"] == pytest.approx(51000)
+    assert usdt_vnd_response.json()["amountBuy"] == pytest.approx(2 * 25500.0 * 0.97)
     assert usdt_vnd_response.json()["availableMethods"] == ["cash"]
 
     assert reverse_response.status_code == 200
-    assert reverse_response.json()["rate"] == pytest.approx(1 / 0.03)
-    assert reverse_response.json()["amountBuy"] == pytest.approx(1000)
+    assert reverse_response.json()["rate"] == pytest.approx(1 / (0.03 * 0.97))
+    assert reverse_response.json()["amountBuy"] == pytest.approx(30 / (0.03 * 0.97))
 
 
 @pytest.mark.asyncio
@@ -213,8 +213,8 @@ async def test_miniapp_order_is_created_with_server_side_quote(
     assert order["cityId"] == city.id
     assert order["currencySell"] == "RUB"
     assert order["currencyBuy"] == "THB"
-    assert order["rate"] == 0.41
-    assert order["amountBuy"] == 4100
+    assert order["rate"] == pytest.approx(0.41 * 0.97)
+    assert order["amountBuy"] == pytest.approx(10000 * 0.41 * 0.97)
     assert order["contactTelegram"] == "@customer"
     assert order["city"]["name"] == "Bangkok"
 
@@ -246,8 +246,8 @@ async def test_miniapp_order_supports_new_pair_with_server_side_quote(
     assert order["cityId"] == city.id
     assert order["currencySell"] == "RUB"
     assert order["currencyBuy"] == "GEL"
-    assert order["rate"] == 0.03
-    assert order["amountBuy"] == 300
+    assert order["rate"] == pytest.approx(0.03 * 0.97)
+    assert order["amountBuy"] == pytest.approx(10000 * 0.03 * 0.97)
 
 
 @pytest.mark.asyncio

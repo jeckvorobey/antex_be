@@ -117,7 +117,7 @@ async def test_rates_and_order_happy_path(
         first_name="Happy",
         role=int(UserRole.USER),
     )
-    rate = Rate(currency="RUBTHB", price=0.41)
+    rate = Rate(currency="RUBTHB", price=0.41, margin=3.0)
 
     db_session.add_all([city, manager, customer, rate])
     await db_session.flush()

@@ -73,8 +73,9 @@ def test_alembic_load_models_includes_all_tables() -> None:
 
 
 def test_model_metadata_contains_required_migration_columns() -> None:
-    """Проверяет обязательные колонки, добавленные миграциями 002 и 003."""
+    """Проверяет обязательные колонки новой margin-модели и broadcasts."""
     load_alembic_env_module().load_models()
 
-    assert "allowance" in Base.metadata.tables["Configs"].columns
+    assert "margin" in Base.metadata.tables["Rates"].columns
+    assert "allowance" not in Base.metadata.tables["Configs"].columns
     assert set(Base.metadata.tables["Broadcasts"].columns.keys()) >= EXPECTED_BROADCAST_COLUMNS

@@ -30,9 +30,3 @@ class ConfigRepository(BaseRepository[Config]):
         config.enabled = enabled
         await self.session.flush()
         return config
-
-    async def set_allowance(self, value: float) -> Config:
-        config = await self.get_or_create()
-        config.allowance = value
-        await self.session.flush()
-        return config

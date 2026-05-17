@@ -8,7 +8,7 @@ from app.api.deps import DbDep
 from app.repositories.city import CityRepository
 from app.repositories.rate import RateRepository
 from app.schemas.city import CityOut, build_city_out
-from app.schemas.rate import RateOut
+from app.schemas.rate import RateOut, build_rate_out
 
 router = APIRouter(prefix="/public", tags=["public"])
 
@@ -20,4 +20,4 @@ async def public_cities(db: DbDep) -> list[CityOut]:
 
 @router.get("/rates", response_model=list[RateOut])
 async def public_rates(db: DbDep) -> list[RateOut]:
-    return [RateOut.model_validate(rate) for rate in await RateRepository(db).get_all()]
+    return [build_rate_out(rate) for rate in await RateRepository(db).get_all()]

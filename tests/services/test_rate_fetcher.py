@@ -60,23 +60,23 @@ class TestFetchAndSaveRates:
         currencies = {r.currency for r in all_rates}
         assert {"USDTTHB", "USDTGEL", "USDTVND", "RUBTHB", "RUBGEL", "RUBVND"} <= currencies
 
-    async def test_saved_rates_have_allowance_applied(self, db_session, mock_coingecko) -> None:
-        from app.repositories.config import ConfigRepository
+    async def test_saved_rates_keep_market_price_and_default_margin(
+        self,
+        db_session,
+        mock_coingecko,
+    ) -> None:
         from app.repositories.rate import RateRepository
-
-        # Устанавливаем надбавку 2%
-        await ConfigRepository(db_session).set_allowance(2.0)
-        await db_session.flush()
 
         await fetch_and_save_rates(db_session)
 
         repo = RateRepository(db_session)
-        all_rates = {r.currency: r.price for r in await repo.get_all()}
+        all_rates = {r.currency: r for r in await repo.get_all()}
 
-        # USDTTHB = 35.5 * 0.98
-        assert all_rates["USDTTHB"] == pytest.approx(35.5 * 0.98, rel=1e-4)
-        assert all_rates["USDTGEL"] == pytest.approx(2.72 * 0.98, rel=1e-4)
-        assert all_rates["RUBVND"] == pytest.approx((25500.0 / 91.2) * 0.98, rel=1e-4)
+        assert all_rates["USDTTHB"].price == pytest.approx(35.5, rel=1e-4)
+        assert all_rates["USDTGEL"].price == pytest.approx(2.72, rel=1e-4)
+        assert all_rates["RUBVND"].price == pytest.approx(25500.0 / 91.2, rel=1e-4)
+        assert all_rates["USDTTHB"].margin == pytest.approx(3.0)
+        assert all_rates["RUBVND"].margin == pytest.approx(3.0)
 
     async def test_idempotent_double_call(self, db_session, mock_coingecko) -> None:
         from app.repositories.rate import RateRepository

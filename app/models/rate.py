@@ -14,3 +14,4 @@ class Rate(Base, TimestampMixin):
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     currency: Mapped[str] = mapped_column(String(20), unique=True, nullable=False)
     price: Mapped[float] = mapped_column(Float, nullable=False)
+    margin: Mapped[float] = mapped_column(Float, default=3.0, nullable=False)

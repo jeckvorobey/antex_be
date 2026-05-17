@@ -4,7 +4,6 @@
 from __future__ import annotations
 
 from app.repositories.city import CityRepository
-from app.repositories.config import ConfigRepository
 from app.repositories.order import OrderRepository
 from app.repositories.rate import RateRepository
 from app.schemas.city import build_city_out
@@ -27,7 +26,8 @@ from app.schemas.miniapp import (
     build_miniapp_order_item,
     build_miniapp_profile_summary,
 )
-from app.schemas.rate import RateOut
+from app.schemas.rate import build_rate_out
+from app.services.rate import get_client_rate
 
 DEFAULT_AMOUNT_SELL = 5000
 DEFAULT_PAIR = ("RUB", "THB")
@@ -50,9 +50,9 @@ async def list_miniapp_cities(db) -> MiniappCitiesResponse:
 
 
 async def list_miniapp_rates(db) -> MiniappRatesResponse:
-    """Возвращает сырые курсы для обратной совместимости miniapp."""
+    """Возвращает пользовательские итоговые курсы для обратной совместимости miniapp."""
     rates = await RateRepository(db).get_all()
-    return MiniappRatesResponse(items=[RateOut.model_validate(rate) for rate in rates])
+    return MiniappRatesResponse(items=[build_rate_out(rate) for rate in rates])
 
 
 async def list_miniapp_orders(db, user_id: int) -> MiniappOrdersResponse:
@@ -65,7 +65,6 @@ async def get_miniapp_home(db, user) -> MiniappHomeResponse:
     """Собирает backend-driven данные главного экрана miniapp."""
     rates = await RateRepository(db).get_all()
     cities = await CityRepository(db).get_all()
-    config = await ConfigRepository(db).get_or_create()
     featured = _build_home_rate_cards(rates)
 
     return MiniappHomeResponse(
@@ -108,7 +107,6 @@ async def get_miniapp_home(db, user) -> MiniappHomeResponse:
             chips=_build_home_currency_chips(featured),
             previewLimit=HOME_RATE_PREVIEW_LIMIT,
             updatedAt=max((rate.updatedAt for rate in rates), default=None),
-            allowance=config.allowance,
         ),
         banner=MiniappBanner(
             title="Приведи друга и получи бонус",
@@ -248,10 +246,10 @@ def _build_rate_cards(rates) -> list[MiniappRateCard]:
                 label=f"{sell}/{buy}",
                 fromCurrency=sell,
                 toCurrency=buy,
-                rate=rate.price,
-                rateText=f"1 {sell} = {_format_rate(rate.price)} {buy}",
+                rate=get_client_rate(rate),
+                rateText=f"1 {sell} = {_format_rate(get_client_rate(rate))} {buy}",
                 amountSellExample=amount_sell,
-                amountBuyExample=round(amount_sell * rate.price, 8),
+                amountBuyExample=round(amount_sell * get_client_rate(rate), 8),
                 updatedAt=rate.updatedAt,
             )
         )
@@ -310,9 +308,10 @@ def _resolve_pair_rate(rates, sell: str, buy: str) -> tuple[float | None, object
     for rate in rates:
         currency = rate.currency.upper()
         if currency == direct_key:
-            return rate.price, rate.updatedAt
-        if currency == reverse_key and rate.price:
-            return 1 / rate.price, rate.updatedAt
+            return get_client_rate(rate), rate.updatedAt
+        client_rate = get_client_rate(rate)
+        if currency == reverse_key and client_rate:
+            return 1 / client_rate, rate.updatedAt
     return None, None
 
 

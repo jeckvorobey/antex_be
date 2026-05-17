@@ -23,9 +23,9 @@ from app.repositories.rate import RateRepository
 from app.repositories.user import UserRepository
 from app.schemas.admin import AdminLogin, AdminSummaryOut, AdminTokenResponse
 from app.schemas.city import CityCreate, CityOut, CityUpdate, build_city_out
-from app.schemas.config import AllowanceOut, AllowanceUpdate, AppConfigOut, AppConfigUpdate
+from app.schemas.config import AppConfigOut, AppConfigUpdate
 from app.schemas.order import OrderOut, OrderStatusUpdate, build_order_out
-from app.schemas.rate import RateCreate, RateOut, RateUpdate
+from app.schemas.rate import AdminRateOut, RateCreate, RateUpdate, build_admin_rate_out
 from app.schemas.user import UserOut, UserUpdate, build_user_out
 
 router = APIRouter(prefix="/api/admin", tags=["admin"])
@@ -240,35 +240,35 @@ async def update_order_status(
     return build_order_out(hydrated)
 
 
-@router.get("/rates", response_model=list[RateOut])
-async def list_rates(db: DbDep, _: AdminUser) -> list[RateOut]:
-    return [RateOut.model_validate(rate) for rate in await RateRepository(db).get_all()]
+@router.get("/rates", response_model=list[AdminRateOut])
+async def list_rates(db: DbDep, _: AdminUser) -> list[AdminRateOut]:
+    return [build_admin_rate_out(rate) for rate in await RateRepository(db).get_all()]
 
 
-@router.get("/rates/{rate_id}", response_model=RateOut)
-async def get_rate(rate_id: int, db: DbDep, _: AdminUser) -> RateOut:
+@router.get("/rates/{rate_id}", response_model=AdminRateOut)
+async def get_rate(rate_id: int, db: DbDep, _: AdminUser) -> AdminRateOut:
     rate = await RateRepository(db).get_by_id(rate_id)
     if not rate:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Rate not found")
-    return RateOut.model_validate(rate)
+    return build_admin_rate_out(rate)
 
 
-@router.post("/rates", response_model=RateOut, status_code=status.HTTP_201_CREATED)
-async def create_rate(body: RateCreate, db: DbDep, _: AdminUser) -> RateOut:
+@router.post("/rates", response_model=AdminRateOut, status_code=status.HTTP_201_CREATED)
+async def create_rate(body: RateCreate, db: DbDep, _: AdminUser) -> AdminRateOut:
     rate = await RateRepository(db).create(**body.model_dump())
     await db.commit()
-    return RateOut.model_validate(rate)
+    return build_admin_rate_out(rate)
 
 
-@router.patch("/rates/{rate_id}", response_model=RateOut)
-async def update_rate(rate_id: int, body: RateUpdate, db: DbDep, _: AdminUser) -> RateOut:
+@router.patch("/rates/{rate_id}", response_model=AdminRateOut)
+async def update_rate(rate_id: int, body: RateUpdate, db: DbDep, _: AdminUser) -> AdminRateOut:
     repo = RateRepository(db)
     rate = await repo.get_by_id(rate_id)
     if not rate:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Rate not found")
     updated = await repo.update(rate, **body.model_dump(exclude_none=True))
     await db.commit()
-    return RateOut.model_validate(updated)
+    return build_admin_rate_out(updated)
 
 
 @router.delete("/rates/{rate_id}")
@@ -292,24 +292,9 @@ async def update_config(body: AppConfigUpdate, db: DbDep, _: AdminUser) -> AppCo
     repo = ConfigRepository(db)
     if body.enabled is not None:
         await repo.set_enabled(body.enabled)
-    if body.allowance is not None:
-        await repo.set_allowance(body.allowance)
     config = await repo.get_or_create()
     await db.commit()
     return AppConfigOut.model_validate(config)
-
-
-@router.get("/allowance", response_model=AllowanceOut)
-async def get_allowance(db: DbDep, _: AdminUser) -> AllowanceOut:
-    config = await ConfigRepository(db).get_or_create()
-    return AllowanceOut(value=config.allowance)
-
-
-@router.put("/allowance", response_model=AllowanceOut)
-async def update_allowance(body: AllowanceUpdate, db: DbDep, _: AdminUser) -> AllowanceOut:
-    config = await ConfigRepository(db).set_allowance(body.value)
-    await db.commit()
-    return AllowanceOut(value=config.allowance)
 
 
 @router.post("/rates/refresh")

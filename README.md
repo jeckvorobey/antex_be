@@ -108,7 +108,7 @@ uv run python app/databases/seed.py
 
 После reset в схеме должны быть:
 
-- колонка `Configs.allowance`;
+- колонка `Rates.margin` с default `3.0`;
 - таблица `Broadcasts`.
 
 Минимальная проверка миграций:

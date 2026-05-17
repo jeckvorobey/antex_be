@@ -56,7 +56,6 @@ class MiniappRatesSection(BaseModel):
     chips: list[str]
     previewLimit: int
     updatedAt: datetime | None
-    allowance: float
 
 
 class MiniappServiceItem(BaseModel):
