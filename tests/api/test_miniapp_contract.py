@@ -114,9 +114,14 @@ async def test_miniapp_home_and_exchange_are_backend_driven(
         "toCurrency": "THB",
         "amountSell": 5000,
     }
-    assert exchange["quote"]["rate"] == pytest.approx(0.41 * 0.97)
-    assert exchange["quote"]["amountBuy"] == pytest.approx(5000 * 0.41 * 0.97)
+    assert exchange["quote"]["rate"] == 0.4
+    assert exchange["quote"]["rateDisplay"] == "0.40"
+    assert exchange["quote"]["rateText"] == "1 RUB = 0.40 THB"
+    assert exchange["quote"]["amountBuy"] == pytest.approx(5000 * 0.4)
     assert exchange["pairs"][0]["id"] == "rub-thb"
+    assert exchange["pairs"][0]["rate"] == 0.4
+    assert exchange["pairs"][0]["rateDisplay"] == "0.40"
+    assert exchange["pairs"][0]["rateText"] == "1 RUB = 0.40 THB"
     assert {"rub-gel", "rub-vnd", "usdt-gel", "usdt-vnd"} <= {
         pair["id"] for pair in exchange["pairs"]
     }
@@ -142,11 +147,16 @@ async def test_miniapp_quote_supports_direct_and_reverse_pairs(
     )
 
     assert direct_response.status_code == 200
-    assert direct_response.json()["amountBuy"] == pytest.approx(10000 * 0.41 * 0.97)
+    assert direct_response.json()["rate"] == 0.4
+    assert direct_response.json()["rateDisplay"] == "0.40"
+    assert direct_response.json()["rateText"] == "1 RUB = 0.40 THB"
+    assert direct_response.json()["amountBuy"] == pytest.approx(10000 * 0.4)
 
     assert reverse_response.status_code == 200
-    assert reverse_response.json()["rate"] == pytest.approx(1 / (0.41 * 0.97))
-    assert reverse_response.json()["amountBuy"] == pytest.approx(410 / (0.41 * 0.97))
+    assert reverse_response.json()["rate"] == 2.5
+    assert reverse_response.json()["rateDisplay"] == "2.50"
+    assert reverse_response.json()["rateText"] == "1 THB = 2.50 RUB"
+    assert reverse_response.json()["amountBuy"] == pytest.approx(410 * 2.5)
 
 
 @pytest.mark.asyncio
@@ -174,16 +184,24 @@ async def test_miniapp_quote_supports_gel_and_vnd_pairs(
     )
 
     assert rub_gel_response.status_code == 200
-    assert rub_gel_response.json()["amountBuy"] == pytest.approx(10000 * 0.03 * 0.97)
+    assert rub_gel_response.json()["rate"] == 0.03
+    assert rub_gel_response.json()["rateDisplay"] == "0.03"
+    assert rub_gel_response.json()["rateText"] == "1 RUB = 0.03 GEL"
+    assert rub_gel_response.json()["amountBuy"] == pytest.approx(10000 * 0.03)
     assert rub_gel_response.json()["availableMethods"] == ["cash"]
 
     assert usdt_vnd_response.status_code == 200
-    assert usdt_vnd_response.json()["amountBuy"] == pytest.approx(2 * 25500.0 * 0.97)
+    assert usdt_vnd_response.json()["rate"] == 24735.0
+    assert usdt_vnd_response.json()["rateDisplay"] == "24735.00"
+    assert usdt_vnd_response.json()["rateText"] == "1 USDT = 24735.00 VND"
+    assert usdt_vnd_response.json()["amountBuy"] == pytest.approx(2 * 24735.0)
     assert usdt_vnd_response.json()["availableMethods"] == ["cash"]
 
     assert reverse_response.status_code == 200
-    assert reverse_response.json()["rate"] == pytest.approx(1 / (0.03 * 0.97))
-    assert reverse_response.json()["amountBuy"] == pytest.approx(30 / (0.03 * 0.97))
+    assert reverse_response.json()["rate"] == 33.33
+    assert reverse_response.json()["rateDisplay"] == "33.33"
+    assert reverse_response.json()["rateText"] == "1 GEL = 33.33 RUB"
+    assert reverse_response.json()["amountBuy"] == pytest.approx(30 * 33.33)
 
 
 @pytest.mark.asyncio
@@ -213,8 +231,8 @@ async def test_miniapp_order_is_created_with_server_side_quote(
     assert order["cityId"] == city.id
     assert order["currencySell"] == "RUB"
     assert order["currencyBuy"] == "THB"
-    assert order["rate"] == pytest.approx(0.41 * 0.97)
-    assert order["amountBuy"] == pytest.approx(10000 * 0.41 * 0.97)
+    assert order["rate"] == 0.4
+    assert order["amountBuy"] == pytest.approx(10000 * 0.4)
     assert order["contactTelegram"] == "@customer"
     assert order["city"]["name"] == "Bangkok"
 
@@ -246,8 +264,8 @@ async def test_miniapp_order_supports_new_pair_with_server_side_quote(
     assert order["cityId"] == city.id
     assert order["currencySell"] == "RUB"
     assert order["currencyBuy"] == "GEL"
-    assert order["rate"] == pytest.approx(0.03 * 0.97)
-    assert order["amountBuy"] == pytest.approx(10000 * 0.03 * 0.97)
+    assert order["rate"] == 0.03
+    assert order["amountBuy"] == pytest.approx(10000 * 0.03)
 
 
 @pytest.mark.asyncio

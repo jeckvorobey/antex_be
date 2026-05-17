@@ -13,11 +13,22 @@ from app.services.rate_calculator import apply_margin_to_rate
 logger = logging.getLogger(__name__)
 
 _REQUIRED_CURRENCIES = ("RUBTHB", "USDTTHB")
+_RATE_PRECISION = 2
+
+
+def round_rate_value(rate: float) -> float:
+    """Округляет курс до сотых для пользовательских поверхностей."""
+    return round(rate, _RATE_PRECISION)
+
+
+def format_rate_value(rate: float) -> str:
+    """Форматирует курс с фиксированными двумя знаками после запятой."""
+    return f"{round_rate_value(rate):.{_RATE_PRECISION}f}"
 
 
 def get_client_rate(rate: Rate) -> float:
     """Возвращает пользовательский курс с применённой margin строки."""
-    return apply_margin_to_rate(rate.price, rate.margin)
+    return round_rate_value(apply_margin_to_rate(rate.price, rate.margin))
 
 
 async def get_exchange_rates() -> dict[str, float]:

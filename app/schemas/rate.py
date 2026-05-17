@@ -7,13 +7,14 @@ from datetime import datetime
 
 from pydantic import BaseModel, Field
 
-from app.services.rate import get_client_rate
+from app.services.rate import format_rate_value, get_client_rate
 
 
 class RateOut(BaseModel):
     id: int
     currency: str
     price: float
+    priceDisplay: str
     createdAt: datetime
     updatedAt: datetime
 
@@ -37,10 +38,12 @@ class RateUpdate(BaseModel):
 
 
 def build_rate_out(rate) -> RateOut:
+    client_price = get_client_rate(rate)
     return RateOut(
         id=rate.id,
         currency=rate.currency,
-        price=get_client_rate(rate),
+        price=client_price,
+        priceDisplay=format_rate_value(client_price),
         createdAt=rate.createdAt,
         updatedAt=rate.updatedAt,
     )
@@ -51,6 +54,7 @@ def build_admin_rate_out(rate) -> AdminRateOut:
         id=rate.id,
         currency=rate.currency,
         price=rate.price,
+        priceDisplay=format_rate_value(rate.price),
         margin=rate.margin,
         createdAt=rate.createdAt,
         updatedAt=rate.updatedAt,

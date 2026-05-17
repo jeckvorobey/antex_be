@@ -5,6 +5,7 @@ from __future__ import annotations
 from collections.abc import Callable
 from datetime import datetime
 
+from app.services.rate import format_rate_value
 from app.telegram.i18n import get_translator
 
 Translate = Callable[[str], str]
@@ -63,8 +64,8 @@ def exchange_rate(
     translate = _resolve_translator(translator, locale)
     return translate(
         "menu-rate-info",
-        rub_rate=f"{rubthb:.4f}",
-        usdt_rate=f"{(usdtthb or 0.0):.4f}",
+        rub_rate=format_rate_value(rubthb),
+        usdt_rate=format_rate_value(usdtthb or 0.0),
         updated_at=updated_at or datetime.utcnow().strftime("%H:%M"),
     )
 

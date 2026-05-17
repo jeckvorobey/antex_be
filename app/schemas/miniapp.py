@@ -45,6 +45,7 @@ class MiniappRateCard(BaseModel):
     fromCurrency: str
     toCurrency: str
     rate: float
+    rateDisplay: str
     rateText: str
     amountSellExample: int
     amountBuyExample: float
@@ -92,6 +93,7 @@ class MiniappQuoteResponse(BaseModel):
     amountSell: int
     amountBuy: float
     rate: float
+    rateDisplay: str
     rateText: str
     updatedAt: datetime
     availableMethods: list[str]

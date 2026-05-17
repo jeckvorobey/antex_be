@@ -27,7 +27,7 @@ from app.schemas.miniapp import (
     build_miniapp_profile_summary,
 )
 from app.schemas.rate import build_rate_out
-from app.services.rate import get_client_rate
+from app.services.rate import format_rate_value, get_client_rate, round_rate_value
 
 DEFAULT_AMOUNT_SELL = 5000
 DEFAULT_PAIR = ("RUB", "THB")
@@ -200,9 +200,10 @@ async def calculate_miniapp_quote(
         currencySell=sell,
         currencyBuy=buy,
         amountSell=amount_sell,
-        amountBuy=round(amount_buy, 8),
+        amountBuy=round(amount_buy, 2),
         rate=rate,
-        rateText=f"1 {sell} = {_format_rate(rate)} {buy}",
+        rateDisplay=format_rate_value(rate),
+        rateText=f"1 {sell} = {format_rate_value(rate)} {buy}",
         updatedAt=updated_at,
         availableMethods=METHODS_BY_BUY_CURRENCY.get(buy, ["cash"]),
     )
@@ -247,9 +248,10 @@ def _build_rate_cards(rates) -> list[MiniappRateCard]:
                 fromCurrency=sell,
                 toCurrency=buy,
                 rate=get_client_rate(rate),
-                rateText=f"1 {sell} = {_format_rate(get_client_rate(rate))} {buy}",
+                rateDisplay=format_rate_value(get_client_rate(rate)),
+                rateText=f"1 {sell} = {format_rate_value(get_client_rate(rate))} {buy}",
                 amountSellExample=amount_sell,
-                amountBuyExample=round(amount_sell * get_client_rate(rate), 8),
+                amountBuyExample=round(amount_sell * get_client_rate(rate), 2),
                 updatedAt=rate.updatedAt,
             )
         )
@@ -311,10 +313,5 @@ def _resolve_pair_rate(rates, sell: str, buy: str) -> tuple[float | None, object
             return get_client_rate(rate), rate.updatedAt
         client_rate = get_client_rate(rate)
         if currency == reverse_key and client_rate:
-            return 1 / client_rate, rate.updatedAt
+            return round_rate_value(1 / client_rate), rate.updatedAt
     return None, None
-
-
-def _format_rate(rate: float) -> str:
-    """Форматирует курс для компактного отображения в miniapp."""
-    return f"{rate:.4f}" if rate < 1 else f"{rate:.2f}"
