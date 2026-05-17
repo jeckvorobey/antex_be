@@ -48,6 +48,7 @@ DEFAULT_METHODS_BY_BUY_CURRENCY = {
     "RUB": ["card"],
 }
 SUPPORTED_CURRENCIES = ("USDT", "RUB", "THB", "GEL", "VND")
+REVERSED_DISPLAY_PAIRS = frozenset({"RUBTHB", "RUBGEL"})
 
 
 def round_rate_value(rate: float) -> float:
@@ -66,19 +67,41 @@ def get_client_rate(rate: Rate) -> float:
     return round_rate_value(apply_margin_to_rate(rate.price, rate.margin))
 
 
-def get_admin_base_rate(rate: Rate) -> float:
-    if is_rub_cross_pair(rate.currency) and rate.price:
+def should_reverse_display_pair(currency: str) -> bool:
+    return currency.upper() in REVERSED_DISPLAY_PAIRS
+
+
+def get_display_pair(rate: Rate) -> tuple[str, str]:
+    parsed = ExchangeService().parse_pair(rate.currency)
+    if parsed is None:
+        raise ExchangeService.unsupported_pair_error()
+    sell, buy = parsed
+    if should_reverse_display_pair(rate.currency):
+        return buy, sell
+    return sell, buy
+
+
+def get_display_base_rate(rate: Rate) -> float:
+    if should_reverse_display_pair(rate.currency) and rate.price:
         return 1 / rate.price
     return rate.price
 
 
-def get_admin_final_rate(rate: Rate) -> float:
-    if is_rub_cross_pair(rate.currency):
+def get_display_final_rate(rate: Rate) -> float:
+    if should_reverse_display_pair(rate.currency):
         direct_client_rate = apply_margin_to_rate(rate.price, rate.margin)
         if direct_client_rate <= 0:
             return 0.0
         return round_rate_value(1 / direct_client_rate)
     return get_client_rate(rate)
+
+
+def get_admin_base_rate(rate: Rate) -> float:
+    return get_display_base_rate(rate)
+
+
+def get_admin_final_rate(rate: Rate) -> float:
+    return get_display_final_rate(rate)
 
 
 @dataclass(frozen=True)
@@ -142,33 +165,35 @@ class ExchangeService:
             parsed = self.parse_pair(rate.currency)
             if not parsed:
                 continue
-            sell, buy = parsed
-            client_rate = get_client_rate(rate)
+            original_sell, original_buy = parsed
+            try:
+                sell, buy = get_display_pair(rate)
+            except AntExException:
+                continue
+            client_rate = get_display_final_rate(rate)
             amount_sell = 5000 if sell == "RUB" else 100
             snapshots.append(
                 ExchangePairSnapshot(
-                    pair_id=f"{sell.lower()}-{buy.lower()}",
+                    pair_id=f"{original_sell.lower()}-{original_buy.lower()}",
                     label=f"{sell}/{buy}",
                     currency_sell=sell,
                     currency_buy=buy,
                     country=rate.country,
-                    base_rate=rate.price,
+                    base_rate=get_display_base_rate(rate),
                     client_rate=client_rate,
                     rate_display=format_rate_value(client_rate),
                     rate_text=f"1 {sell} = {format_rate_value(client_rate)} {buy}",
                     amount_sell_example=amount_sell,
                     amount_buy_example=round(amount_sell * client_rate, RATE_PRECISION),
                     updated_at=rate.updatedAt,
-                    available_methods=self.get_methods_for_country(rate.country, buy),
+                    available_methods=self.get_methods_for_currency(buy),
                 )
             )
         return snapshots
 
     def build_featured_pair_snapshots(self, rates: list[Rate]) -> list[ExchangePairSnapshot]:
         snapshots = self.build_pair_snapshots(rates)
-        priority = {
-            pair_id: index for index, pair_id in enumerate(FEATURED_PAIR_PRIORITY)
-        }
+        priority = {pair_id: index for index, pair_id in enumerate(FEATURED_PAIR_PRIORITY)}
         return sorted(
             snapshots,
             key=lambda snapshot: (

@@ -56,15 +56,17 @@ async def seed_admin_exchange_data(db_session: AsyncSession) -> tuple[Admin, Use
         first_name="Happy",
         role=int(UserRole.USER),
     )
-    db_session.add_all([
-        admin,
-        city,
-        manager,
-        customer,
-        Rate(currency="RUBTHB", price=0.41, margin=3.0, country=Country.THAILAND),
-        Rate(currency="RUBGEL", price=0.03, margin=3.0, country=Country.GEORGIA),
-        Rate(currency="USDTTHB", price=36.2, margin=3.0, country=Country.THAILAND),
-    ])
+    db_session.add_all(
+        [
+            admin,
+            city,
+            manager,
+            customer,
+            Rate(currency="RUBTHB", price=0.41, margin=3.0, country=Country.THAILAND),
+            Rate(currency="RUBGEL", price=0.03, margin=3.0, country=Country.GEORGIA),
+            Rate(currency="USDTTHB", price=36.2, margin=3.0, country=Country.THAILAND),
+        ]
+    )
     await db_session.flush()
     manager.city_id = city.id
     customer.city_id = city.id
@@ -126,7 +128,7 @@ async def test_admin_summary_returns_featured_rates(
     assert payload["ordersToday"] == 0
     assert payload["usersTotal"] == 2
     assert payload["featuredRates"][0]["pairId"] == "rub-thb"
-    assert payload["featuredRates"][0]["finalRateDisplay"] == "0.40"
+    assert payload["featuredRates"][0]["finalRateDisplay"] == "2.51"
 
 
 @pytest.mark.asyncio

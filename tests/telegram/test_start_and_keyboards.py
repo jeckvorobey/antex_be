@@ -88,7 +88,9 @@ async def test_start_always_uses_home_keyboard(monkeypatch) -> None:
     monkeypatch.setattr(start_handler, "_get_db", _fake_get_db)
     monkeypatch.setattr(start_handler, "ConfigRepository", _FakeConfigRepo)
     monkeypatch.setattr(start_handler, "check_user", _fake_check_user)
-    monkeypatch.setattr("app.telegram.keyboards.settings.frontend_webapp_url", "https://example.com/app")
+    monkeypatch.setattr(
+        "app.telegram.keyboards.settings.frontend_webapp_url", "https://example.com/app"
+    )
 
     await start_handler.cmd_start(message)
 

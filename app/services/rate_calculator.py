@@ -7,13 +7,25 @@
 from __future__ import annotations
 
 
+def calculate_cross_rate(source_rate: float, target_rate: float) -> float:
+    """Считает кросс-курс source -> target через общий базовый источник.
+
+    Формула: target / source.
+    Пример для USD-базовых данных:
+    - если 1 USD = 90 RUB
+    - и 1 USD = 36 THB
+    - то 1 RUB = 36 / 90 THB
+    """
+    return target_rate / source_rate
+
+
 def calculate_rub_cross_rate(usdt_target: float, usdt_rub: float) -> float:
     """Кросс-курс RUB→целевой валюте через USDT как базовую валюту.
 
     Если 1 USDT = X целевой валюты и 1 USDT = Y RUB,
     то 1 RUB = X/Y целевой валюты.
     """
-    return usdt_target / usdt_rub
+    return calculate_cross_rate(usdt_rub, usdt_target)
 
 
 def apply_margin_to_rate(base_rate: float, margin_pct: float) -> float:

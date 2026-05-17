@@ -111,8 +111,7 @@ async def recover_stale_broadcasts_on_startup(
                 success_count=broadcast.success_count,
                 failed_count=broadcast.failed_count,
                 error_message=(
-                    "Рассылка остановлена из-за перезапуска процесса "
-                    "и помечена как незавершённая"
+                    "Рассылка остановлена из-за перезапуска процесса и помечена как незавершённая"
                 ),
             )
         await session.commit()

@@ -45,9 +45,7 @@ def validate_telegram_init_data(init_data: str) -> dict[str, Any] | None:
     secret_key = hmac.new(
         b"WebAppData", settings.telegram_bot_token.encode(), hashlib.sha256
     ).digest()
-    computed_hash = hmac.new(
-        secret_key, data_check_string.encode(), hashlib.sha256
-    ).hexdigest()
+    computed_hash = hmac.new(secret_key, data_check_string.encode(), hashlib.sha256).hexdigest()
 
     if not hmac.compare_digest(computed_hash, received_hash):
         return None

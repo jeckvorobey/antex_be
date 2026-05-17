@@ -241,10 +241,7 @@ def _build_rate_cards(snapshots: list[ExchangePairSnapshot]) -> list[MiniappRate
 def _build_home_rate_cards(snapshots: list[ExchangePairSnapshot]) -> list[MiniappRateCard]:
     """Строит карточки курсов для главной с фиксированным порядком превью."""
     cards = _build_rate_cards(snapshots)
-    priority = {
-        pair_id: index
-        for index, pair_id in enumerate(HOME_RATE_PRIORITY)
-    }
+    priority = {pair_id: index for index, pair_id in enumerate(HOME_RATE_PRIORITY)}
     return sorted(
         cards,
         key=lambda card: (
@@ -262,6 +259,8 @@ def _build_currency_chips(cards: list[MiniappRateCard]) -> list[str]:
             if currency not in currencies:
                 currencies.append(currency)
     return currencies
+
+
 def _build_quote_response(quote: ExchangeQuote) -> MiniappQuoteResponse:
     return MiniappQuoteResponse(
         currencySell=quote.currency_sell,

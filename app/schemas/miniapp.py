@@ -189,9 +189,7 @@ class MiniappOrderCreatedResponse(BaseModel):
 
 def build_miniapp_profile_summary(user) -> MiniappProfileSummary:
     """Строит компактный профиль для backend-driven экранов miniapp."""
-    display_name = " ".join(
-        part for part in (user.first_name, user.last_name) if part
-    ).strip()
+    display_name = " ".join(part for part in (user.first_name, user.last_name) if part).strip()
     if not display_name:
         display_name = user.username or "Гость AntEx"
 

@@ -4,7 +4,7 @@ Revision ID: 001
 Revises:
 Create Date: 2026-04-02 00:00:00
 """
-# ruff: noqa: E501, I001
+# ruff: noqa: I001
 
 from __future__ import annotations
 
@@ -34,8 +34,12 @@ def upgrade() -> None:
         sa.Column("id", sa.Integer(), nullable=False),
         sa.Column("username", sa.String(length=255), nullable=False),
         sa.Column("password_hash", sa.String(length=255), nullable=False),
-        sa.Column("createdAt", sa.DateTime(timezone=True), server_default=sa.text("now()"), nullable=False),
-        sa.Column("updatedAt", sa.DateTime(timezone=True), server_default=sa.text("now()"), nullable=False),
+        sa.Column(
+            "createdAt", sa.DateTime(timezone=True), server_default=sa.text("now()"), nullable=False
+        ),
+        sa.Column(
+            "updatedAt", sa.DateTime(timezone=True), server_default=sa.text("now()"), nullable=False
+        ),
         sa.PrimaryKeyConstraint("id"),
         sa.UniqueConstraint("username"),
     )
@@ -45,8 +49,12 @@ def upgrade() -> None:
         sa.Column("id", sa.Integer(), nullable=False),
         sa.Column("name", sa.String(length=255), nullable=False),
         sa.Column("country", country_enum_existing, nullable=False),
-        sa.Column("createdAt", sa.DateTime(timezone=True), server_default=sa.text("now()"), nullable=False),
-        sa.Column("updatedAt", sa.DateTime(timezone=True), server_default=sa.text("now()"), nullable=False),
+        sa.Column(
+            "createdAt", sa.DateTime(timezone=True), server_default=sa.text("now()"), nullable=False
+        ),
+        sa.Column(
+            "updatedAt", sa.DateTime(timezone=True), server_default=sa.text("now()"), nullable=False
+        ),
         sa.PrimaryKeyConstraint("id"),
     )
 
@@ -54,8 +62,12 @@ def upgrade() -> None:
         "Configs",
         sa.Column("id", sa.Integer(), nullable=False),
         sa.Column("enabled", sa.Boolean(), nullable=False, server_default=sa.text("true")),
-        sa.Column("createdAt", sa.DateTime(timezone=True), server_default=sa.text("now()"), nullable=False),
-        sa.Column("updatedAt", sa.DateTime(timezone=True), server_default=sa.text("now()"), nullable=False),
+        sa.Column(
+            "createdAt", sa.DateTime(timezone=True), server_default=sa.text("now()"), nullable=False
+        ),
+        sa.Column(
+            "updatedAt", sa.DateTime(timezone=True), server_default=sa.text("now()"), nullable=False
+        ),
         sa.PrimaryKeyConstraint("id"),
     )
 
@@ -64,8 +76,12 @@ def upgrade() -> None:
         sa.Column("id", sa.Integer(), nullable=False),
         sa.Column("currency", sa.String(length=20), nullable=False),
         sa.Column("price", sa.Float(), nullable=False),
-        sa.Column("createdAt", sa.DateTime(timezone=True), server_default=sa.text("now()"), nullable=False),
-        sa.Column("updatedAt", sa.DateTime(timezone=True), server_default=sa.text("now()"), nullable=False),
+        sa.Column(
+            "createdAt", sa.DateTime(timezone=True), server_default=sa.text("now()"), nullable=False
+        ),
+        sa.Column(
+            "updatedAt", sa.DateTime(timezone=True), server_default=sa.text("now()"), nullable=False
+        ),
         sa.PrimaryKeyConstraint("id"),
         sa.UniqueConstraint("currency"),
     )
@@ -84,8 +100,12 @@ def upgrade() -> None:
         sa.Column("is_premium", sa.Boolean(), nullable=False, server_default=sa.text("false")),
         sa.Column("city_id", sa.Integer(), nullable=True),
         sa.Column("language_code_app", sa.String(length=10), nullable=False, server_default="ru"),
-        sa.Column("createdAt", sa.DateTime(timezone=True), server_default=sa.text("now()"), nullable=False),
-        sa.Column("updatedAt", sa.DateTime(timezone=True), server_default=sa.text("now()"), nullable=False),
+        sa.Column(
+            "createdAt", sa.DateTime(timezone=True), server_default=sa.text("now()"), nullable=False
+        ),
+        sa.Column(
+            "updatedAt", sa.DateTime(timezone=True), server_default=sa.text("now()"), nullable=False
+        ),
         sa.ForeignKeyConstraint(["city_id"], ["Cities.id"]),
         sa.PrimaryKeyConstraint("id"),
         sa.UniqueConstraint("telegram_id"),
@@ -116,14 +136,18 @@ def upgrade() -> None:
         sa.Column("methodGet", sa.String(length=20), nullable=True),
         sa.Column("endTime", sa.DateTime(timezone=True), nullable=True),
         sa.Column("destroyTime", sa.DateTime(timezone=True), nullable=True),
-        sa.Column("createdAt", sa.DateTime(timezone=True), server_default=sa.text("now()"), nullable=False),
-        sa.Column("updatedAt", sa.DateTime(timezone=True), server_default=sa.text("now()"), nullable=False),
+        sa.Column(
+            "createdAt", sa.DateTime(timezone=True), server_default=sa.text("now()"), nullable=False
+        ),
+        sa.Column(
+            "updatedAt", sa.DateTime(timezone=True), server_default=sa.text("now()"), nullable=False
+        ),
         sa.ForeignKeyConstraint(["CityId"], ["Cities.id"]),
         sa.ForeignKeyConstraint(["UserId"], ["Users.id"]),
         sa.PrimaryKeyConstraint("id"),
     )
 
-    op.execute(sa.text("INSERT INTO \"Configs\" (id, enabled) VALUES (1, true)"))
+    op.execute(sa.text('INSERT INTO "Configs" (id, enabled) VALUES (1, true)'))
 
 
 def downgrade() -> None:

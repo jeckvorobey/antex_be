@@ -39,9 +39,7 @@ def home(_, **kwargs) -> InlineKeyboardMarkup:
             ]
         )
 
-    return InlineKeyboardMarkup(
-        inline_keyboard=inline_keyboard
-    )
+    return InlineKeyboardMarkup(inline_keyboard=inline_keyboard)
 
 
 def choose_currency(_, currencies: list[str], **kwargs) -> InlineKeyboardMarkup:

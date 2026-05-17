@@ -1,13 +1,13 @@
 #!/usr/bin/env python
 # ruff: noqa: RUF001,RUF002
-"""Ручная проверка получения курсов из CoinGecko API.
+"""Ручная проверка получения курсов из CurrencyBeacon API.
 
 Запуск из папки back/:
     python scripts/check_rates.py
     python scripts/check_rates.py --margin 3.5
 
 Выводит в лог:
-  - raw курсы от CoinGecko (рыночные)
+  - raw USD-базовые курсы от CurrencyBeacon
   - рассчитанный RUBTHB (кросс-курс через USDT)
   - базовые и пользовательские курсы с применённой наценкой
 """
@@ -34,6 +34,7 @@ async def main(margin_pct: float) -> None:
     from app.services.rate_calculator import (
         apply_margin_to_rate,
         build_market_rates,
+        calculate_cross_rate,
         calculate_rub_cross_rate,
     )
     from app.services.rate_fetcher import fetch_raw_rates
@@ -41,17 +42,21 @@ async def main(margin_pct: float) -> None:
     logger.info("=== AntEx Rate Check ===")
     logger.info("Наценка по умолчанию: %.2f%%", margin_pct)
 
-    logger.info("Запрашиваем курсы у CoinGecko...")
+    logger.info("Запрашиваем курсы у CurrencyBeacon...")
     raw = await fetch_raw_rates()
 
-    logger.info("--- Raw данные от CoinGecko ---")
-    logger.info("  USDT/THB (рыночный): %.6f", raw["usdt_thb"])
-    logger.info("  USDT/RUB (рыночный): %.6f", raw["usdt_rub"])
+    logger.info("--- Raw данные от CurrencyBeacon ---")
+    logger.info("  USD/USDT (рыночный): %.6f", raw["usd_usdt"])
+    logger.info("  USD/THB  (рыночный): %.6f", raw["usd_thb"])
+    logger.info("  USD/RUB  (рыночный): %.6f", raw["usd_rub"])
 
-    rubthb_market = calculate_rub_cross_rate(raw["usdt_thb"], raw["usdt_rub"])
+    usdt_thb_market = calculate_cross_rate(raw["usd_usdt"], raw["usd_thb"])
+    usdt_rub_market = calculate_cross_rate(raw["usd_usdt"], raw["usd_rub"])
+    rubthb_market = calculate_rub_cross_rate(usdt_thb_market, usdt_rub_market)
+    logger.info("  USDT/THB (рыночный, кросс): %.6f", usdt_thb_market)
     logger.info("  RUB/THB  (рыночный, кросс): %.8f", rubthb_market)
 
-    rates = build_market_rates({"THB": raw["usdt_thb"]}, raw["usdt_rub"])
+    rates = build_market_rates({"THB": usdt_thb_market}, usdt_rub_market)
     logger.info("--- Базовые курсы для сохранения в БД ---")
     logger.info("  USDTTHB: %.6f", rates["USDTTHB"])
     logger.info("  RUBTHB:  %.8f", rates["RUBTHB"])
@@ -62,7 +67,7 @@ async def main(margin_pct: float) -> None:
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Проверка получения курсов из CoinGecko")
+    parser = argparse.ArgumentParser(description="Проверка получения курсов из CurrencyBeacon")
     parser.add_argument(
         "--margin",
         type=float,

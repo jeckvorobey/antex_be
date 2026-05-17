@@ -23,10 +23,7 @@ DEFAULT_CITIES: tuple[tuple[str, Country], ...] = (
 
 async def seed_cities(db: AsyncSession) -> None:
     existing_pairs = {
-        (city.name, city.country)
-        for city in (
-            await db.execute(select(City))
-        ).scalars()
+        (city.name, city.country) for city in (await db.execute(select(City))).scalars()
     }
 
     created = 0

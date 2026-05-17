@@ -302,9 +302,7 @@ async def confirm_exchange_callback(callback: CallbackQuery, state: FSMContext) 
                 currencyBuy=data["currency_buy"],
                 methodGet=data["method"],
                 contactTelegram=(
-                    f"@{callback.from_user.username}"
-                    if callback.from_user.username
-                    else None
+                    f"@{callback.from_user.username}" if callback.from_user.username else None
                 ),
             ),
         )

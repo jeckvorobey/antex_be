@@ -30,7 +30,7 @@ logger = logging.getLogger(__name__)
 
 
 async def _rate_updater_loop() -> None:
-    """Фоновая задача: периодически обновляет курсы из CoinGecko."""
+    """Фоновая задача: периодически обновляет курсы из CurrencyBeacon."""
     from app.core.database import async_session
     from app.services.rate_fetcher import fetch_and_save_rates
 

@@ -65,9 +65,7 @@ class Settings(BaseSettings):
 
     # Exchange / Rate
     rate_cache_ttl_seconds: int = 1800
-
-    # CoinGecko
-    coingecko_api_key: str | None = None
+    currencybeacon_api_key: str | None = None
 
     # Review channel
     review_channel_id: int | None = None

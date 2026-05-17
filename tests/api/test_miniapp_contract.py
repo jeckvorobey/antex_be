@@ -59,17 +59,19 @@ async def seed_exchange_data(db_session: AsyncSession) -> tuple[City, User, User
         first_name="Happy",
         role=int(UserRole.USER),
     )
-    db_session.add_all([
-        city,
-        manager,
-        customer,
-        Rate(currency="RUBTHB", price=0.41, margin=3.0, country=Country.THAILAND),
-        Rate(currency="RUBGEL", price=0.03, margin=3.0, country=Country.GEORGIA),
-        Rate(currency="RUBVND", price=280.0, margin=3.0, country=Country.VIETNAM),
-        Rate(currency="USDTTHB", price=36.2, margin=3.0, country=Country.THAILAND),
-        Rate(currency="USDTGEL", price=2.7, margin=3.0, country=Country.GEORGIA),
-        Rate(currency="USDTVND", price=25500.0, margin=3.0, country=Country.VIETNAM),
-    ])
+    db_session.add_all(
+        [
+            city,
+            manager,
+            customer,
+            Rate(currency="RUBTHB", price=0.41, margin=3.0, country=Country.THAILAND),
+            Rate(currency="RUBGEL", price=0.03, margin=3.0, country=Country.GEORGIA),
+            Rate(currency="RUBVND", price=280.0, margin=3.0, country=Country.VIETNAM),
+            Rate(currency="USDTTHB", price=36.2, margin=3.0, country=Country.THAILAND),
+            Rate(currency="USDTGEL", price=2.7, margin=3.0, country=Country.GEORGIA),
+            Rate(currency="USDTVND", price=25500.0, margin=3.0, country=Country.VIETNAM),
+        ]
+    )
     await db_session.flush()
 
     manager.city_id = city.id
@@ -129,9 +131,11 @@ async def test_miniapp_home_and_exchange_are_backend_driven(
     assert exchange["quote"]["rateText"] == "1 RUB = 0.40 THB"
     assert exchange["quote"]["amountBuy"] == pytest.approx(5000 * 0.4)
     assert exchange["pairs"][0]["id"] == "rub-thb"
-    assert exchange["pairs"][0]["rate"] == 0.4
-    assert exchange["pairs"][0]["rateDisplay"] == "0.40"
-    assert exchange["pairs"][0]["rateText"] == "1 RUB = 0.40 THB"
+    assert exchange["pairs"][0]["fromCurrency"] == "THB"
+    assert exchange["pairs"][0]["toCurrency"] == "RUB"
+    assert exchange["pairs"][0]["rate"] == pytest.approx(2.51)
+    assert exchange["pairs"][0]["rateDisplay"] == "2.51"
+    assert exchange["pairs"][0]["rateText"] == "1 THB = 2.51 RUB"
     assert {"rub-gel", "rub-vnd", "usdt-gel", "usdt-vnd"} <= {
         pair["id"] for pair in exchange["pairs"]
     }
@@ -312,19 +316,21 @@ async def test_admin_summary_returns_mvp_dashboard_metrics(
     client, db_session = api_client
     city, _, customer = await seed_exchange_data(db_session)
     admin = Admin(username="admin", password_hash="unused")
-    db_session.add_all([
-        admin,
-        Order(
-            UserId=customer.id,
-            CityId=city.id,
-            currencySell="RUB",
-            amountSell=10000,
-            currencyBuy="THB",
-            amountBuy=4100,
-            rate=0.41,
-            status=int(OrderStatus.NEW),
-        ),
-    ])
+    db_session.add_all(
+        [
+            admin,
+            Order(
+                UserId=customer.id,
+                CityId=city.id,
+                currencySell="RUB",
+                amountSell=10000,
+                currencyBuy="THB",
+                amountBuy=4100,
+                rate=0.41,
+                status=int(OrderStatus.NEW),
+            ),
+        ]
+    )
     await db_session.flush()
     token = create_access_token({"sub": str(admin.id), "type": "admin"})
 
@@ -338,7 +344,7 @@ async def test_admin_summary_returns_mvp_dashboard_metrics(
     assert summary["ordersToday"] == 1
     assert summary["usersTotal"] == 2
     assert summary["featuredRates"][0]["pairId"] == "rub-thb"
-    assert summary["featuredRates"][0]["finalRateDisplay"] == "0.40"
+    assert summary["featuredRates"][0]["finalRateDisplay"] == "2.51"
 
 
 def test_admin_summary_today_start_uses_configured_timezone() -> None:

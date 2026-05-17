@@ -35,46 +35,76 @@ def _make_rate(
 
 
 class TestExchangeService:
-    def test_list_pairs_returns_base_and_final_rates(self) -> None:
+    def test_list_pairs_returns_display_rates_in_expected_orientation(self) -> None:
         rates = [
             _make_rate("RUBTHB", 0.41, 3.0, country=Country.THAILAND),
+            _make_rate("RUBGEL", 0.03, 3.0, country=Country.GEORGIA),
+            _make_rate("RUBVND", 280.0, 3.0, country=Country.VIETNAM),
             _make_rate("USDTTHB", 36.2, 3.0, country=Country.THAILAND),
         ]
 
         pairs = ExchangeService().build_pair_snapshots(rates)
 
-        assert pairs == [
-            ExchangePairSnapshot(
-                pair_id="rub-thb",
-                label="RUB/THB",
-                currency_sell="RUB",
-                currency_buy="THB",
-                country=Country.THAILAND,
-                base_rate=0.41,
-                client_rate=0.4,
-                rate_display="0.40",
-                rate_text="1 RUB = 0.40 THB",
-                amount_sell_example=5000,
-                amount_buy_example=2000.0,
-                updated_at=rates[0].updatedAt,
-                available_methods=["qrcode", "cash"],
-            ),
-            ExchangePairSnapshot(
-                pair_id="usdt-thb",
-                label="USDT/THB",
-                currency_sell="USDT",
-                currency_buy="THB",
-                country=Country.THAILAND,
-                base_rate=36.2,
-                client_rate=35.11,
-                rate_display="35.11",
-                rate_text="1 USDT = 35.11 THB",
-                amount_sell_example=100,
-                amount_buy_example=3511.0,
-                updated_at=rates[1].updatedAt,
-                available_methods=["qrcode", "cash"],
-            ),
-        ]
+        assert pairs[0] == ExchangePairSnapshot(
+            pair_id="rub-thb",
+            label="THB/RUB",
+            currency_sell="THB",
+            currency_buy="RUB",
+            country=Country.THAILAND,
+            base_rate=pytest.approx(1 / 0.41),
+            client_rate=2.51,
+            rate_display="2.51",
+            rate_text="1 THB = 2.51 RUB",
+            amount_sell_example=100,
+            amount_buy_example=251.0,
+            updated_at=rates[0].updatedAt,
+            available_methods=["card"],
+        )
+        assert pairs[1] == ExchangePairSnapshot(
+            pair_id="rub-gel",
+            label="GEL/RUB",
+            currency_sell="GEL",
+            currency_buy="RUB",
+            country=Country.GEORGIA,
+            base_rate=pytest.approx(1 / 0.03),
+            client_rate=34.36,
+            rate_display="34.36",
+            rate_text="1 GEL = 34.36 RUB",
+            amount_sell_example=100,
+            amount_buy_example=3436.0,
+            updated_at=rates[1].updatedAt,
+            available_methods=["card"],
+        )
+        assert pairs[2] == ExchangePairSnapshot(
+            pair_id="rub-vnd",
+            label="RUB/VND",
+            currency_sell="RUB",
+            currency_buy="VND",
+            country=Country.VIETNAM,
+            base_rate=280.0,
+            client_rate=271.6,
+            rate_display="271.60",
+            rate_text="1 RUB = 271.60 VND",
+            amount_sell_example=5000,
+            amount_buy_example=1358000.0,
+            updated_at=rates[2].updatedAt,
+            available_methods=["qrcode", "cash"],
+        )
+        assert pairs[3] == ExchangePairSnapshot(
+            pair_id="usdt-thb",
+            label="USDT/THB",
+            currency_sell="USDT",
+            currency_buy="THB",
+            country=Country.THAILAND,
+            base_rate=36.2,
+            client_rate=35.11,
+            rate_display="35.11",
+            rate_text="1 USDT = 35.11 THB",
+            amount_sell_example=100,
+            amount_buy_example=3511.0,
+            updated_at=rates[3].updatedAt,
+            available_methods=["qrcode", "cash"],
+        )
 
     def test_quote_supports_reverse_pair(self) -> None:
         service = ExchangeService()

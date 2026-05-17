@@ -32,6 +32,7 @@ cp .env.example .env
 - `TELEGRAM_BOT_TOKEN` заполнен валидным токеном
 - `TELEGRAM_MODE=polling` для локальной разработки
 - если доступ к `api.telegram.org` ограничен, можно задать `PROXY`
+- `CURRENCYBEACON_API_KEY` заполнен валидным ключом для обновления рыночных курсов
 
 По умолчанию backend запускается на `APP_HOST` / `APP_PORT` из `.env`.
 
@@ -93,6 +94,15 @@ uv run python run.py --host 0.0.0.0 --port 8000
 - Swagger: `http://127.0.0.1:8000/docs`
 - Healthcheck: `http://127.0.0.1:8000/health`
 
+## Источник курсов
+
+- Основной источник рыночных курсов: `CurrencyBeacon`
+- Backend запрашивает `USD -> USDT,RUB,THB,GEL,VND` и строит из них пары:
+  `USDTTHB`, `USDTGEL`, `USDTVND`, `RUBTHB`, `RUBGEL`, `RUBVND`
+- Переменные окружения:
+  - `CURRENCYBEACON_API_KEY`
+- Логика наценки хранится отдельно в `Rates.margin` и не зависит от провайдера
+
 ## Диагностика и сброс локальной dev-БД
 
 Если локальная база не совпадает с текущими моделями, пересоздайте dev-БД и
@@ -127,6 +137,7 @@ uv run python app/databases/seed.py
 - При временной сетевой ошибке Telegram polling в dev-режиме не падает безвозвратно, а переподключается с backoff.
 - Если меняете схему базы, повторно запустите `uv run alembic upgrade head`.
 - Актуальный контракт miniapp/admin API описан в `docs/api-contract.md`.
+- Если обновление курсов падает из-за провайдера, сейчас backend только логирует ошибку и повторяет попытку по TTL без fallback на последний сохранённый курс.
 - Если нужны проверки перед коммитом:
 
 ```bash

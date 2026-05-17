@@ -34,6 +34,7 @@ class OrderRepository(BaseRepository[Order]):
 
     async def cancel(self, order_id: int) -> Order | None:
         from app.enums.order import OrderStatus
+
         return await self.update_status(order_id, OrderStatus.CANCELLED)
 
     async def soft_delete(self, order_id: int) -> Order | None:
@@ -55,6 +56,7 @@ class OrderRepository(BaseRepository[Order]):
 
     async def check_open(self, user_id: int) -> Order | None:
         from app.enums.order import OrderStatus
+
         result = await self.session.execute(
             select(Order).where(
                 Order.UserId == user_id,
