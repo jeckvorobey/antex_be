@@ -10,13 +10,11 @@ from aiogram.fsm.state import State, StatesGroup
 from aiogram.types import CallbackQuery, Message
 
 from app.core.database import get_db_session
-from app.enums.order import OrderStatus
-from app.repositories.bank import BankRepository
-from app.repositories.order import OrderRepository
+from app.schemas.miniapp import MiniappOrderCreate
+from app.services.order_flow import create_order_for_user
 from app.telegram import messages
 from app.telegram.i18n import get_user_translator
 from app.telegram.keyboards import choose_currency, confirm_exchange, home, obtaining
-from app.telegram.services.notification_service import notify_operator
 from app.telegram.services.user_service import check_user
 
 logger = logging.getLogger(__name__)
@@ -257,23 +255,20 @@ async def confirm_exchange_callback(callback: CallbackQuery, state: FSMContext) 
     db = await _get_db()
     async with db:
         user, _ = await check_user(db, callback.from_user)
-        bank = next(iter(await BankRepository(db).get_all()), None)
-        if bank is None:
-            await callback.answer("No bank available", show_alert=True)
-            return
-
-        order = await OrderRepository(db).create(
-            UserId=user.id,
-            BankId=bank.id,
-            currencySell=data["currency_sell"],
-            amountSell=data["amount_sell"],
-            currencyBuy="THB",
-            amountBuy=data["amount_buy"],
-            rate=data["rate"],
-            methodGet=data["method"],
-            status=OrderStatus.NEW,
+        order = await create_order_for_user(
+            db,
+            user,
+            MiniappOrderCreate(
+                cityId=user.city_id,
+                currencySell=data["currency_sell"],
+                amountSell=data["amount_sell"],
+                currencyBuy="THB",
+                amountBuy=data["amount_buy"],
+                rate=data["rate"],
+                methodGet=data["method"],
+                contactTelegram=f"@{callback.from_user.username}" if callback.from_user.username else None,
+            ),
         )
-        await db.commit()
 
     await state.clear()
     await callback.message.edit_text(
@@ -286,16 +281,6 @@ async def confirm_exchange_callback(callback: CallbackQuery, state: FSMContext) 
             translator=translate,
         ),
         reply_markup=home(translate),
-    )
-    await notify_operator(
-        callback.bot,
-        order.id,
-        user.id,
-        order.amountSell,
-        order.currencySell,
-        order.amountBuy,
-        order.currencyBuy,
-        data["method"],
     )
     await callback.answer()
 
