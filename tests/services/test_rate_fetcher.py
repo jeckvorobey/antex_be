@@ -7,7 +7,7 @@ import pytest
 
 from app.services.rate_fetcher import fetch_and_save_rates, fetch_raw_rates
 
-MOCK_COINGECKO_RESPONSE = {"tether": {"thb": 35.5, "rub": 91.2}}
+MOCK_COINGECKO_RESPONSE = {"tether": {"thb": 35.5, "rub": 91.2, "gel": 2.72, "vnd": 25500.0}}
 
 
 @pytest.fixture
@@ -29,6 +29,11 @@ class TestFetchRawRates:
         raw = await fetch_raw_rates()
         assert "usdt_rub" in raw
 
+    async def test_returns_new_target_currency_keys(self, mock_coingecko) -> None:
+        raw = await fetch_raw_rates()
+        assert raw["usdt_gel"] == pytest.approx(2.72)
+        assert raw["usdt_vnd"] == pytest.approx(25500.0)
+
     async def test_correct_values_from_api(self, mock_coingecko) -> None:
         raw = await fetch_raw_rates()
         assert raw["usdt_thb"] == pytest.approx(35.5)
@@ -36,23 +41,24 @@ class TestFetchRawRates:
 
     async def test_calls_coingecko_get_price(self, mock_coingecko) -> None:
         await fetch_raw_rates()
-        mock_coingecko.get_price.assert_called_once_with(ids="tether", vs_currencies="thb,rub")
+        mock_coingecko.get_price.assert_called_once_with(
+            ids="tether",
+            vs_currencies="thb,rub,gel,vnd",
+        )
 
 
 class TestFetchAndSaveRates:
-    async def test_upserts_both_currencies(self, db_session, mock_coingecko) -> None:
+    async def test_upserts_all_supported_currencies(self, db_session, mock_coingecko) -> None:
         from app.repositories.rate import RateRepository
 
         rates = await fetch_and_save_rates(db_session)
 
-        assert "USDTTHB" in rates
-        assert "RUBTHB" in rates
+        assert set(rates) == {"USDTTHB", "USDTGEL", "USDTVND", "RUBTHB", "RUBGEL", "RUBVND"}
 
         repo = RateRepository(db_session)
         all_rates = await repo.get_all()
         currencies = {r.currency for r in all_rates}
-        assert "USDTTHB" in currencies
-        assert "RUBTHB" in currencies
+        assert {"USDTTHB", "USDTGEL", "USDTVND", "RUBTHB", "RUBGEL", "RUBVND"} <= currencies
 
     async def test_saved_rates_have_allowance_applied(self, db_session, mock_coingecko) -> None:
         from app.repositories.config import ConfigRepository
@@ -69,6 +75,8 @@ class TestFetchAndSaveRates:
 
         # USDTTHB = 35.5 * 0.98
         assert all_rates["USDTTHB"] == pytest.approx(35.5 * 0.98, rel=1e-4)
+        assert all_rates["USDTGEL"] == pytest.approx(2.72 * 0.98, rel=1e-4)
+        assert all_rates["RUBVND"] == pytest.approx((25500.0 / 91.2) * 0.98, rel=1e-4)
 
     async def test_idempotent_double_call(self, db_session, mock_coingecko) -> None:
         from app.repositories.rate import RateRepository

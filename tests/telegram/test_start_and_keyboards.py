@@ -24,7 +24,7 @@ class _FakeDbSession:
 
 
 class _FakeConfigRepo:
-    def __init__(self, db) -> None:  # noqa: ANN001
+    def __init__(self, db) -> None:
         self.db = db
 
     async def get_or_create(self):
@@ -36,7 +36,7 @@ class _FakeMessage:
         self.from_user = user
         self.answers: list[dict[str, object]] = []
 
-    async def answer(self, text: str, reply_markup=None) -> None:  # noqa: ANN001
+    async def answer(self, text: str, reply_markup=None) -> None:
         self.answers.append({"text": text, "reply_markup": reply_markup})
 
 
@@ -82,7 +82,7 @@ async def test_start_always_uses_home_keyboard(monkeypatch) -> None:
     async def _fake_get_db():
         return fake_db
 
-    async def _fake_check_user(db, tg_user):  # noqa: ANN001
+    async def _fake_check_user(db, tg_user):
         return (SimpleNamespace(role=3), False)
 
     monkeypatch.setattr(start_handler, "_get_db", _fake_get_db)

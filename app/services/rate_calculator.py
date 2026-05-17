@@ -7,12 +7,13 @@
 from __future__ import annotations
 
 
-def calculate_rubthb(usdt_thb: float, usdt_rub: float) -> float:
-    """Кросс-курс RUB→THB через USDT как базовую валюту.
+def calculate_rub_cross_rate(usdt_target: float, usdt_rub: float) -> float:
+    """Кросс-курс RUB→целевой валюте через USDT как базовую валюту.
 
-    Если 1 USDT = X THB и 1 USDT = Y RUB → 1 RUB = X/Y THB.
+    Если 1 USDT = X целевой валюты и 1 USDT = Y RUB,
+    то 1 RUB = X/Y целевой валюты.
     """
-    return usdt_thb / usdt_rub
+    return usdt_target / usdt_rub
 
 
 def calculate_rate_with_allowance(base_rate: float, allowance_pct: float) -> float:
@@ -30,17 +31,25 @@ def calculate_rate_with_allowance(base_rate: float, allowance_pct: float) -> flo
 
 
 def build_rates(
-    usdt_thb: float,
+    usdt_targets: dict[str, float],
     usdt_rub: float,
     allowance_pct: float,
 ) -> dict[str, float]:
     """Строит итоговые курсы с надбавкой для сохранения в БД.
 
     Returns:
-        {"USDTTHB": float, "RUBTHB": float}
+        Пары USDTXXX и RUBXXX для всех переданных целевых валют.
     """
-    rubthb_market = calculate_rubthb(usdt_thb, usdt_rub)
-    return {
-        "USDTTHB": calculate_rate_with_allowance(usdt_thb, allowance_pct),
-        "RUBTHB": calculate_rate_with_allowance(rubthb_market, allowance_pct),
-    }
+    rates: dict[str, float] = {}
+    for target_currency, usdt_target_rate in usdt_targets.items():
+        currency = target_currency.upper()
+        rates[f"USDT{currency}"] = calculate_rate_with_allowance(
+            usdt_target_rate,
+            allowance_pct,
+        )
+        rates[f"RUB{currency}"] = calculate_rate_with_allowance(
+            calculate_rub_cross_rate(usdt_target_rate, usdt_rub),
+            allowance_pct,
+        )
+
+    return rates

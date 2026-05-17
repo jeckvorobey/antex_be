@@ -1,4 +1,4 @@
-# ruff: noqa: RUF001
+# ruff: noqa: RUF001, RUF002
 """Сервисы miniapp API."""
 
 from __future__ import annotations
@@ -31,8 +31,13 @@ from app.schemas.rate import RateOut
 
 DEFAULT_AMOUNT_SELL = 5000
 DEFAULT_PAIR = ("RUB", "THB")
+HOME_RATE_PREVIEW_LIMIT = 3
+HOME_RATE_PRIORITY = ("usdt-thb", "usdt-vnd", "usdt-gel")
+HOME_CHIP_PRIORITY = ("USDT", "THB", "RUB", "GEL", "VND")
 METHODS_BY_BUY_CURRENCY = {
     "THB": ["cash"],
+    "GEL": ["cash"],
+    "VND": ["cash"],
     "USDT": ["wallet"],
     "RUB": ["card"],
 }
@@ -61,7 +66,7 @@ async def get_miniapp_home(db, user) -> MiniappHomeResponse:
     rates = await RateRepository(db).get_all()
     cities = await CityRepository(db).get_all()
     config = await ConfigRepository(db).get_or_create()
-    featured = _build_rate_cards(rates)
+    featured = _build_home_rate_cards(rates)
 
     return MiniappHomeResponse(
         profile=build_miniapp_profile_summary(user),
@@ -100,7 +105,8 @@ async def get_miniapp_home(db, user) -> MiniappHomeResponse:
         ],
         rates=MiniappRatesSection(
             featured=featured,
-            chips=_build_currency_chips(featured),
+            chips=_build_home_currency_chips(featured),
+            previewLimit=HOME_RATE_PREVIEW_LIMIT,
             updatedAt=max((rate.updatedAt for rate in rates), default=None),
             allowance=config.allowance,
         ),
@@ -252,6 +258,22 @@ def _build_rate_cards(rates) -> list[MiniappRateCard]:
     return cards
 
 
+def _build_home_rate_cards(rates) -> list[MiniappRateCard]:
+    """Строит карточки курсов для главной с фиксированным порядком превью."""
+    cards = _build_rate_cards(rates)
+    priority = {
+        pair_id: index
+        for index, pair_id in enumerate(HOME_RATE_PRIORITY)
+    }
+    return sorted(
+        cards,
+        key=lambda card: (
+            priority.get(card.id, len(priority)),
+            card.id,
+        ),
+    )
+
+
 def _build_currency_chips(cards: list[MiniappRateCard]) -> list[str]:
     """Возвращает валюты, которые встречаются в карточках курсов."""
     currencies: list[str] = []
@@ -262,9 +284,15 @@ def _build_currency_chips(cards: list[MiniappRateCard]) -> list[str]:
     return currencies
 
 
+def _build_home_currency_chips(cards: list[MiniappRateCard]) -> list[str]:
+    """Возвращает стабильный порядок валют для home-блока."""
+    available = set(_build_currency_chips(cards))
+    return [currency for currency in HOME_CHIP_PRIORITY if currency in available]
+
+
 def _parse_pair(currency: str) -> tuple[str, str] | None:
     """Разбирает pair-key вида RUBTHB или USDTTHB."""
-    supported = ("USDT", "RUB", "THB")
+    supported = ("USDT", "RUB", "THB", "GEL", "VND")
     upper = currency.upper()
     for sell in supported:
         if not upper.startswith(sell):

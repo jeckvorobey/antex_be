@@ -31,7 +31,7 @@ async def cmd_start(message: Message) -> None:
         config_repo = ConfigRepository(db)
         config = await config_repo.get_or_create()
 
-        user, _ = await check_user(db, message.from_user)
+        _user, _ = await check_user(db, message.from_user)
         await db.commit()
 
     if not config.enabled:

@@ -54,6 +54,7 @@ class MiniappRateCard(BaseModel):
 class MiniappRatesSection(BaseModel):
     featured: list[MiniappRateCard]
     chips: list[str]
+    previewLimit: int
     updatedAt: datetime | None
     allowance: float
 
