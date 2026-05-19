@@ -13,7 +13,7 @@ from app.models.city import City
 logger = logging.getLogger(__name__)
 
 DEFAULT_CITIES: tuple[tuple[str, Country], ...] = (
-    ("Паттая", Country.THAILAND),
+    ("Паттайя", Country.THAILAND),
     ("Батуми", Country.GEORGIA),
     ("Начанг", Country.VIETNAM),
     ("Данаг", Country.VIETNAM),

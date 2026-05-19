@@ -13,7 +13,7 @@ class Country(StrEnum):
     @property
     def ru_name(self) -> str:
         return {
-            Country.THAILAND: "Тайланд",
+            Country.THAILAND: "Таиланд",
             Country.VIETNAM: "Вьетнам",
             Country.GEORGIA: "Грузия",
         }[self]

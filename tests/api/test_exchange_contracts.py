@@ -93,7 +93,7 @@ async def test_admin_rates_include_base_and_final_values(
 
     rub_thb = rows_by_currency["RUBTHB"]
     assert rub_thb["country"] == "thailand"
-    assert rub_thb["countryRuName"] == "Тайланд"
+    assert rub_thb["countryRuName"] == "Таиланд"
     assert rub_thb["baseRate"] == pytest.approx(1 / 0.41)
     assert rub_thb["finalRate"] == pytest.approx(2.51)
     assert rub_thb["baseRateDisplay"] == "2.44"
