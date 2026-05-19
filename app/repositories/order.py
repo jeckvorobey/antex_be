@@ -60,7 +60,7 @@ class OrderRepository(BaseRepository[Order]):
         result = await self.session.execute(
             select(Order).where(
                 Order.UserId == user_id,
-                Order.status.in_([OrderStatus.NEW, OrderStatus.CONFIRMED, OrderStatus.PROCESSING]),
+                Order.status.in_([OrderStatus.CREATED, OrderStatus.PROCESSING]),
                 Order.destroyTime.is_(None),
             )
         )

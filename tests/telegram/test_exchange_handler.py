@@ -81,7 +81,7 @@ async def test_confirm_exchange_creates_order_without_bank_dependency(monkeypatc
         amountBuy=5100.0,
         currencyBuy="THB",
         methodGet="cash",
-        status=int(OrderStatus.NEW),
+        status=int(OrderStatus.CREATED),
     )
     callback = _FakeCallback(
         TgUser(
@@ -115,6 +115,7 @@ async def test_confirm_exchange_creates_order_without_bank_dependency(monkeypatc
         assert db is fake_db
         assert current_user is user
         assert payload.city_id == city.id
+        assert payload.country == Country.THAILAND
         assert payload.currency_sell == "RUB"
         assert payload.currency_buy == "THB"
         assert payload.amount_sell == 15000

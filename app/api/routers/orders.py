@@ -32,11 +32,10 @@ async def get_my_order(order_id: int, db: DbDep, user: CurrentUser) -> OrderOut:
 async def create_order(body: OrderCreate, db: DbDep, user: CurrentUser) -> OrderOut:
     payload = MiniappOrderCreate(
         cityId=body.CityId,
+        country=body.country,
         currencySell=body.currencySell,
         amountSell=body.amountSell,
         currencyBuy=body.currencyBuy,
-        address=body.address,
-        contactTelegram=body.contactTelegram,
         methodGet=body.methodGet,
     )
     order = await create_order_for_user(db, user, payload)

@@ -144,6 +144,7 @@ async def test_orders_api_rejects_legacy_rate_and_amount_buy_fields(
         headers={"Authorization": f"Bearer {token}"},
         json={
             "CityId": customer.city_id,
+            "country": "thailand",
             "currencySell": "RUB",
             "amountSell": 10000,
             "currencyBuy": "THB",

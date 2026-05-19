@@ -52,6 +52,14 @@ class UserRepository(BaseRepository[User]):
             await self.session.flush()
         return user
 
+    async def set_phone(self, user_id: int, phone: str) -> User | None:
+        user = await self.session.get(User, user_id)
+        if user:
+            user.phone = phone
+            await self.session.flush()
+            await self.session.refresh(user)
+        return user
+
     async def get_manager_by_city(self, city_id: int) -> User | None:
         result = await self.session.execute(
             select(User).where(User.city_id == city_id, User.role == int(UserRole.MANAGER))

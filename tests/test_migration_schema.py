@@ -33,6 +33,24 @@ EXPECTED_BROADCAST_COLUMNS = {
     "createdAt",
     "updatedAt",
 }
+EXPECTED_ORDER_COLUMNS = {
+    "id",
+    "UserId",
+    "CityId",
+    "country",
+    "currencySell",
+    "amountSell",
+    "currencyBuy",
+    "amountBuy",
+    "rate",
+    "status",
+    "contactTelegram",
+    "methodGet",
+    "endTime",
+    "destroyTime",
+    "createdAt",
+    "updatedAt",
+}
 
 
 def load_alembic_env_module():
@@ -80,3 +98,7 @@ def test_model_metadata_contains_required_migration_columns() -> None:
     assert "country" in Base.metadata.tables["Rates"].columns
     assert "allowance" not in Base.metadata.tables["Configs"].columns
     assert set(Base.metadata.tables["Broadcasts"].columns.keys()) >= EXPECTED_BROADCAST_COLUMNS
+    assert set(Base.metadata.tables["Orders"].columns.keys()) >= EXPECTED_ORDER_COLUMNS
+    assert "address" not in Base.metadata.tables["Orders"].columns
+    assert Base.metadata.tables["Orders"].columns["CityId"].nullable is True
+    assert Base.metadata.tables["Orders"].columns["country"].nullable is False

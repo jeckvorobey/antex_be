@@ -5,7 +5,7 @@ from aiogram.types import User as TgUser
 from app.enums.user import UserRole, get_role_title, has_admin_access, has_operator_access
 from app.repositories.user import UserRepository
 from app.schemas.user import build_user_out
-from app.services.auth import telegram_auth
+from app.services.auth import resolve_trusted_contact, telegram_auth
 from app.telegram.services.user_service import check_user
 
 
@@ -120,6 +120,32 @@ async def test_telegram_auth_refreshes_existing_user(
     assert user.is_premium is True
 
 
+async def test_resolve_trusted_contact_falls_back_to_phone(db_session) -> None:
+    repo = UserRepository(db_session)
+    user, _ = await repo.find_or_create(
+        999,
+        username=None,
+        first_name="Phone",
+        last_name="Only",
+        language_code="ru",
+        is_bot=False,
+        is_premium=False,
+    )
+
+    missing_contact = resolve_trusted_contact(user)
+    assert missing_contact.ready is False
+    assert missing_contact.contact is None
+    assert missing_contact.source is None
+
+    updated_user = await repo.set_phone(user.id, "+79991234567")
+    assert updated_user is not None
+
+    phone_contact = resolve_trusted_contact(updated_user)
+    assert phone_contact.ready is True
+    assert phone_contact.contact == "+79991234567"
+    assert phone_contact.source == "phone"
+
+
 def test_user_role_helpers_and_serializer() -> None:
     assert UserRole.USER == 9
     assert get_role_title(UserRole.USER) == "Пользователь"
@@ -139,6 +165,7 @@ def test_user_role_helpers_and_serializer() -> None:
     fake_user.last_name = "User"
     fake_user.language_code = "ru"
     fake_user.language_code_app = "ru"
+    fake_user.phone = "+79991234567"
     fake_user.is_bot = False
     fake_user.role = UserRole.USER
     fake_user.is_premium = False
@@ -151,3 +178,7 @@ def test_user_role_helpers_and_serializer() -> None:
     assert user_out.role == 9
     assert user_out.role_name == "Пользователь"
     assert user_out.language_code_app == "ru"
+    assert user_out.phone == "+79991234567"
+    assert user_out.trusted_contact == "user"
+    assert user_out.trusted_contact_source == "username"
+    assert user_out.trusted_contact_ready is True

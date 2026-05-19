@@ -4,9 +4,11 @@
 from __future__ import annotations
 
 from datetime import datetime
+from typing import Literal
 
 from pydantic import BaseModel, Field
 
+from app.enums.country import Country
 from app.schemas.city import CityOut
 from app.schemas.user import UserOut
 
@@ -14,18 +16,16 @@ from app.schemas.user import UserOut
 class OrderCreate(BaseModel):
     model_config = {"extra": "forbid"}
 
-    CityId: int
+    CityId: int | None = None
+    country: Country
     currencySell: str = Field(min_length=3, max_length=20)
     amountSell: int = Field(gt=0)
     currencyBuy: str = Field(min_length=3, max_length=20)
-    address: str | None = None
-    contactTelegram: str | None = None
-    methodGet: str | None = None
+    methodGet: Literal["qrcode", "cash"]
 
 
 class OrderUpdate(BaseModel):
     status: int | None = None
-    address: str | None = None
     methodGet: str | None = None
     endTime: datetime | None = None
     amountBuy: float | None = None
@@ -35,16 +35,16 @@ class OrderUpdate(BaseModel):
 class OrderOut(BaseModel):
     id: int
     UserId: int
-    CityId: int
+    CityId: int | None
+    country: Country
     currencySell: str
     amountSell: int
     currencyBuy: str
     amountBuy: float | None
     rate: float | None
     status: int
-    address: str | None
     contactTelegram: str | None
-    methodGet: str | None
+    methodGet: str
     endTime: datetime | None
     destroyTime: datetime | None
     user: UserOut | None = None
@@ -65,13 +65,13 @@ def build_order_out(order) -> OrderOut:
         id=order.id,
         UserId=order.UserId,
         CityId=order.CityId,
+        country=order.country,
         currencySell=order.currencySell,
         amountSell=order.amountSell,
         currencyBuy=order.currencyBuy,
         amountBuy=order.amountBuy,
         rate=order.rate,
         status=order.status,
-        address=order.address,
         contactTelegram=order.contactTelegram,
         methodGet=order.methodGet,
         endTime=order.endTime,

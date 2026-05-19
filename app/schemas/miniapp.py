@@ -4,9 +4,11 @@
 from __future__ import annotations
 
 from datetime import datetime
+from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from app.enums.country import Country
 from app.schemas.city import CityOut
 from app.schemas.rate import RateOut
 
@@ -152,30 +154,29 @@ class MiniappCitiesResponse(BaseModel):
 class MiniappOrderCreate(BaseModel):
     model_config = ConfigDict(populate_by_name=True, extra="forbid")
 
+    country: Country
     city_id: int | None = Field(default=None, alias="cityId")
     currency_sell: str = Field(alias="currencySell", min_length=3, max_length=20)
     amount_sell: int = Field(alias="amountSell", gt=0)
     currency_buy: str = Field(alias="currencyBuy", min_length=3, max_length=20)
-    address: str | None = None
-    contact_telegram: str | None = Field(default=None, alias="contactTelegram", max_length=255)
-    method_get: str | None = Field(default=None, alias="methodGet", max_length=20)
+    method_get: Literal["qrcode", "cash"] = Field(alias="methodGet")
 
 
 class MiniappOrderItem(BaseModel):
     id: int
-    cityId: int
+    cityId: int | None
+    country: str
     currencySell: str
     amountSell: int
     currencyBuy: str
     amountBuy: float | None
     rate: float | None
     status: int
-    address: str | None
     contactTelegram: str | None
-    methodGet: str | None
+    methodGet: str
     createdAt: datetime
     updatedAt: datetime
-    city: CityOut
+    city: CityOut | None = None
 
 
 class MiniappOrdersResponse(BaseModel):
@@ -225,16 +226,16 @@ def build_miniapp_order_item(order) -> MiniappOrderItem:
     return MiniappOrderItem(
         id=order.id,
         cityId=order.CityId,
+        country=order.country.value,
         currencySell=order.currencySell,
         amountSell=order.amountSell,
         currencyBuy=order.currencyBuy,
         amountBuy=order.amountBuy,
         rate=order.rate,
         status=order.status,
-        address=order.address,
         contactTelegram=order.contactTelegram,
         methodGet=order.methodGet,
         createdAt=order.createdAt,
         updatedAt=order.updatedAt,
-        city=build_city_out(order.city),
+        city=build_city_out(order.city) if order.city else None,
     )

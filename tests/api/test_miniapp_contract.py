@@ -223,59 +223,76 @@ async def test_miniapp_order_is_created_with_server_side_quote(
     api_client: tuple[AsyncClient, AsyncSession],
 ) -> None:
     client, db_session = api_client
-    city, _, customer = await seed_exchange_data(db_session)
+    _, _, customer = await seed_exchange_data(db_session)
     token = create_access_token({"sub": str(customer.id), "role": customer.role})
 
     response = await client.post(
         "/api/miniapp/orders",
         headers={"Authorization": f"Bearer {token}"},
         json={
+            "country": "thailand",
             "currencySell": "rub",
             "amountSell": 10000,
             "currencyBuy": "thb",
-            "contactTelegram": "@customer",
-            "methodGet": "cash",
+            "methodGet": "qrcode",
         },
     )
 
     assert response.status_code == 201
     order = response.json()
-    assert order["cityId"] == city.id
+    assert order["cityId"] is None
+    assert order["country"] == "thailand"
     assert order["currencySell"] == "RUB"
     assert order["currencyBuy"] == "THB"
     assert order["rate"] == 0.4
     assert order["amountBuy"] == pytest.approx(10000 * 0.4)
-    assert order["contactTelegram"] == "@customer"
-    assert order["city"]["name"] == "Bangkok"
+    assert order["contactTelegram"] == "customer"
+    assert order["city"] is None
 
 
 @pytest.mark.asyncio
-async def test_miniapp_order_supports_new_pair_with_server_side_quote(
+async def test_miniapp_order_cash_requires_city_and_uses_same_backend_validation(
     api_client: tuple[AsyncClient, AsyncSession],
 ) -> None:
     client, db_session = api_client
     city, _, customer = await seed_exchange_data(db_session)
     token = create_access_token({"sub": str(customer.id), "role": customer.role})
 
-    response = await client.post(
+    invalid_response = await client.post(
         "/api/miniapp/orders",
         headers={"Authorization": f"Bearer {token}"},
         json={
+            "country": "georgia",
             "currencySell": "rub",
             "amountSell": 10000,
             "currencyBuy": "gel",
-            "contactTelegram": "@customer",
+            "methodGet": "cash",
+        },
+    )
+
+    assert invalid_response.status_code == 422
+    assert invalid_response.json()["code"] == "CITY_REQUIRED_FOR_CASH"
+
+    response = await client.post(
+        "/api/orders",
+        headers={"Authorization": f"Bearer {token}"},
+        json={
+            "CityId": city.id,
+            "country": "thailand",
+            "currencySell": "rub",
+            "amountSell": 10000,
+            "currencyBuy": "thb",
             "methodGet": "cash",
         },
     )
 
     assert response.status_code == 201
     order = response.json()
-    assert order["cityId"] == city.id
-    assert order["currencySell"] == "RUB"
-    assert order["currencyBuy"] == "GEL"
-    assert order["rate"] == 0.03
-    assert order["amountBuy"] == pytest.approx(10000 * 0.03)
+    assert order["CityId"] == city.id
+    assert order["country"] == "thailand"
+    assert order["currencyBuy"] == "THB"
+    assert order["methodGet"] == "cash"
+    assert order["contactTelegram"] == "customer"
 
 
 @pytest.mark.asyncio
@@ -289,12 +306,14 @@ async def test_miniapp_order_returns_machine_readable_errors(
         Order(
             UserId=customer.id,
             CityId=city.id,
+            country=Country.THAILAND,
             currencySell="RUB",
             amountSell=1000,
             currencyBuy="THB",
             amountBuy=410,
             rate=0.41,
-            status=int(OrderStatus.NEW),
+            status=int(OrderStatus.CREATED),
+            methodGet="cash",
         )
     )
     await db_session.flush()
@@ -302,11 +321,65 @@ async def test_miniapp_order_returns_machine_readable_errors(
     response = await client.post(
         "/api/miniapp/orders",
         headers={"Authorization": f"Bearer {token}"},
-        json={"currencySell": "RUB", "amountSell": 1000, "currencyBuy": "EUR"},
+        json={
+            "country": "thailand",
+            "currencySell": "RUB",
+            "amountSell": 1000,
+            "currencyBuy": "EUR",
+            "methodGet": "qrcode",
+        },
     )
 
     assert response.status_code == 409
     assert response.json()["code"] == "ORDER_ALREADY_EXISTS"
+
+
+@pytest.mark.asyncio
+async def test_miniapp_order_requires_trusted_contact_readiness(
+    api_client: tuple[AsyncClient, AsyncSession],
+) -> None:
+    client, db_session = api_client
+    city = City(name="Bangkok", country=Country.THAILAND)
+    manager = User(
+        telegram_id=700001,
+        username="manager",
+        first_name="Order",
+        role=int(UserRole.MANAGER),
+    )
+    customer = User(
+        telegram_id=700002,
+        username=None,
+        phone=None,
+        first_name="Happy",
+        role=int(UserRole.USER),
+    )
+    db_session.add_all(
+        [
+            city,
+            manager,
+            customer,
+            Rate(currency="RUBTHB", price=0.41, margin=3.0, country=Country.THAILAND),
+        ]
+    )
+    await db_session.flush()
+    manager.city_id = city.id
+    await db_session.flush()
+    token = create_access_token({"sub": str(customer.id), "role": customer.role})
+
+    response = await client.post(
+        "/api/miniapp/orders",
+        headers={"Authorization": f"Bearer {token}"},
+        json={
+            "country": "thailand",
+            "currencySell": "RUB",
+            "amountSell": 1000,
+            "currencyBuy": "THB",
+            "methodGet": "qrcode",
+        },
+    )
+
+    assert response.status_code == 409
+    assert response.json()["code"] == "TRUSTED_CONTACT_NOT_READY"
 
 
 @pytest.mark.asyncio
@@ -322,12 +395,14 @@ async def test_admin_summary_returns_mvp_dashboard_metrics(
             Order(
                 UserId=customer.id,
                 CityId=city.id,
+                country=Country.THAILAND,
                 currencySell="RUB",
                 amountSell=10000,
                 currencyBuy="THB",
                 amountBuy=4100,
                 rate=0.41,
-                status=int(OrderStatus.NEW),
+                status=int(OrderStatus.CREATED),
+                methodGet="cash",
             ),
         ]
     )

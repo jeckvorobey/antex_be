@@ -137,11 +137,10 @@ async def test_rates_and_order_happy_path(
         headers={"Authorization": f"Bearer {token}"},
         json={
             "CityId": city.id,
+            "country": "thailand",
             "currencySell": "rub",
             "amountSell": 10000,
             "currencyBuy": "thb",
-            "address": "Sukhumvit",
-            "contactTelegram": "@customer",
             "methodGet": "cash",
         },
     )
@@ -151,6 +150,8 @@ async def test_rates_and_order_happy_path(
     assert created_order["currencySell"] == "RUB"
     assert created_order["currencyBuy"] == "THB"
     assert created_order["CityId"] == city.id
+    assert created_order["country"] == "thailand"
+    assert created_order["contactTelegram"] == "customer"
 
     order_id = created_order["id"]
 
@@ -167,4 +168,4 @@ async def test_rates_and_order_happy_path(
         headers={"Authorization": f"Bearer {token}"},
     )
     assert detail_response.status_code == 200
-    assert detail_response.json()["address"] == "Sukhumvit"
+    assert detail_response.json()["methodGet"] == "cash"

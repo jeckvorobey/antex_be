@@ -9,7 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.security import create_access_token, validate_telegram_init_data
 from app.exceptions import AntExException
 from app.repositories.user import UserRepository
-from app.schemas.auth import TokenResponse
+from app.schemas.auth import TokenResponse, TrustedContactResponse, build_trusted_contact
 
 
 async def telegram_auth(db: AsyncSession, init_data: str) -> TokenResponse:
@@ -40,3 +40,18 @@ async def telegram_auth(db: AsyncSession, init_data: str) -> TokenResponse:
 
     token = create_access_token({"sub": str(user.id), "role": user.role})
     return TokenResponse(access_token=token)
+
+
+def resolve_trusted_contact(user) -> TrustedContactResponse:
+    return build_trusted_contact(user)
+
+
+async def save_trusted_phone(
+    db: AsyncSession,
+    user_id: int,
+    phone: str,
+) -> TrustedContactResponse:
+    user = await UserRepository(db).set_phone(user_id, phone)
+    if user is None:
+        raise AntExException("User not found", code="USER_NOT_FOUND", status_code=404)
+    return resolve_trusted_contact(user)

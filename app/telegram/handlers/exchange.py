@@ -296,14 +296,14 @@ async def confirm_exchange_callback(callback: CallbackQuery, state: FSMContext) 
             db,
             user,
             MiniappOrderCreate(
-                cityId=user.city_id,
+                cityId=user.city_id if data["method"] == "cash" else None,
+                country=ExchangeService().infer_country_from_pair(
+                    f"{data['currency_sell']}{data['currency_buy']}"
+                ),
                 currencySell=data["currency_sell"],
                 amountSell=data["amount_sell"],
                 currencyBuy=data["currency_buy"],
                 methodGet=data["method"],
-                contactTelegram=(
-                    f"@{callback.from_user.username}" if callback.from_user.username else None
-                ),
             ),
         )
 

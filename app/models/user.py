@@ -21,6 +21,7 @@ class User(Base, TimestampMixin):
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     telegram_id: Mapped[int | None] = mapped_column(BigInteger, unique=True, nullable=True)
     username: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    phone: Mapped[str | None] = mapped_column(String(32), nullable=True)
     first_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
     last_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
     language_code: Mapped[str | None] = mapped_column(String(10), nullable=True)

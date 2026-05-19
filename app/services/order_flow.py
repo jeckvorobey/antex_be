@@ -7,12 +7,15 @@ import logging
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.enums.country import Country
+from app.enums.order import MethodGet
 from app.enums.order import OrderStatus
 from app.exceptions import AntExException
 from app.repositories.city import CityRepository
 from app.repositories.order import OrderRepository
 from app.repositories.user import UserRepository
 from app.schemas.miniapp import MiniappOrderCreate
+from app.services.auth import resolve_trusted_contact
 from app.services.exchange import ExchangeQuoteInput, ExchangeService
 from app.services.notifications import notify_order_created
 
@@ -37,18 +40,26 @@ async def create_order_for_user(
             status_code=409,
         )
 
-    city_id = await _resolve_city_id(db, user, payload)
-    city = await city_repo.get_by_id(city_id)
-    if not city:
-        raise AntExException("City not found", code="CITY_NOT_FOUND", status_code=404)
-
-    manager = await user_repo.get_manager_by_city(city_id)
-    if not manager:
+    trusted_contact = resolve_trusted_contact(user)
+    if not trusted_contact.ready:
         raise AntExException(
-            "City manager is not configured",
-            code="CITY_MANAGER_NOT_CONFIGURED",
+            "Trusted contact is not ready",
+            code="TRUSTED_CONTACT_NOT_READY",
             status_code=409,
         )
+
+    city = await _resolve_city(db, payload)
+    _validate_country_and_method(payload, city)
+
+    manager = None
+    if city is not None:
+        manager = await user_repo.get_manager_by_city(city.id)
+        if not manager:
+            raise AntExException(
+                "City manager is not configured",
+                code="CITY_MANAGER_NOT_CONFIGURED",
+                status_code=409,
+            )
 
     quote = await ExchangeService().get_quote(
         db,
@@ -58,17 +69,19 @@ async def create_order_for_user(
             amount_sell=payload.amount_sell,
         ),
     )
+    _validate_quote_country(payload.country, quote.currency_buy)
+
     order = await order_repo.create(
         UserId=user.id,
-        CityId=city_id,
+        CityId=city.id if city else None,
+        country=payload.country,
         currencySell=quote.currency_sell,
         amountSell=quote.amount_sell,
         currencyBuy=quote.currency_buy,
         amountBuy=quote.amount_buy,
         rate=quote.rate,
-        status=int(OrderStatus.NEW),
-        address=payload.address,
-        contactTelegram=payload.contact_telegram,
+        status=int(OrderStatus.CREATED),
+        contactTelegram=trusted_contact.contact,
         methodGet=payload.method_get,
     )
     await db.commit()
@@ -82,18 +95,57 @@ async def create_order_for_user(
     return hydrated
 
 
-async def _resolve_city_id(
+async def _resolve_city(
     db: AsyncSession,
-    user,
     payload: MiniappOrderCreate,
-) -> int:
-    """Выбирает город заявки: payload -> профиль пользователя -> первый город."""
-    if payload.city_id:
-        return payload.city_id
-    if user.city_id:
-        return user.city_id
+) -> object | None:
+    """Возвращает город заявки только для cash-потока."""
+    if payload.city_id is None:
+        return None
 
-    cities = await CityRepository(db).get_all()
-    if not cities:
+    city = await CityRepository(db).get_by_id(payload.city_id)
+    if not city:
         raise AntExException("City not found", code="CITY_NOT_FOUND", status_code=404)
-    return cities[0].id
+    return city
+
+
+def _validate_country_and_method(payload: MiniappOrderCreate, city) -> None:
+    if payload.method_get == MethodGet.CASH:
+        if payload.city_id is None:
+            raise AntExException(
+                "City is required for cash method",
+                code="CITY_REQUIRED_FOR_CASH",
+                status_code=422,
+            )
+        if city is None:
+            raise AntExException("City not found", code="CITY_NOT_FOUND", status_code=404)
+        if city.country != payload.country:
+            raise AntExException(
+                "City does not match country",
+                code="CITY_COUNTRY_MISMATCH",
+                status_code=422,
+            )
+        return
+
+    if payload.method_get == MethodGet.QRCODE:
+        return
+
+    raise AntExException(
+        "Unsupported receive method",
+        code="UNSUPPORTED_METHOD",
+        status_code=422,
+    )
+
+
+def _validate_quote_country(country: Country, currency_buy: str) -> None:
+    expected_country = {
+        "THB": Country.THAILAND,
+        "GEL": Country.GEORGIA,
+        "VND": Country.VIETNAM,
+    }.get(currency_buy.upper())
+    if expected_country is None or expected_country != country:
+        raise AntExException(
+            "Currency pair does not match country",
+            code="COUNTRY_CURRENCY_MISMATCH",
+            status_code=422,
+        )
