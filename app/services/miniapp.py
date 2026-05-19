@@ -39,7 +39,14 @@ from app.services.exchange import (
 
 DEFAULT_AMOUNT_SELL = 5000
 DEFAULT_PAIR = ("RUB", "THB")
-HOME_RATE_PRIORITY = ("usdt-thb", "usdt-vnd", "usdt-gel")
+HOME_RATE_PRIORITY = (
+    "rub-thb",
+    "usdt-thb",
+    "rub-vnd",
+    "usdt-vnd",
+    "rub-gel",
+    "usdt-gel",
+)
 
 
 async def list_miniapp_cities(db) -> MiniappCitiesResponse:

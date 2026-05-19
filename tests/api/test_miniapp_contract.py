@@ -101,9 +101,12 @@ async def test_miniapp_home_and_exchange_are_backend_driven(
     home = home_response.json()
     assert home["profile"]["displayName"] == "Happy"
     assert home["rates"]["previewLimit"] == 3
-    assert [pair["id"] for pair in home["rates"]["featured"][:3]] == [
+    assert [pair["id"] for pair in home["rates"]["featured"]] == [
+        "rub-thb",
         "usdt-thb",
+        "rub-vnd",
         "usdt-vnd",
+        "rub-gel",
         "usdt-gel",
     ]
     assert home["rates"]["chips"] == ["USDT", "THB", "RUB", "GEL", "VND"]
@@ -117,7 +120,8 @@ async def test_miniapp_home_and_exchange_are_backend_driven(
     assert home["locations"][0]["countryLabel"] == "Таиланд"
     assert home["locations"][0]["id"] == str(city.id)
     assert home["rates"]["featured"][0]["country"] == "thailand"
-    assert home["rates"]["featured"][0]["availableMethods"] == ["qrcode", "cash"]
+    assert home["rates"]["featured"][0]["availableMethods"] == ["card"]
+    assert home["rates"]["featured"][1]["availableMethods"] == ["qrcode", "cash"]
 
     assert exchange_response.status_code == 200
     exchange = exchange_response.json()
