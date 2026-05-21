@@ -8,18 +8,16 @@ from enum import IntEnum
 class UserRole(IntEnum):
     USER = 9
     MANAGER = 2
-    OPERATOR = 8
-    ADMIN = 3
+    ADMIN = 1
 
 
 ROLE_TITLES: dict[int, str] = {
     UserRole.USER: "Пользователь",
     UserRole.MANAGER: "Менеджер",
-    UserRole.OPERATOR: "Оператор",
     UserRole.ADMIN: "Администратор",
 }
 
-OPERATOR_ACCESS_ROLES = frozenset({UserRole.MANAGER, UserRole.OPERATOR, UserRole.ADMIN})
+OPERATOR_ACCESS_ROLES = frozenset({UserRole.MANAGER, UserRole.ADMIN})
 ADMIN_ACCESS_ROLES = frozenset({UserRole.ADMIN})
 
 

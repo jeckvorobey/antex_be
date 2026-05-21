@@ -150,11 +150,13 @@ def test_user_role_helpers_and_serializer() -> None:
     assert UserRole.USER == 9
     assert get_role_title(UserRole.USER) == "Пользователь"
     assert get_role_title(UserRole.MANAGER) == "Менеджер"
-    assert get_role_title(UserRole.OPERATOR) == "Оператор"
     assert get_role_title(UserRole.ADMIN) == "Администратор"
+    assert get_role_title(8) == "Роль 8"
     assert has_operator_access(UserRole.USER) is False
-    assert has_operator_access(UserRole.OPERATOR) is True
-    assert has_admin_access(UserRole.OPERATOR) is False
+    assert has_operator_access(8) is False
+    assert has_operator_access(UserRole.MANAGER) is True
+    assert has_operator_access(UserRole.ADMIN) is True
+    assert has_admin_access(UserRole.MANAGER) is False
     assert has_admin_access(UserRole.ADMIN) is True
 
     fake_user = type("FakeUser", (), {})()
