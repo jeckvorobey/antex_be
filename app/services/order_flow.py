@@ -13,6 +13,7 @@ from app.enums.order import MethodGet, OrderStatus
 from app.exceptions import AntExException
 from app.repositories.city import CityRepository
 from app.repositories.order import OrderRepository
+from app.repositories.user import UserRepository
 from app.schemas.miniapp import MiniappOrderCreate
 from app.services.auth import resolve_trusted_contact
 from app.services.exchange import ExchangeService
@@ -50,7 +51,7 @@ async def create_order_for_user(
     city = await _resolve_city(db, payload)
     _validate_country_and_method(payload, city)
 
-    manager = None
+    manager = await UserRepository(db).get_manager()
 
     await _validate_rate_pair_exists(db, payload)
     currency_sell = payload.currency_sell.upper()

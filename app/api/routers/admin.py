@@ -195,12 +195,12 @@ async def update_user(user_id: int, body: UserUpdate, db: DbDep, _: AdminUser) -
         if not city:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="City not found")
 
-    if new_role == UserRole.MANAGER and new_city_id is not None:
-        current_manager = await repo.get_manager_by_city(new_city_id)
+    if new_role == UserRole.MANAGER:
+        current_manager = await repo.get_manager()
         if current_manager and current_manager.id != user.id:
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
-                detail="City already has a manager",
+                detail="Manager is already assigned",
             )
 
     updated = await repo.update(user, **update_data)

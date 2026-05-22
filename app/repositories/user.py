@@ -72,6 +72,12 @@ class UserRepository(BaseRepository[User]):
         )
         return result.scalar_one_or_none()
 
+    async def get_manager(self) -> User | None:
+        result = await self.session.execute(
+            select(User).where(User.role == int(UserRole.MANAGER)).order_by(User.id.asc()).limit(1)
+        )
+        return result.scalar_one_or_none()
+
     async def get_users_interval(self, date_from: datetime, date_to: datetime) -> list[User]:
         result = await self.session.execute(
             select(User).where(User.createdAt >= date_from, User.createdAt <= date_to)
