@@ -119,8 +119,10 @@ async def test_miniapp_home_and_exchange_are_backend_driven(
     assert home["countries"][0]["currency"] == "THB"
     assert home["locations"][0]["country"] == "thailand"
     assert home["locations"][0]["countryLabel"] == "Таиланд"
+    assert home["locations"][0]["countryFlag"] == "🇹🇭"
     assert home["locations"][0]["id"] == str(city.id)
     assert home["rates"]["featured"][0]["country"] == "thailand"
+    assert home["rates"]["featured"][0]["countryFlag"] == "🇹🇭"
     assert home["rates"]["featured"][0]["fromCurrency"] == "RUB"
     assert home["rates"]["featured"][0]["toCurrency"] == "THB"
     assert home["rates"]["featured"][0]["rate"] == pytest.approx(2.51)

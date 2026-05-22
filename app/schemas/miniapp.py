@@ -46,6 +46,7 @@ class MiniappRateCard(BaseModel):
     label: str
     country: str
     countryLabel: str
+    countryFlag: str
     fromCurrency: str
     toCurrency: str
     rate: float
@@ -85,6 +86,7 @@ class MiniappLocationItem(BaseModel):
     city: str
     country: str
     countryLabel: str
+    countryFlag: str
     hours: str
     accent: str
 

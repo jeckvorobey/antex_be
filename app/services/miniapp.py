@@ -150,6 +150,7 @@ async def get_miniapp_home(db, user) -> MiniappHomeResponse:
                 city=city.name,
                 country=city.country.value,
                 countryLabel=city.country.ru_name,
+                countryFlag=city.country.flag,
                 hours="Ежедневно",
                 accent="ocean" if index % 2 == 0 else "gold",
             )
@@ -231,6 +232,7 @@ def _build_rate_cards(snapshots: list[ExchangePairSnapshot]) -> list[MiniappRate
             label=snapshot.label,
             country=snapshot.country.value,
             countryLabel=snapshot.country.ru_name,
+            countryFlag=snapshot.country.flag,
             fromCurrency=snapshot.currency_sell,
             toCurrency=snapshot.currency_buy,
             rate=snapshot.client_rate,
