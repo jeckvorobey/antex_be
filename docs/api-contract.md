@@ -21,7 +21,6 @@ Machine-readable коды ошибок miniapp:
 - `RATE_UNAVAILABLE`
 - `UNSUPPORTED_PAIR`
 - `CITY_NOT_FOUND`
-- `CITY_MANAGER_NOT_CONFIGURED`
 - `ORDER_ALREADY_EXISTS`
 
 ## Admin

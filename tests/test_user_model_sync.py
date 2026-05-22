@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 from aiogram.types import User as TgUser
+from sqlalchemy.exc import IntegrityError
 
 from app.enums.user import UserRole, get_role_title, has_admin_access, has_operator_access
+from app.models.user import User
 from app.repositories.user import UserRepository
 from app.schemas.user import build_user_out
 from app.services.auth import resolve_trusted_contact, telegram_auth
@@ -118,6 +120,33 @@ async def test_telegram_auth_refreshes_existing_user(
     assert user.first_name == "Fresh"
     assert user.language_code == "ru"
     assert user.is_premium is True
+
+
+async def test_users_username_is_unique(db_session) -> None:
+    first_user = User(
+        telegram_id=1001,
+        username="unique_name",
+        first_name="First",
+        role=UserRole.USER,
+    )
+    second_user = User(
+        telegram_id=1002,
+        username="unique_name",
+        first_name="Second",
+        role=UserRole.USER,
+    )
+
+    db_session.add(first_user)
+    await db_session.flush()
+
+    db_session.add(second_user)
+
+    try:
+        await db_session.flush()
+    except IntegrityError:
+        await db_session.rollback()
+    else:
+        raise AssertionError("Duplicate username must violate a unique constraint")
 
 
 async def test_resolve_trusted_contact_falls_back_to_phone(db_session) -> None:

@@ -358,20 +358,23 @@ async def test_miniapp_order_returns_machine_readable_errors(
     client, db_session = api_client
     city, _, customer = await seed_exchange_data(db_session)
     token = create_access_token({"sub": str(customer.id), "role": customer.role})
-    db_session.add(
-        Order(
-            UserId=customer.id,
-            CityId=city.id,
-            country=Country.THAILAND,
-            currencySell="RUB",
-            amountSell=1000,
-            currencyBuy="THB",
-            amountBuy=410,
-            rate=0.41,
-            status=int(OrderStatus.CREATED),
-            methodGet="cash",
-            publicNumber="2026050001",
-        )
+    db_session.add_all(
+        [
+            Order(
+                UserId=customer.id,
+                CityId=city.id,
+                country=Country.THAILAND,
+                currencySell="RUB",
+                amountSell=1000,
+                currencyBuy="THB",
+                amountBuy=410,
+                rate=0.41,
+                status=int(OrderStatus.CREATED),
+                methodGet="cash",
+                publicNumber=f"202605{index:04d}",
+            )
+            for index in range(1, 11)
+        ]
     )
     await db_session.flush()
 

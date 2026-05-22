@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from sqlalchemy import desc, select
+from sqlalchemy import desc, func, select
 from sqlalchemy.orm import selectinload
 
 from app.models.order import Order
@@ -54,17 +54,17 @@ class OrderRepository(BaseRepository[Order]):
         )
         return list(result.scalars().all())
 
-    async def check_open(self, user_id: int) -> Order | None:
+    async def count_open(self, user_id: int) -> int:
         from app.enums.order import OrderStatus
 
         result = await self.session.execute(
-            select(Order).where(
+            select(func.count(Order.id)).where(
                 Order.UserId == user_id,
                 Order.status.in_([OrderStatus.CREATED, OrderStatus.PROCESSING]),
                 Order.destroyTime.is_(None),
             )
         )
-        return result.scalar_one_or_none()
+        return int(result.scalar_one())
 
     async def get_user_orders(self, user_id: int, limit: int = 10) -> list[Order]:
         result = await self.session.execute(

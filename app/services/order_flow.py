@@ -13,7 +13,6 @@ from app.enums.order import MethodGet, OrderStatus
 from app.exceptions import AntExException
 from app.repositories.city import CityRepository
 from app.repositories.order import OrderRepository
-from app.repositories.user import UserRepository
 from app.schemas.miniapp import MiniappOrderCreate
 from app.services.auth import resolve_trusted_contact
 from app.services.exchange import ExchangeService
@@ -21,6 +20,7 @@ from app.services.notifications import notify_order_created
 from app.services.order_numbers import OrderNumberService
 
 logger = logging.getLogger(__name__)
+MAX_ACTIVE_ORDERS_PER_USER = 10
 
 
 async def create_order_for_user(
@@ -29,13 +29,12 @@ async def create_order_for_user(
     payload: MiniappOrderCreate,
 ) -> object:
     """Создаёт предварительную заявку с клиентским расчётом miniapp."""
-    user_repo = UserRepository(db)
     order_repo = OrderRepository(db)
 
-    open_order = await order_repo.check_open(user.id)
-    if open_order:
+    open_orders_count = await order_repo.count_open(user.id)
+    if open_orders_count >= MAX_ACTIVE_ORDERS_PER_USER:
         raise AntExException(
-            "User already has an active order",
+            "User has reached active orders limit",
             code="ORDER_ALREADY_EXISTS",
             status_code=409,
         )
@@ -52,14 +51,6 @@ async def create_order_for_user(
     _validate_country_and_method(payload, city)
 
     manager = None
-    if city is not None:
-        manager = await user_repo.get_manager_by_city(city.id)
-        if not manager:
-            raise AntExException(
-                "City manager is not configured",
-                code="CITY_MANAGER_NOT_CONFIGURED",
-                status_code=409,
-            )
 
     await _validate_rate_pair_exists(db, payload)
     currency_sell = payload.currency_sell.upper()
