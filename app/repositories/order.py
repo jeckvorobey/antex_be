@@ -66,12 +66,22 @@ class OrderRepository(BaseRepository[Order]):
         )
         return int(result.scalar_one())
 
-    async def get_user_orders(self, user_id: int, limit: int = 10) -> list[Order]:
+    async def count_user_orders(self, user_id: int) -> int:
+        result = await self.session.execute(
+            select(func.count(Order.id)).where(
+                Order.UserId == user_id,
+                Order.destroyTime.is_(None),
+            )
+        )
+        return int(result.scalar_one())
+
+    async def get_user_orders(self, user_id: int, limit: int = 10, offset: int = 0) -> list[Order]:
         result = await self.session.execute(
             select(Order)
             .where(Order.UserId == user_id, Order.destroyTime.is_(None))
             .options(selectinload(Order.city))
             .order_by(desc(Order.createdAt))
+            .offset(offset)
             .limit(limit)
         )
         return list(result.scalars().all())

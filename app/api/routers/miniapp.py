@@ -63,8 +63,13 @@ async def get_rates(db: DbDep, _: MiniappUser) -> MiniappRatesResponse:
 
 
 @router.get("/orders", response_model=MiniappOrdersResponse)
-async def get_orders(db: DbDep, user: MiniappUser) -> MiniappOrdersResponse:
-    return await list_miniapp_orders(db, user.id)
+async def get_orders(
+    db: DbDep,
+    user: MiniappUser,
+    limit: int = Query(default=20, ge=1, le=100),
+    offset: int = Query(default=0, ge=0),
+) -> MiniappOrdersResponse:
+    return await list_miniapp_orders(db, user.id, limit=limit, offset=offset)
 
 
 @router.post(

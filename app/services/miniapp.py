@@ -61,10 +61,23 @@ async def list_miniapp_rates(db) -> MiniappRatesResponse:
     return MiniappRatesResponse(items=[build_rate_out(rate) for rate in rates])
 
 
-async def list_miniapp_orders(db, user_id: int) -> MiniappOrdersResponse:
+async def list_miniapp_orders(
+    db,
+    user_id: int,
+    limit: int = 20,
+    offset: int = 0,
+) -> MiniappOrdersResponse:
     """Возвращает историю заявок текущего пользователя miniapp."""
-    orders = await OrderRepository(db).get_user_orders(user_id, limit=100)
-    return MiniappOrdersResponse(items=[build_miniapp_order_item(order) for order in orders])
+    repository = OrderRepository(db)
+    total = await repository.count_user_orders(user_id)
+    orders = await repository.get_user_orders(user_id, limit=limit, offset=offset)
+    return MiniappOrdersResponse(
+        items=[build_miniapp_order_item(order) for order in orders],
+        limit=limit,
+        offset=offset,
+        total=total,
+        hasMore=offset + len(orders) < total,
+    )
 
 
 async def get_miniapp_home(db, user) -> MiniappHomeResponse:

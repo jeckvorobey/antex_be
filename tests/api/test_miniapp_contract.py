@@ -216,10 +216,72 @@ async def test_miniapp_stateful_request_without_token_uses_dev_user_from_db(
     response = await client.get("/api/miniapp/orders")
 
     assert response.status_code == 200
-    assert response.json() == {"items": []}
+    assert response.json() == {"items": [], "limit": 20, "offset": 0, "total": 0, "hasMore": False}
 
     users_count = await db_session.scalar(select(func.count(User.id)))
     assert users_count == 2
+
+
+@pytest.mark.asyncio
+async def test_miniapp_orders_support_limit_offset_pagination(
+    api_client: tuple[AsyncClient, AsyncSession],
+) -> None:
+    client, db_session = api_client
+    city, _, customer = await seed_exchange_data(db_session)
+    token = create_access_token({"sub": str(customer.id), "role": customer.role})
+    orders = [
+        Order(
+            UserId=customer.id,
+            CityId=city.id,
+            country=Country.THAILAND,
+            currencySell="RUB",
+            amountSell=5000 + index,
+            currencyBuy="THB",
+            amountBuy=2000 + index,
+            rate=0.4,
+            status=int(OrderStatus.CREATED),
+            methodGet="cash",
+            publicNumber=f"202605{index:04d}",
+            createdAt=datetime(2026, 5, index, 12, 0, tzinfo=UTC),
+        )
+        for index in range(1, 8)
+    ]
+    db_session.add_all(orders)
+    await db_session.flush()
+
+    first_response = await client.get(
+        "/api/miniapp/orders?limit=5&offset=0",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    second_response = await client.get(
+        "/api/miniapp/orders?limit=5&offset=5",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+
+    assert first_response.status_code == 200
+    first_page = first_response.json()
+    assert first_page["limit"] == 5
+    assert first_page["offset"] == 0
+    assert first_page["total"] == 7
+    assert first_page["hasMore"] is True
+    assert [item["publicNumber"] for item in first_page["items"]] == [
+        "2026050007",
+        "2026050006",
+        "2026050005",
+        "2026050004",
+        "2026050003",
+    ]
+
+    assert second_response.status_code == 200
+    second_page = second_response.json()
+    assert second_page["limit"] == 5
+    assert second_page["offset"] == 5
+    assert second_page["total"] == 7
+    assert second_page["hasMore"] is False
+    assert [item["publicNumber"] for item in second_page["items"]] == [
+        "2026050002",
+        "2026050001",
+    ]
 
 
 @pytest.mark.asyncio
@@ -533,7 +595,7 @@ async def test_miniapp_order_allows_missing_trusted_contact(
         },
     )
 
-    assert response.status_code == 200
+    assert response.status_code == 201
     order = response.json()
     assert order["contactTelegram"] is None
 

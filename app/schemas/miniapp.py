@@ -187,6 +187,10 @@ class MiniappOrderItem(BaseModel):
 
 class MiniappOrdersResponse(BaseModel):
     items: list[MiniappOrderItem]
+    limit: int
+    offset: int
+    total: int
+    hasMore: bool
 
 
 class MiniappOrderCreatedResponse(BaseModel):
