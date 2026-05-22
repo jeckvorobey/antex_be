@@ -194,12 +194,6 @@ async def update_user(user_id: int, body: UserUpdate, db: DbDep, _: AdminUser) -
         if not city:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="City not found")
 
-    if new_role == UserRole.MANAGER and new_city_id is None:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Manager must be assigned to a city",
-        )
-
     if new_role == UserRole.MANAGER and new_city_id is not None:
         current_manager = await repo.get_manager_by_city(new_city_id)
         if current_manager and current_manager.id != user.id:
