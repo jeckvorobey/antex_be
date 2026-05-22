@@ -7,7 +7,7 @@ from aiogram.filters import Command, CommandStart
 from aiogram.types import Message
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.database import get_db_session
+from app.core.database import create_db_session
 from app.enums.user import has_admin_access
 from app.repositories.config import ConfigRepository
 from app.telegram import messages
@@ -19,8 +19,7 @@ router = Router(name="start")
 
 
 async def _get_db() -> AsyncSession:
-    async for session in get_db_session():
-        return session
+    return create_db_session()
 
 
 @router.message(CommandStart())

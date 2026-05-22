@@ -21,6 +21,11 @@ async_session = async_sessionmaker(
 )
 
 
+def create_db_session() -> AsyncSession:
+    """Создать управляемую асинхронную сессию вне FastAPI dependency."""
+    return async_session()
+
+
 async def get_db_session() -> AsyncIterator[AsyncSession]:
     """Получить асинхронную сессию БД."""
     async with async_session() as session:

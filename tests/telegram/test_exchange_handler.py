@@ -3,6 +3,7 @@ from __future__ import annotations
 import os
 from types import SimpleNamespace
 
+from aiogram.exceptions import TelegramBadRequest
 from aiogram.types import User as TgUser
 
 os.environ.setdefault("DATABASE_URL", "sqlite+aiosqlite:///:memory:")
@@ -29,11 +30,21 @@ class _FakeDbSession:
 
 
 class _FakeMessage:
-    def __init__(self) -> None:
+    def __init__(self, *, fail_with_not_modified: bool = False) -> None:
         self.edits: list[dict[str, object]] = []
+        self.fail_with_not_modified = fail_with_not_modified
 
     async def edit_text(self, text: str, reply_markup=None) -> None:
         self.edits.append({"text": text, "reply_markup": reply_markup})
+        if self.fail_with_not_modified:
+            raise TelegramBadRequest(
+                method=SimpleNamespace(__api_method__="editMessageText"),
+                message=(
+                    "Telegram server says - Bad Request: message is not modified: "
+                    "specified new message content and reply markup are exactly the same "
+                    "as a current content and reply markup of the message"
+                ),
+            )
 
 
 class _FakeBot:
@@ -41,9 +52,9 @@ class _FakeBot:
 
 
 class _FakeCallback:
-    def __init__(self, user: TgUser) -> None:
+    def __init__(self, user: TgUser, *, fail_with_not_modified: bool = False) -> None:
         self.from_user = user
-        self.message = _FakeMessage()
+        self.message = _FakeMessage(fail_with_not_modified=fail_with_not_modified)
         self.bot = _FakeBot()
         self.answers: list[dict[str, object]] = []
 
@@ -132,5 +143,53 @@ async def test_confirm_exchange_creates_order_without_bank_dependency(monkeypatc
 
     assert state.cleared is True
     assert fake_db.committed is False
+    assert len(callback.message.edits) == 1
+    assert callback.answers[-1] == {"text": None, "show_alert": False}
+
+
+async def test_menu_orders_commits_new_user_and_ignores_not_modified(monkeypatch) -> None:
+    fake_db = _FakeDbSession()
+    callback = _FakeCallback(
+        TgUser(
+            id=777002,
+            is_bot=False,
+            first_name="Repeat",
+            username="repeat-user",
+            language_code="ru",
+        ),
+        fail_with_not_modified=True,
+    )
+    user = User(
+        id=23,
+        telegram_id=777002,
+        username="repeat-user",
+        first_name="Repeat",
+        role=3,
+    )
+
+    async def _fake_get_db():
+        return fake_db
+
+    async def _fake_check_user(db, tg_user):
+        assert db is fake_db
+        assert tg_user.id == 777002
+        return user, True
+
+    class _FakeOrderRepository:
+        def __init__(self, db) -> None:
+            self.db = db
+
+        async def get_user_orders(self, user_id: int):
+            assert self.db is fake_db
+            assert user_id == 23
+            return []
+
+    monkeypatch.setattr(exchange_handler, "_get_db", _fake_get_db)
+    monkeypatch.setattr(exchange_handler, "check_user", _fake_check_user)
+    monkeypatch.setattr(exchange_handler, "OrderRepository", _FakeOrderRepository)
+
+    await exchange_handler.menu_orders(callback)
+
+    assert fake_db.committed is True
     assert len(callback.message.edits) == 1
     assert callback.answers[-1] == {"text": None, "show_alert": False}

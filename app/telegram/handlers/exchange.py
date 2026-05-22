@@ -5,11 +5,12 @@ from __future__ import annotations
 import logging
 
 from aiogram import F, Router
+from aiogram.exceptions import TelegramBadRequest
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.types import CallbackQuery, Message
 
-from app.core.database import get_db_session
+from app.core.database import create_db_session
 from app.repositories.order import OrderRepository
 from app.schemas.miniapp import MiniappOrderCreate
 from app.services.exchange import ExchangePairSnapshot, ExchangeQuoteInput, ExchangeService
@@ -39,9 +40,15 @@ class ExchangeState(StatesGroup):
 
 
 async def _get_db():
-    async for session in get_db_session():
-        return session
-    raise RuntimeError("Database session is unavailable")
+    return create_db_session()
+
+
+async def _safe_edit_text(message, text: str, *, reply_markup) -> None:
+    try:
+        await message.edit_text(text, reply_markup=reply_markup)
+    except TelegramBadRequest as exc:
+        if "message is not modified" not in str(exc).lower():
+            raise
 
 
 async def _get_exchange_pairs() -> list[ExchangePairSnapshot]:
@@ -72,7 +79,7 @@ async def _render_step(
         ]
     )
     if edit:
-        await actor.message.edit_text(text, reply_markup=reply_markup)
+        await _safe_edit_text(actor.message, text, reply_markup=reply_markup)
     else:
         await actor.answer(text, reply_markup=reply_markup)
 
@@ -97,7 +104,8 @@ async def show_confirmation(callback: CallbackQuery, state: FSMContext) -> None:
         method=_format_method_label(data["method"], translate),
         translator=translate,
     )
-    await callback.message.edit_text(
+    await _safe_edit_text(
+        callback.message,
         text,
         reply_markup=confirm_exchange(translate),
     )
@@ -126,7 +134,9 @@ async def _show_orders(actor, *, edit: bool) -> None:
     translate = get_user_translator(actor.from_user)
     db = await _get_db()
     async with db:
-        user, _ = await check_user(db, actor.from_user)
+        user, created = await check_user(db, actor.from_user)
+        if created:
+            await db.commit()
         orders = await OrderRepository(db).get_user_orders(user.id)
 
     if not orders:
@@ -146,7 +156,7 @@ async def _show_orders(actor, *, edit: bool) -> None:
         text = "\n\n".join([messages.orders_header(translator=translate), *items])
 
     if edit:
-        await actor.message.edit_text(text, reply_markup=home(translate))
+        await _safe_edit_text(actor.message, text, reply_markup=home(translate))
     else:
         await actor.answer(text, reply_markup=home(translate))
 
@@ -173,7 +183,8 @@ async def _show_home(actor, state: FSMContext, *, edit: bool) -> None:
     translate = get_user_translator(actor.from_user)
     await state.clear()
     if edit:
-        await actor.message.edit_text(
+        await _safe_edit_text(
+            actor.message,
             messages.home_title(translator=translate),
             reply_markup=home(translate),
         )
@@ -310,7 +321,8 @@ async def confirm_exchange_callback(callback: CallbackQuery, state: FSMContext) 
         )
 
     await state.clear()
-    await callback.message.edit_text(
+    await _safe_edit_text(
+        callback.message,
         messages.order_created(
             getattr(order, "publicNumber", order.id),
             order.amountSell,

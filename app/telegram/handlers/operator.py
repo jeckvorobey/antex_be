@@ -8,7 +8,7 @@ import logging
 from aiogram import F, Router
 from aiogram.types import CallbackQuery
 
-from app.core.database import get_db_session
+from app.core.database import create_db_session
 from app.enums.order import OrderStatus
 from app.enums.user import has_operator_access
 from app.repositories.order import OrderRepository
@@ -22,9 +22,7 @@ router = Router(name="operator")
 
 
 async def _get_db():
-    async for session in get_db_session():
-        return session
-    raise RuntimeError("Database session is unavailable")
+    return create_db_session()
 
 
 @router.callback_query(F.data.startswith("op:open_chat:"))
