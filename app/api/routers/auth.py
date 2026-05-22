@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from fastapi import APIRouter
 
-from app.api.deps import CurrentUser, DbDep
+from app.api.deps import DbDep, MiniappUser
 from app.schemas.auth import (
     TelegramAuthRequest,
     TokenResponse,
@@ -24,14 +24,14 @@ async def auth_telegram(body: TelegramAuthRequest, db: DbDep) -> TokenResponse:
 
 
 @router.get("/contact", response_model=TrustedContactResponse)
-async def get_trusted_contact(user: CurrentUser) -> TrustedContactResponse:
+async def get_trusted_contact(user: MiniappUser) -> TrustedContactResponse:
     return resolve_trusted_contact(user)
 
 
 @router.put("/contact", response_model=TrustedContactResponse)
 async def update_trusted_contact(
     body: TrustedContactUpdate,
-    user: CurrentUser,
+    user: MiniappUser,
     db: DbDep,
 ) -> TrustedContactResponse:
     trusted_contact = await save_trusted_phone(db, user.id, body.phone)

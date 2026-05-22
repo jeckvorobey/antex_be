@@ -9,8 +9,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.user import User
 
-MINIAPP_GUEST_USER_ID = 9_999_001
-
 
 @dataclass(slots=True)
 class BroadcastRecipient:
@@ -27,7 +25,6 @@ class TelegramUserAudienceProvider:
             select(User)
             .where(User.is_bot.is_(False))
             .where(User.telegram_id.is_not(None))
-            .where(User.id != MINIAPP_GUEST_USER_ID)
             .order_by(User.id.asc())
         )
         users = result.scalars().all()

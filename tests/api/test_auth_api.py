@@ -5,6 +5,7 @@ from collections.abc import AsyncIterator
 
 import pytest
 from httpx import ASGITransport, AsyncClient
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api import deps
@@ -121,3 +122,40 @@ async def test_auth_contact_persists_phone_for_future_order_submit(
     stored_user = await db_session.get(User, 1)
     assert stored_user is not None
     assert stored_user.phone == "+79991234567"
+
+
+@pytest.mark.asyncio
+async def test_auth_contact_uses_dev_user_without_bearer_token(
+    auth_api_client: tuple[AsyncClient, AsyncSession],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    client, db_session = auth_api_client
+    user = User(
+        telegram_id=333366854,
+        username=None,
+        first_name="Dev",
+        role=int(UserRole.USER),
+    )
+    db_session.add(user)
+    await db_session.flush()
+
+    from app.core.config import settings
+
+    monkeypatch.setattr(settings, "app_env", "dev")
+    monkeypatch.setattr(settings, "dev_user_id", 333366854)
+
+    save_response = await client.put(
+        "/api/auth/contact",
+        json={"phone": "+79991234567"},
+    )
+
+    assert save_response.status_code == 200
+    assert save_response.json()["contact"] == "+79991234567"
+    assert save_response.json()["ready"] is True
+
+    contact_response = await client.get("/api/auth/contact")
+    assert contact_response.status_code == 200
+    assert contact_response.json()["phone"] == "+79991234567"
+
+    users_count = await db_session.scalar(select(func.count(User.id)))
+    assert users_count == 1

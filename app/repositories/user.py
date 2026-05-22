@@ -15,6 +15,12 @@ from app.repositories.base import BaseRepository
 class UserRepository(BaseRepository[User]):
     model = User
 
+    async def get_by_telegram_id(self, tg_id: int) -> User | None:
+        result = await self.session.execute(
+            select(User).where(User.telegram_id == tg_id).options(selectinload(User.city))
+        )
+        return result.scalar_one_or_none()
+
     async def find_or_create(self, tg_id: int, **defaults: object) -> tuple[User, bool]:
         result = await self.session.execute(select(User).where(User.telegram_id == tg_id))
         user = result.scalar_one_or_none()

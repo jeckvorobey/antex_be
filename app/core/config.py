@@ -43,6 +43,7 @@ class Settings(BaseSettings):
     telegram_webhook_secret: str | None = None
     telegram_init_data_ttl_seconds: int = 86400
     admin_id: int | None = None
+    dev_user_id: int | None = None
 
     @property
     def telegram_webhook_url(self) -> str | None:

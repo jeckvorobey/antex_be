@@ -6,6 +6,7 @@ from unittest.mock import AsyncMock
 
 import pytest
 from httpx import ASGITransport, AsyncClient
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api import deps
@@ -150,6 +151,94 @@ async def test_miniapp_home_and_exchange_are_backend_driven(
     assert {"rub-gel", "rub-vnd", "usdt-gel", "usdt-vnd"} <= {
         pair["id"] for pair in exchange["pairs"]
     }
+
+
+@pytest.mark.asyncio
+async def test_miniapp_readonly_dev_request_without_token_uses_existing_env_dev_user(
+    api_client: tuple[AsyncClient, AsyncSession],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    client, db_session = api_client
+    _, _, customer = await seed_exchange_data(db_session)
+
+    from app.core.config import settings
+
+    monkeypatch.setattr(settings, "app_env", "dev")
+    monkeypatch.setattr(settings, "dev_user_id", customer.telegram_id)
+
+    response = await client.get("/api/miniapp/home")
+
+    assert response.status_code == 200
+    assert response.json()["profile"]["id"] == customer.id
+    assert response.json()["profile"]["username"] == customer.username
+    assert response.json()["profile"]["displayName"] == "Happy"
+
+    users_count = await db_session.scalar(select(func.count(User.id)))
+    assert users_count == 2
+
+
+@pytest.mark.asyncio
+async def test_miniapp_readonly_dev_request_without_db_user_is_rejected(
+    api_client: tuple[AsyncClient, AsyncSession],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    client, db_session = api_client
+    await seed_exchange_data(db_session)
+
+    from app.core.config import settings
+
+    monkeypatch.setattr(settings, "app_env", "dev")
+    monkeypatch.setattr(settings, "dev_user_id", 333366854)
+
+    response = await client.get("/api/miniapp/home")
+
+    assert response.status_code == 401
+
+    users_count = await db_session.scalar(select(func.count(User.id)))
+    assert users_count == 2
+
+
+@pytest.mark.asyncio
+async def test_miniapp_stateful_request_without_token_uses_dev_user_from_db(
+    api_client: tuple[AsyncClient, AsyncSession],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    client, db_session = api_client
+    _, _, customer = await seed_exchange_data(db_session)
+
+    from app.core.config import settings
+
+    monkeypatch.setattr(settings, "app_env", "dev")
+    monkeypatch.setattr(settings, "dev_user_id", customer.telegram_id)
+
+    response = await client.get("/api/miniapp/orders")
+
+    assert response.status_code == 200
+    assert response.json() == {"items": []}
+
+    users_count = await db_session.scalar(select(func.count(User.id)))
+    assert users_count == 2
+
+
+@pytest.mark.asyncio
+async def test_miniapp_request_without_token_is_rejected_in_production(
+    api_client: tuple[AsyncClient, AsyncSession],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    client, db_session = api_client
+    await seed_exchange_data(db_session)
+
+    from app.core.config import settings
+
+    monkeypatch.setattr(settings, "app_env", "production")
+    monkeypatch.setattr(settings, "dev_user_id", 333366854)
+
+    response = await client.get("/api/miniapp/rates")
+
+    assert response.status_code == 401
+
+    users_count = await db_session.scalar(select(func.count(User.id)))
+    assert users_count == 2
 
 
 @pytest.mark.asyncio

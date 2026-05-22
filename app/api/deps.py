@@ -8,15 +8,14 @@ import jwt
 from fastapi import Depends, Header, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.config import settings
 from app.core.database import get_db_session
 from app.core.security import decode_access_token
-from app.enums.user import UserRole
 from app.models.user import User
 from app.repositories.admin import AdminRepository
 from app.repositories.user import UserRepository
 
 DbDep = Annotated[AsyncSession, Depends(get_db_session)]
-MINIAPP_GUEST_USER_ID = 9_999_001
 
 
 async def get_current_user(
@@ -48,25 +47,13 @@ async def get_miniapp_user(
     if authorization and authorization.startswith("Bearer "):
         return await get_current_user(db, authorization)
 
-    repo = UserRepository(db)
-    user, _ = await repo.find_or_create(
-        MINIAPP_GUEST_USER_ID,
-        username="sergeywebdev",
-        first_name="Sergei",
-        last_name="V",
-        language_code="ru",
-        is_bot=False,
-        is_premium=True,
-        role=int(UserRole.USER),
-    )
-    user.username = "sergeywebdev"
-    user.first_name = "Sergei"
-    user.last_name = "V"
-    user.language_code = "ru"
-    user.is_bot = False
-    user.is_premium = True
-    user.role = int(UserRole.USER)
-    user.language_code_app = "ru"
+    if settings.app_env != "dev" or settings.dev_user_id is None:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+
+    user = await UserRepository(db).get_by_telegram_id(settings.dev_user_id)
+    if user is None:
+        raise HTTPException(status_code=401, detail="Dev user not found")
+
     return user
 
 
