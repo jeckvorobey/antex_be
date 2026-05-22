@@ -34,8 +34,17 @@ async def test_update_order_status_persists_and_notifies(monkeypatch) -> None:
 
     db = SimpleNamespace(commit=commit_mock)
     notify_mock = AsyncMock()
+    manager = SimpleNamespace(telegram_id=700001, username="manager")
+
+    class _FakeUserRepo:
+        def __init__(self, db) -> None:
+            self.db = db
+
+        async def get_manager(self):
+            return manager
 
     monkeypatch.setattr(order_status, "OrderRepository", _FakeRepo)
+    monkeypatch.setattr(order_status, "UserRepository", _FakeUserRepo)
     monkeypatch.setattr(order_status, "notify_order_status_changed", notify_mock)
 
     updated = await update_order_status(
@@ -46,4 +55,7 @@ async def test_update_order_status_persists_and_notifies(monkeypatch) -> None:
 
     assert updated is hydrated_order
     assert commit_mock.await_count == 2
-    notify_mock.assert_awaited_once_with(hydrated_order)
+    notify_mock.assert_awaited_once_with(
+        hydrated_order,
+        manager_chat_url="https://t.me/manager",
+    )

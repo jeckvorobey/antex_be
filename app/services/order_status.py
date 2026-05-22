@@ -7,7 +7,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.enums.order import OrderStatus
 from app.exceptions import AntExException
 from app.repositories.order import OrderRepository
-from app.services.order_notifications import notify_order_status_changed
+from app.repositories.user import UserRepository
+from app.services.order_notifications import (
+    build_chat_url_for_user,
+    notify_order_status_changed,
+)
 
 
 async def update_order_status(
@@ -35,6 +39,9 @@ async def update_order_status(
     if hydrated is None:
         raise AntExException("Order not found", code="ORDER_NOT_FOUND", status_code=404)
 
-    await notify_order_status_changed(hydrated)
+    manager = await UserRepository(db).get_manager()
+    manager_chat_url = build_chat_url_for_user(manager) if manager is not None else None
+
+    await notify_order_status_changed(hydrated, manager_chat_url=manager_chat_url)
     await db.commit()
     return hydrated

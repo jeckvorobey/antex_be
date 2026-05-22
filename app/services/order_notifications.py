@@ -10,7 +10,11 @@ from aiogram.types import InlineKeyboardMarkup
 
 from app.telegram import messages
 from app.telegram.i18n import get_translator, get_user_translator
-from app.telegram.keyboards import manager_order_open_chat, review_link
+from app.telegram.keyboards import (
+    manager_order_open_chat,
+    review_link,
+    user_order_write_manager,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -61,14 +65,25 @@ async def notify_order_created(order, user, manager) -> None:
 
     if manager is not None and getattr(manager, "telegram_id", None):
         translate = get_translator("ru")
+        chat_url = build_chat_url_for_user(user)
+        if not chat_url:
+            logger.warning(
+                "Manager notification skipped: user chat URL is unavailable for order %s",
+                order.id,
+            )
+            return
         await bot.send_message(
             chat_id=manager.telegram_id,
             text=_build_manager_order_text(order, user),
-            reply_markup=manager_order_open_chat(translate, order_id=order.id),
+            reply_markup=manager_order_open_chat(
+                translate,
+                order_id=order.id,
+                chat_url=chat_url,
+            ),
         )
 
 
-async def notify_order_status_changed(order) -> None:
+async def notify_order_status_changed(order, *, manager_chat_url: str | None = None) -> None:
     bot = _get_telegram_bot()
     if bot is None:
         logger.warning("Status notification skipped: bot is not initialized")
@@ -84,6 +99,8 @@ async def notify_order_status_changed(order) -> None:
 
     translate = get_user_translator(user)
     reply_markup = None
+    if order.status == 2 and manager_chat_url:
+        reply_markup = user_order_write_manager(translate, chat_url=manager_chat_url)
     if order.status == 3:
         reply_markup = review_link(translate, REVIEW_URL)
 
@@ -96,10 +113,7 @@ async def notify_order_status_changed(order) -> None:
     )
 
 
-def build_manager_chat_url(order) -> str | None:
-    user = getattr(order, "user", None)
-    if user is None:
-        return None
+def build_chat_url_for_user(user) -> str | None:
     username = getattr(user, "username", None)
     telegram_id = getattr(user, "telegram_id", None)
     if username:
@@ -109,9 +123,18 @@ def build_manager_chat_url(order) -> str | None:
     return None
 
 
+def build_manager_chat_url(order) -> str | None:
+    user = getattr(order, "user", None)
+    if user is None:
+        return None
+    return build_chat_url_for_user(user)
+
+
 def _build_user_status_text(order, *, translate) -> str:
+    if order.status == 1:
+        return messages.order_created(order.publicNumber, translator=translate)
+
     status_map = {
-        1: messages.order_created,
         2: messages.order_confirmed,
         3: messages.order_completed,
         4: messages.order_cancelled,

@@ -12,6 +12,13 @@ def _resolve_translator(translator=None):
     return translator or get_translator()
 
 
+def _chat_button(translate, chat_url: str) -> InlineKeyboardButton:
+    return InlineKeyboardButton(
+        text=translate("btn-open-chat"),
+        url=chat_url,
+    )
+
+
 def home(_, **kwargs) -> InlineKeyboardMarkup:
     """Главное меню пользователя: обмен + заявки."""
     del kwargs
@@ -146,7 +153,13 @@ def confirm_exchange(_, **kwargs) -> InlineKeyboardMarkup:
     )
 
 
-def confirm_order(_=None, *, order_id: int | None = None, **kwargs) -> InlineKeyboardMarkup:
+def confirm_order(
+    _=None,
+    *,
+    order_id: int | None = None,
+    chat_url: str | None = None,
+    **kwargs,
+) -> InlineKeyboardMarkup:
     """Клавиатура подтверждения заявки оператором."""
     del kwargs
     if order_id is None and isinstance(_, int):
@@ -154,15 +167,26 @@ def confirm_order(_=None, *, order_id: int | None = None, **kwargs) -> InlineKey
         _ = None
     if order_id is None:
         raise ValueError("order_id is required")
+    if not chat_url:
+        raise ValueError("chat_url is required")
 
     translate = _resolve_translator(_)
     return InlineKeyboardMarkup(
         inline_keyboard=[
             [
                 InlineKeyboardButton(
-                    text=translate("btn-open-chat"),
-                    callback_data=f"op:open_chat:{order_id}",
+                    text=translate("btn-cancel-order"),
+                    callback_data=f"op:cancel:{order_id}",
+                    style="danger",
                 ),
+                InlineKeyboardButton(
+                    text=translate("btn-take-order"),
+                    callback_data=f"op:take:{order_id}",
+                    style="success",
+                ),
+            ],
+            [
+                _chat_button(translate, chat_url),
             ]
         ]
     )
@@ -172,28 +196,131 @@ def manager_order_open_chat(
     _=None,
     *,
     order_id: int | None = None,
+    chat_url: str | None = None,
     **kwargs,
 ) -> InlineKeyboardMarkup:
     del kwargs
-    return confirm_order(_, order_id=order_id)
+    return confirm_order(_, order_id=order_id, chat_url=chat_url)
 
-
-def manager_order_close(_=None, *, order_id: int | None = None, **kwargs) -> InlineKeyboardMarkup:
+def manager_order_close(
+    _=None,
+    *,
+    order_id: int | None = None,
+    chat_url: str | None = None,
+    **kwargs,
+) -> InlineKeyboardMarkup:
     del kwargs
     if order_id is None and isinstance(_, int):
         order_id = _
         _ = None
     if order_id is None:
         raise ValueError("order_id is required")
+    if not chat_url:
+        raise ValueError("chat_url is required")
 
     translate = _resolve_translator(_)
     return InlineKeyboardMarkup(
         inline_keyboard=[
             [
                 InlineKeyboardButton(
+                    text=translate("btn-cancel-order"),
+                    callback_data=f"op:cancel:{order_id}",
+                    style="danger",
+                ),
+                InlineKeyboardButton(
                     text=translate("btn-close-order"),
                     callback_data=f"op:close:{order_id}",
-                )
+                    style="success",
+                ),
+            ],
+            [
+                _chat_button(translate, chat_url),
+            ],
+        ]
+    )
+
+
+def manager_order_cancel_confirm(
+    _=None,
+    *,
+    order_id: int | None = None,
+    status: int | None = None,
+    chat_url: str | None = None,
+    **kwargs,
+) -> InlineKeyboardMarkup:
+    del kwargs
+    if order_id is None and isinstance(_, int):
+        order_id = _
+        _ = None
+    if order_id is None:
+        raise ValueError("order_id is required")
+    if not chat_url:
+        raise ValueError("chat_url is required")
+
+    translate = _resolve_translator(_)
+    followup_callback = f"op:close:{order_id}"
+    if status == 1:
+        followup_callback = f"op:take:{order_id}"
+
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(
+                    text=translate("btn-confirm-cancel-order"),
+                    callback_data=f"op:cancel_confirm:{order_id}",
+                    style="danger",
+                ),
+                InlineKeyboardButton(
+                    text=translate("btn-keep-order"),
+                    callback_data=followup_callback,
+                    style="success",
+                ),
+            ],
+            [
+                _chat_button(translate, chat_url),
+            ],
+        ]
+    )
+
+
+def manager_order_chat_only(
+    _=None,
+    *,
+    chat_url: str | None = None,
+    **kwargs,
+) -> InlineKeyboardMarkup:
+    del kwargs
+    if not chat_url:
+        raise ValueError("chat_url is required")
+
+    translate = _resolve_translator(_)
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                _chat_button(translate, chat_url),
+            ]
+        ]
+    )
+
+
+def user_order_write_manager(
+    _=None,
+    *,
+    chat_url: str | None = None,
+    **kwargs,
+) -> InlineKeyboardMarkup:
+    del kwargs
+    if not chat_url:
+        raise ValueError("chat_url is required")
+
+    translate = _resolve_translator(_)
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(
+                    text=translate("btn-write-manager"),
+                    url=chat_url,
+                ),
             ]
         ]
     )
@@ -208,6 +335,7 @@ def review_link(_, url: str, **kwargs) -> InlineKeyboardMarkup:
                 InlineKeyboardButton(
                     text=translate("btn-leave-review"),
                     url=url,
+                    style="success",
                 )
             ]
         ]

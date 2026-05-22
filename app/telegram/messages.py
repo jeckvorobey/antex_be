@@ -163,15 +163,10 @@ def exchange_pair_rates(
 
 def order_created(
     order_id: int | str,
-    amount_sell: int,
-    currency_sell: str,
-    amount_buy: int,
-    currency_buy: str,
     *,
     translator: Translate | None = None,
     locale: str | None = None,
 ) -> str:
-    del amount_sell, currency_sell, amount_buy, currency_buy
     return _resolve_translator(translator, locale)("order-created", id=order_id)
 
 

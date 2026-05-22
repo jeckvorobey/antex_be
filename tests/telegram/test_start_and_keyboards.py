@@ -137,10 +137,30 @@ async def test_exchange_keyboards_are_backend_driven() -> None:
 async def test_manager_order_keyboards_use_new_callbacks() -> None:
     translator = get_translator("ru")
 
-    open_chat = manager_order_open_chat(translator, order_id=17)
-    close_order = manager_order_close(translator, order_id=17)
+    open_chat = manager_order_open_chat(
+        translator,
+        order_id=17,
+        chat_url="https://t.me/customer",
+    )
+    close_order = manager_order_close(
+        translator,
+        order_id=17,
+        chat_url="https://t.me/customer",
+    )
     review = review_link(translator, "https://example.com/review")
 
-    assert open_chat.inline_keyboard[0][0].callback_data == "op:open_chat:17"
-    assert close_order.inline_keyboard[0][0].callback_data == "op:close:17"
+    assert len(open_chat.inline_keyboard) == 2
+    assert open_chat.inline_keyboard[0][0].callback_data == "op:cancel:17"
+    assert open_chat.inline_keyboard[0][0].style == "danger"
+    assert open_chat.inline_keyboard[0][1].callback_data == "op:take:17"
+    assert open_chat.inline_keyboard[0][1].style == "success"
+    assert open_chat.inline_keyboard[1][0].url == "https://t.me/customer"
+    assert open_chat.inline_keyboard[1][0].text == "💬 Написать в чат"
+
+    assert close_order.inline_keyboard[0][0].callback_data == "op:cancel:17"
+    assert close_order.inline_keyboard[0][0].style == "danger"
+    assert close_order.inline_keyboard[0][1].callback_data == "op:close:17"
+    assert close_order.inline_keyboard[0][1].style == "success"
+    assert close_order.inline_keyboard[1][0].url == "https://t.me/customer"
     assert review.inline_keyboard[0][0].url == "https://example.com/review"
+    assert review.inline_keyboard[0][0].style == "success"
