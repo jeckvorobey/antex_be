@@ -167,6 +167,7 @@ class MiniappOrderCreate(BaseModel):
 
 class MiniappOrderItem(BaseModel):
     id: int
+    publicNumber: str
     cityId: int | None
     country: str
     currencySell: str
@@ -228,6 +229,7 @@ def build_miniapp_order_item(order) -> MiniappOrderItem:
 
     return MiniappOrderItem(
         id=order.id,
+        publicNumber=order.publicNumber,
         cityId=order.CityId,
         country=order.country.value,
         currencySell=order.currencySell,

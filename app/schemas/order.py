@@ -36,6 +36,7 @@ class OrderUpdate(BaseModel):
 
 class OrderOut(BaseModel):
     id: int
+    publicNumber: str
     UserId: int
     CityId: int | None
     country: Country
@@ -65,6 +66,7 @@ def build_order_out(order) -> OrderOut:
 
     return OrderOut(
         id=order.id,
+        publicNumber=order.publicNumber,
         UserId=order.UserId,
         CityId=order.CityId,
         country=order.country,

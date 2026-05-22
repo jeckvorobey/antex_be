@@ -38,6 +38,9 @@ btn-transfer = 🏦 Transfer
 btn-cash = 💵 Cash
 btn-wallet = 👛 Wallet
 btn-card = 💳 Card
+btn-open-chat = 💬 Open chat
+btn-close-order = ✅ Close order
+btn-leave-review = ⭐ Leave a review
 btn-rub-thb = 🇷🇺 RUB → THB
 btn-usdt-thb = 💎 USDT → THB
 menu-open-site = 🚀 Open site
@@ -49,6 +52,6 @@ orders-item = #{ $id }: { $amount_sell } { $currency_sell } → { $amount_buy } 
 
 ## Order statuses
 order-created = ✅ Order #{ $id } created. Please wait for confirmation.
-order-confirmed = ✅ Order #{ $id } confirmed by the operator.
+order-confirmed = ✅ Order #{ $id } is now being processed by the manager.
 order-cancelled = ❌ Order #{ $id } cancelled.
-order-completed = 🎉 Order #{ $id } completed. Thank you!
+order-completed = 🎉 Order #{ $id } completed. Thank you! You can leave a review if you want.

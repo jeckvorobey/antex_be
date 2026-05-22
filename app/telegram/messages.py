@@ -162,7 +162,7 @@ def exchange_pair_rates(
 
 
 def order_created(
-    order_id: int,
+    order_id: int | str,
     amount_sell: int,
     currency_sell: str,
     amount_buy: int,
@@ -176,7 +176,7 @@ def order_created(
 
 
 def order_confirmed(
-    order_id: int,
+    order_id: int | str,
     *,
     translator: Translate | None = None,
     locale: str | None = None,
@@ -185,7 +185,7 @@ def order_confirmed(
 
 
 def order_completed(
-    order_id: int,
+    order_id: int | str,
     *,
     translator: Translate | None = None,
     locale: str | None = None,
@@ -194,7 +194,7 @@ def order_completed(
 
 
 def order_cancelled(
-    order_id: int,
+    order_id: int | str,
     *,
     translator: Translate | None = None,
     locale: str | None = None,
@@ -212,7 +212,7 @@ def orders_header(*, translator: Translate | None = None, locale: str | None = N
 
 def orders_item(
     *,
-    order_id: int,
+    order_id: int | str,
     amount_sell: int,
     currency_sell: str,
     amount_buy: int,

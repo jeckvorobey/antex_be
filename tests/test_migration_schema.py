@@ -17,6 +17,7 @@ EXPECTED_TABLES = {
     "Rates",
     "Users",
     "Orders",
+    "OrderNumberCounters",
     "Broadcasts",
 }
 EXPECTED_BROADCAST_COLUMNS = {
@@ -46,6 +47,8 @@ EXPECTED_ORDER_COLUMNS = {
     "status",
     "contactTelegram",
     "methodGet",
+    "publicNumber",
+    "userNotificationMessageId",
     "endTime",
     "destroyTime",
     "createdAt",

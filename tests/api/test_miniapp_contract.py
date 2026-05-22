@@ -273,6 +273,7 @@ async def test_miniapp_order_is_created_with_preliminary_client_quote(
     assert order["amountBuy"] == pytest.approx(123.45)
     assert order["contactTelegram"] == "customer"
     assert order["city"] is None
+    assert order["publicNumber"] == "2026050001"
 
 
 @pytest.mark.asyncio
@@ -369,6 +370,7 @@ async def test_miniapp_order_returns_machine_readable_errors(
             rate=0.41,
             status=int(OrderStatus.CREATED),
             methodGet="cash",
+            publicNumber="2026050001",
         )
     )
     await db_session.flush()
@@ -462,6 +464,7 @@ async def test_admin_summary_returns_mvp_dashboard_metrics(
                 rate=0.41,
                 status=int(OrderStatus.CREATED),
                 methodGet="cash",
+                publicNumber="2026050002",
             ),
         ]
     )
@@ -483,8 +486,8 @@ async def test_admin_summary_returns_mvp_dashboard_metrics(
 
 def test_admin_summary_today_start_uses_configured_timezone() -> None:
     today_start = get_today_start_for_timezone(
-        "Asia/Bangkok",
+        "UTC",
         now=datetime(2026, 5, 7, 17, 30, tzinfo=UTC),
     )
 
-    assert today_start == datetime(2026, 5, 7, 17, 0, tzinfo=UTC)
+    assert today_start == datetime(2026, 5, 7, 0, 0, tzinfo=UTC)

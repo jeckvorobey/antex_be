@@ -9,7 +9,15 @@ os.environ.setdefault("DATABASE_URL", "sqlite+aiosqlite:///:memory:")
 
 from app.telegram.handlers import start as start_handler
 from app.telegram.i18n import get_translator
-from app.telegram.keyboards import choose_buy_currency, choose_currency, home, obtaining
+from app.telegram.keyboards import (
+    choose_buy_currency,
+    choose_currency,
+    home,
+    manager_order_close,
+    manager_order_open_chat,
+    obtaining,
+    review_link,
+)
 
 
 class _FakeDbSession:
@@ -124,3 +132,15 @@ async def test_exchange_keyboards_are_backend_driven() -> None:
         "method:cash",
         "method:card",
     ]
+
+
+async def test_manager_order_keyboards_use_new_callbacks() -> None:
+    translator = get_translator("ru")
+
+    open_chat = manager_order_open_chat(translator, order_id=17)
+    close_order = manager_order_close(translator, order_id=17)
+    review = review_link(translator, "https://example.com/review")
+
+    assert open_chat.inline_keyboard[0][0].callback_data == "op:open_chat:17"
+    assert close_order.inline_keyboard[0][0].callback_data == "op:close:17"
+    assert review.inline_keyboard[0][0].url == "https://example.com/review"

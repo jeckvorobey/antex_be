@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import logging
+from datetime import UTC, datetime
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -17,6 +18,7 @@ from app.schemas.miniapp import MiniappOrderCreate
 from app.services.auth import resolve_trusted_contact
 from app.services.exchange import ExchangeService
 from app.services.notifications import notify_order_created
+from app.services.order_numbers import OrderNumberService
 
 logger = logging.getLogger(__name__)
 
@@ -76,6 +78,9 @@ async def create_order_for_user(
         status=int(OrderStatus.CREATED),
         contactTelegram=trusted_contact.contact,
         methodGet=payload.method_get,
+        publicNumber=await OrderNumberService(db).next_public_number(
+            created_at=datetime.now(UTC)
+        ),
     )
     await db.commit()
     hydrated = await order_repo.get_one(order.id)

@@ -134,7 +134,7 @@ async def _show_orders(actor, *, edit: bool) -> None:
     else:
         items = [
             messages.orders_item(
-                order_id=order.id,
+                order_id=getattr(order, "publicNumber", order.id),
                 amount_sell=order.amountSell,
                 currency_sell=order.currencySell,
                 amount_buy=order.amountBuy,
@@ -312,7 +312,7 @@ async def confirm_exchange_callback(callback: CallbackQuery, state: FSMContext) 
     await state.clear()
     await callback.message.edit_text(
         messages.order_created(
-            order.id,
+            getattr(order, "publicNumber", order.id),
             order.amountSell,
             order.currencySell,
             order.amountBuy,

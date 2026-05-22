@@ -33,6 +33,7 @@ from app.schemas.order import OrderOut, OrderStatusUpdate, build_order_out
 from app.schemas.rate import AdminRateOut, RateCreate, RateUpdate, build_admin_rate_out
 from app.schemas.user import UserOut, UserUpdate, build_user_out
 from app.services.exchange import ExchangeService
+from app.services.order_status import update_order_status as apply_order_status
 
 router = APIRouter(prefix="/api/admin", tags=["admin"])
 
@@ -239,12 +240,20 @@ async def update_order_status(
     db: DbDep,
     _: AdminUser,
 ) -> OrderOut:
-    repo = OrderRepository(db)
-    order = await repo.update_status(order_id, body.status)
-    if not order:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Order not found")
-    await db.commit()
-    hydrated = await repo.get_one(order_id)
+    try:
+        hydrated = await apply_order_status(db, order_id=order_id, status=body.status)
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=str(exc),
+        ) from exc
+    except Exception as exc:
+        if getattr(exc, "status_code", None) == 404:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Order not found",
+            ) from exc
+        raise
     return build_order_out(hydrated)
 
 

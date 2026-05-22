@@ -1,4 +1,5 @@
-"""Обработчики оператора."""
+"""Обработчики менеджера для жизненного цикла заявки."""
+# ruff: noqa: RUF001
 
 from __future__ import annotations
 
@@ -8,63 +9,89 @@ from aiogram import F, Router
 from aiogram.types import CallbackQuery
 
 from app.core.database import get_db_session
+from app.enums.order import OrderStatus
 from app.enums.user import has_operator_access
 from app.repositories.order import OrderRepository
-from app.telegram import messages
-from app.telegram.services.notification_service import notify_user
+from app.services.order_notifications import build_manager_chat_url
+from app.services.order_status import update_order_status
+from app.telegram.keyboards import manager_order_close
 from app.telegram.services.user_service import check_user
 
 logger = logging.getLogger(__name__)
 router = Router(name="operator")
 
 
-@router.callback_query(F.data.startswith("op:confirm:"))
-async def operator_confirm(callback: CallbackQuery) -> None:
+async def _get_db():
+    async for session in get_db_session():
+        return session
+    raise RuntimeError("Database session is unavailable")
+
+
+@router.callback_query(F.data.startswith("op:open_chat:"))
+async def operator_open_chat(callback: CallbackQuery) -> None:
     order_id = int(callback.data.split(":")[2])  # type: ignore[union-attr]
-    db_gen = get_db_session()
-    db = await db_gen.__anext__()
+    db = await _get_db()
     async with db:
         user, _ = await check_user(db, callback.from_user)
         if not has_operator_access(user.role):
             await callback.answer("Нет прав", show_alert=True)
             return
 
-        repo = OrderRepository(db)
-        order = await repo.get_one(order_id)
+        order = await OrderRepository(db).get_one(order_id)
         if not order:
             await callback.answer("Заявка не найдена", show_alert=True)
             return
-        await repo.update_status(order_id, 2)
-        await db.commit()
 
-    await notify_user(callback.bot, order.UserId, messages.order_confirmed(order_id))
-    await callback.answer("✅ Подтверждено")
+        chat_url = build_manager_chat_url(order)
+        if not chat_url:
+            await callback.answer("У пользователя нет Telegram-ссылки", show_alert=True)
+            return
+
+        order = await update_order_status(db, order_id=order_id, status=OrderStatus.PROCESSING)
+
     await callback.message.edit_text(  # type: ignore[union-attr]
-        callback.message.text + "\n\n✅ <b>Подтверждено</b>"  # type: ignore[operator]
+        _build_manager_status_text(order),
+        reply_markup=manager_order_close(order_id=order.id),
     )
+    await callback.answer(url=chat_url)
 
 
-@router.callback_query(F.data.startswith("op:cancel:"))
-async def operator_cancel(callback: CallbackQuery) -> None:
+@router.callback_query(F.data.startswith("op:close:"))
+async def operator_close(callback: CallbackQuery) -> None:
     order_id = int(callback.data.split(":")[2])  # type: ignore[union-attr]
-    db_gen = get_db_session()
-    db = await db_gen.__anext__()
+    db = await _get_db()
     async with db:
         user, _ = await check_user(db, callback.from_user)
         if not has_operator_access(user.role):
             await callback.answer("Нет прав", show_alert=True)
             return
 
-        repo = OrderRepository(db)
-        order = await repo.get_one(order_id)
-        if not order:
-            await callback.answer("Заявка не найдена", show_alert=True)
-            return
-        await repo.cancel(order_id)
-        await db.commit()
+        order = await update_order_status(db, order_id=order_id, status=OrderStatus.COMPLETED)
 
-    await notify_user(callback.bot, order.UserId, messages.order_cancelled(order_id))
-    await callback.answer("❌ Отменено")
     await callback.message.edit_text(  # type: ignore[union-attr]
-        callback.message.text + "\n\n❌ <b>Отменено</b>"  # type: ignore[operator]
+        _build_manager_status_text(order),
+        reply_markup=None,
     )
+    await callback.answer()
+
+
+def _build_manager_status_text(order) -> str:
+    city_name = order.city.name if getattr(order, "city", None) else "—"
+    return "\n".join(
+        [
+            f"Заявка #{order.publicNumber}",
+            f"Статус: {_status_label(order.status)}",
+            f"Город: {city_name}",
+            f"Пара: {order.currencySell} -> {order.currencyBuy}",
+            f"Сумма: {order.amountSell} {order.currencySell}",
+        ]
+    )
+
+
+def _status_label(status: int) -> str:
+    return {
+        int(OrderStatus.CREATED): "Новая",
+        int(OrderStatus.PROCESSING): "В работе",
+        int(OrderStatus.COMPLETED): "Завершена",
+        int(OrderStatus.CANCELLED): "Отменена",
+    }.get(status, f"Статус {status}")

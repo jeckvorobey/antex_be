@@ -22,8 +22,18 @@ class Order(Base, TimestampMixin):
     __tablename__ = "Orders"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    UserId: Mapped[int] = mapped_column("UserId", Integer, ForeignKey("Users.id"), nullable=False)
-    CityId: Mapped[int | None] = mapped_column("CityId", Integer, ForeignKey("Cities.id"), nullable=True)
+    UserId: Mapped[int] = mapped_column(
+        "UserId",
+        Integer,
+        ForeignKey("Users.id"),
+        nullable=False,
+    )
+    CityId: Mapped[int | None] = mapped_column(
+        "CityId",
+        Integer,
+        ForeignKey("Cities.id"),
+        nullable=True,
+    )
     country: Mapped[Country] = mapped_column(
         Enum(
             Country,
@@ -44,6 +54,17 @@ class Order(Base, TimestampMixin):
         nullable=True,
     )
     methodGet: Mapped[str] = mapped_column("methodGet", String(20), nullable=False)
+    publicNumber: Mapped[str] = mapped_column(
+        "publicNumber",
+        String(10),
+        nullable=False,
+        unique=True,
+    )
+    userNotificationMessageId: Mapped[int | None] = mapped_column(
+        "userNotificationMessageId",
+        Integer,
+        nullable=True,
+    )
     endTime: Mapped[datetime | None] = mapped_column(
         "endTime",
         DateTime(timezone=True),

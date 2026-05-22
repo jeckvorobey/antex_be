@@ -38,6 +38,9 @@ btn-transfer = 🏦 Перевод
 btn-cash = 💵 Наличные
 btn-wallet = 👛 Кошелек
 btn-card = 💳 Карта
+btn-open-chat = 💬 Перейти в чат
+btn-close-order = ✅ Закрыть заявку
+btn-leave-review = ⭐ Оставить отзыв
 btn-rub-thb = 🇷🇺 RUB → THB
 btn-usdt-thb = 💎 USDT → THB
 menu-open-site = 🚀 Открыть сайт
@@ -49,6 +52,6 @@ orders-item = #{ $id }: { $amount_sell } { $currency_sell } → { $amount_buy } 
 
 ## Order statuses
 order-created = ✅ Заявка #{ $id } создана! Ожидайте подтверждения.
-order-confirmed = ✅ Заявка #{ $id } подтверждена оператором.
+order-confirmed = ✅ Заявка #{ $id } взята в работу менеджером.
 order-cancelled = ❌ Заявка #{ $id } отменена.
-order-completed = 🎉 Заявка #{ $id } завершена. Спасибо!
+order-completed = 🎉 Заявка #{ $id } завершена. Спасибо! По желанию вы можете оставить отзыв.

@@ -71,7 +71,7 @@ class Settings(BaseSettings):
     review_channel_id: int | None = None
 
     # Timezone
-    timezone: str = "Asia/Bangkok"
+    timezone: str = "UTC"
 
     # i18n
     app_locale_default: str = "ru"
