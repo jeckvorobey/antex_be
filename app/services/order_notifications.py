@@ -146,7 +146,7 @@ def _build_user_status_text(order, *, translate) -> str:
 def _build_manager_order_text(order, user) -> str:
     city_name = order.city.name if getattr(order, "city", None) else "—"
     username = f"@{user.username}" if getattr(user, "username", None) else "—"
-    contact = order.contactTelegram or user.phone or "—"
+    contact = order.contactTelegram or "—"
     method = order.methodGet
     return "\n".join(
         [

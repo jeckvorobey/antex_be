@@ -488,7 +488,7 @@ async def test_miniapp_order_returns_machine_readable_errors(
 
 
 @pytest.mark.asyncio
-async def test_miniapp_order_requires_trusted_contact_readiness(
+async def test_miniapp_order_allows_missing_trusted_contact(
     api_client: tuple[AsyncClient, AsyncSession],
 ) -> None:
     client, db_session = api_client
@@ -533,8 +533,9 @@ async def test_miniapp_order_requires_trusted_contact_readiness(
         },
     )
 
-    assert response.status_code == 409
-    assert response.json()["code"] == "TRUSTED_CONTACT_NOT_READY"
+    assert response.status_code == 200
+    order = response.json()
+    assert order["contactTelegram"] is None
 
 
 @pytest.mark.asyncio

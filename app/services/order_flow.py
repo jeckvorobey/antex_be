@@ -15,7 +15,6 @@ from app.repositories.city import CityRepository
 from app.repositories.order import OrderRepository
 from app.repositories.user import UserRepository
 from app.schemas.miniapp import MiniappOrderCreate
-from app.services.auth import resolve_trusted_contact
 from app.services.exchange import ExchangeService
 from app.services.notifications import notify_order_created
 from app.services.order_numbers import OrderNumberService
@@ -40,14 +39,6 @@ async def create_order_for_user(
             status_code=409,
         )
 
-    trusted_contact = resolve_trusted_contact(user)
-    if not trusted_contact.ready:
-        raise AntExException(
-            "Trusted contact is not ready",
-            code="TRUSTED_CONTACT_NOT_READY",
-            status_code=409,
-        )
-
     city = await _resolve_city(db, payload)
     _validate_country_and_method(payload, city)
 
@@ -68,7 +59,7 @@ async def create_order_for_user(
         amountBuy=payload.amount_buy,
         rate=payload.rate,
         status=int(OrderStatus.CREATED),
-        contactTelegram=trusted_contact.contact,
+        contactTelegram=user.username or None,
         methodGet=payload.method_get,
         publicNumber=await OrderNumberService(db).next_public_number(
             created_at=datetime.now(UTC)
