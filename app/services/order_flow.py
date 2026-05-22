@@ -1,5 +1,5 @@
 # ruff: noqa: RUF002
-"""Сервис создания заявки с серверной калькуляцией."""
+"""Сервис создания предварительной заявки."""
 
 from __future__ import annotations
 
@@ -8,15 +8,14 @@ import logging
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.enums.country import Country
-from app.enums.order import MethodGet
-from app.enums.order import OrderStatus
+from app.enums.order import MethodGet, OrderStatus
 from app.exceptions import AntExException
 from app.repositories.city import CityRepository
 from app.repositories.order import OrderRepository
 from app.repositories.user import UserRepository
 from app.schemas.miniapp import MiniappOrderCreate
 from app.services.auth import resolve_trusted_contact
-from app.services.exchange import ExchangeQuoteInput, ExchangeService
+from app.services.exchange import ExchangeService
 from app.services.notifications import notify_order_created
 
 logger = logging.getLogger(__name__)
@@ -27,8 +26,7 @@ async def create_order_for_user(
     user,
     payload: MiniappOrderCreate,
 ) -> object:
-    """Создаёт заявку, рассчитывая курс и сумму получения на сервере."""
-    city_repo = CityRepository(db)
+    """Создаёт предварительную заявку с клиентским расчётом miniapp."""
     user_repo = UserRepository(db)
     order_repo = OrderRepository(db)
 
@@ -61,25 +59,20 @@ async def create_order_for_user(
                 status_code=409,
             )
 
-    quote = await ExchangeService().get_quote(
-        db,
-        ExchangeQuoteInput(
-            currency_sell=payload.currency_sell,
-            currency_buy=payload.currency_buy,
-            amount_sell=payload.amount_sell,
-        ),
-    )
-    _validate_quote_country(payload.country, quote.currency_buy)
+    await _validate_rate_pair_exists(db, payload)
+    currency_sell = payload.currency_sell.upper()
+    currency_buy = payload.currency_buy.upper()
+    _validate_quote_country(payload.country, currency_buy)
 
     order = await order_repo.create(
         UserId=user.id,
         CityId=city.id if city else None,
         country=payload.country,
-        currencySell=quote.currency_sell,
-        amountSell=quote.amount_sell,
-        currencyBuy=quote.currency_buy,
-        amountBuy=quote.amount_buy,
-        rate=quote.rate,
+        currencySell=currency_sell,
+        amountSell=payload.amount_sell,
+        currencyBuy=currency_buy,
+        amountBuy=payload.amount_buy,
+        rate=payload.rate,
         status=int(OrderStatus.CREATED),
         contactTelegram=trusted_contact.contact,
         methodGet=payload.method_get,
@@ -93,6 +86,26 @@ async def create_order_for_user(
         logger.exception("Failed to send order created notifications for order %s", order.id)
 
     return hydrated
+
+
+async def _validate_rate_pair_exists(db: AsyncSession, payload: MiniappOrderCreate) -> None:
+    exchange_service = ExchangeService()
+    pair = exchange_service.normalize_pair(payload.currency_sell, payload.currency_buy)
+    if pair is None:
+        raise AntExException(
+            "Rate pair is unavailable",
+            code="RATE_PAIR_UNAVAILABLE",
+            status_code=422,
+        )
+
+    rates = await exchange_service.load_rates(db)
+    direct_key = "".join(pair)
+    if not any(rate.currency.upper() == direct_key for rate in rates):
+        raise AntExException(
+            "Rate pair is unavailable",
+            code="RATE_PAIR_UNAVAILABLE",
+            status_code=422,
+        )
 
 
 async def _resolve_city(

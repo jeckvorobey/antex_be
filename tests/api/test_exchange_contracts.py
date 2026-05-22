@@ -132,7 +132,7 @@ async def test_admin_summary_returns_featured_rates(
 
 
 @pytest.mark.asyncio
-async def test_orders_api_rejects_legacy_rate_and_amount_buy_fields(
+async def test_orders_api_accepts_preliminary_rate_and_amount_buy_fields(
     api_client: tuple[AsyncClient, AsyncSession],
 ) -> None:
     client, db_session = api_client
@@ -154,4 +154,7 @@ async def test_orders_api_rejects_legacy_rate_and_amount_buy_fields(
         },
     )
 
-    assert response.status_code == 422
+    assert response.status_code == 201
+    payload = response.json()
+    assert payload["amountBuy"] == 999999
+    assert payload["rate"] == 99

@@ -119,6 +119,8 @@ async def test_confirm_exchange_creates_order_without_bank_dependency(monkeypatc
         assert payload.currency_sell == "RUB"
         assert payload.currency_buy == "THB"
         assert payload.amount_sell == 15000
+        assert payload.amount_buy == 5100
+        assert payload.rate == 0.34
         assert payload.method_get == "cash"
         return created_order
 

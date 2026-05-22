@@ -36,6 +36,8 @@ async def create_order(body: OrderCreate, db: DbDep, user: CurrentUser) -> Order
         currencySell=body.currencySell,
         amountSell=body.amountSell,
         currencyBuy=body.currencyBuy,
+        amountBuy=body.amountBuy,
+        rate=body.rate,
         methodGet=body.methodGet,
     )
     order = await create_order_for_user(db, user, payload)

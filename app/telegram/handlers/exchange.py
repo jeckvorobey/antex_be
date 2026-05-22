@@ -303,6 +303,8 @@ async def confirm_exchange_callback(callback: CallbackQuery, state: FSMContext) 
                 currencySell=data["currency_sell"],
                 amountSell=data["amount_sell"],
                 currencyBuy=data["currency_buy"],
+                amountBuy=quote["amountBuy"],
+                rate=quote["rate"],
                 methodGet=data["method"],
             ),
         )

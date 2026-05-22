@@ -48,6 +48,8 @@ DEFAULT_METHODS_BY_BUY_CURRENCY = {
     "RUB": ["card"],
 }
 SUPPORTED_CURRENCIES = ("USDT", "RUB", "THB", "GEL", "VND")
+CANONICAL_SELL_CURRENCIES = frozenset({"RUB", "USDT"})
+CANONICAL_BUY_CURRENCIES = frozenset({"THB", "GEL", "VND"})
 REVERSED_DISPLAY_PAIRS = frozenset({"RUBTHB", "RUBGEL"})
 
 
@@ -133,6 +135,7 @@ class ExchangePairSnapshot:
     country: Country
     base_rate: float
     client_rate: float
+    calculation_rate: float
     rate_display: str
     rate_text: str
     amount_sell_example: int
@@ -165,6 +168,53 @@ class ExchangeService:
             parsed = self.parse_pair(rate.currency)
             if not parsed:
                 continue
+            sell, buy = parsed
+            if not self.is_canonical_pair(sell, buy):
+                continue
+            quote_rate = get_client_rate(rate)
+            display_rate = get_display_final_rate(rate)
+            display_sell, display_buy = get_display_pair(rate)
+            amount_sell = 5000 if sell == "RUB" else 100
+            snapshots.append(
+                ExchangePairSnapshot(
+                    pair_id=f"{sell.lower()}-{buy.lower()}",
+                    label=f"{sell}/{buy}",
+                    currency_sell=sell,
+                    currency_buy=buy,
+                    country=rate.country,
+                    base_rate=rate.price,
+                    client_rate=display_rate,
+                    calculation_rate=quote_rate,
+                    rate_display=format_rate_value(display_rate),
+                    rate_text=(
+                        f"1 {display_sell} = {format_rate_value(display_rate)} {display_buy}"
+                    ),
+                    amount_sell_example=amount_sell,
+                    amount_buy_example=round(amount_sell * quote_rate, RATE_PRECISION),
+                    updated_at=rate.updatedAt,
+                    available_methods=self.get_methods_for_currency(buy),
+                )
+            )
+        return snapshots
+
+    def build_featured_pair_snapshots(self, rates: list[Rate]) -> list[ExchangePairSnapshot]:
+        snapshots = self.build_display_pair_snapshots(rates)
+        priority = {pair_id: index for index, pair_id in enumerate(FEATURED_PAIR_PRIORITY)}
+        return sorted(
+            snapshots,
+            key=lambda snapshot: (
+                priority.get(snapshot.pair_id, len(priority)),
+                snapshot.pair_id,
+            ),
+        )
+
+    def build_display_pair_snapshots(self, rates: list[Rate]) -> list[ExchangePairSnapshot]:
+        """Строит snapshots в display-ориентации для admin/telegram readers."""
+        snapshots: list[ExchangePairSnapshot] = []
+        for rate in rates:
+            parsed = self.parse_pair(rate.currency)
+            if not parsed:
+                continue
             original_sell, original_buy = parsed
             try:
                 sell, buy = get_display_pair(rate)
@@ -181,6 +231,7 @@ class ExchangeService:
                     country=rate.country,
                     base_rate=get_display_base_rate(rate),
                     client_rate=client_rate,
+                    calculation_rate=client_rate,
                     rate_display=format_rate_value(client_rate),
                     rate_text=f"1 {sell} = {format_rate_value(client_rate)} {buy}",
                     amount_sell_example=amount_sell,
@@ -191,22 +242,11 @@ class ExchangeService:
             )
         return snapshots
 
-    def build_featured_pair_snapshots(self, rates: list[Rate]) -> list[ExchangePairSnapshot]:
-        snapshots = self.build_pair_snapshots(rates)
-        priority = {pair_id: index for index, pair_id in enumerate(FEATURED_PAIR_PRIORITY)}
-        return sorted(
-            snapshots,
-            key=lambda snapshot: (
-                priority.get(snapshot.pair_id, len(priority)),
-                snapshot.pair_id,
-            ),
-        )
-
     def build_quote(self, rates: list[Rate], payload: ExchangeQuoteInput) -> ExchangeQuote:
-        sell = payload.currency_sell.upper()
-        buy = payload.currency_buy.upper()
-        if sell == buy or payload.amount_sell <= 0:
+        pair = self.normalize_pair(payload.currency_sell, payload.currency_buy)
+        if pair is None or payload.amount_sell <= 0:
             raise self.unsupported_pair_error()
+        sell, buy = pair
         if not rates:
             raise self.rate_unavailable_error()
 
@@ -244,9 +284,6 @@ class ExchangeService:
             supported.setdefault(snapshot.currency_sell, [])
             if snapshot.currency_buy not in supported[snapshot.currency_sell]:
                 supported[snapshot.currency_sell].append(snapshot.currency_buy)
-            supported.setdefault(snapshot.currency_buy, [])
-            if snapshot.currency_sell not in supported[snapshot.currency_buy]:
-                supported[snapshot.currency_buy].append(snapshot.currency_sell)
         return supported
 
     def get_methods_for_currency(self, currency_buy: str) -> list[str]:
@@ -271,15 +308,22 @@ class ExchangeService:
         buy: str,
     ) -> tuple[float | None, datetime | None]:
         direct_key = f"{sell}{buy}"
-        reverse_key = f"{buy}{sell}"
         for rate in rates:
             currency = rate.currency.upper()
             if currency == direct_key:
                 return get_client_rate(rate), rate.updatedAt
-            client_rate = get_client_rate(rate)
-            if currency == reverse_key and client_rate:
-                return round_rate_value(1 / client_rate), rate.updatedAt
         return None, None
+
+    def normalize_pair(self, currency_sell: str, currency_buy: str) -> tuple[str, str] | None:
+        sell = currency_sell.upper()
+        buy = currency_buy.upper()
+        if self.is_canonical_pair(sell, buy):
+            return sell, buy
+        return None
+
+    @staticmethod
+    def is_canonical_pair(sell: str, buy: str) -> bool:
+        return sell in CANONICAL_SELL_CURRENCIES and buy in CANONICAL_BUY_CURRENCIES
 
     def parse_pair(self, currency: str) -> tuple[str, str] | None:
         upper = currency.upper()

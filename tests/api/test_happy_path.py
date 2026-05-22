@@ -141,6 +141,8 @@ async def test_rates_and_order_happy_path(
             "currencySell": "rub",
             "amountSell": 10000,
             "currencyBuy": "thb",
+            "amountBuy": 4000,
+            "rate": 0.4,
             "methodGet": "cash",
         },
     )

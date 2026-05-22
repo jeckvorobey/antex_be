@@ -49,6 +49,7 @@ class MiniappRateCard(BaseModel):
     fromCurrency: str
     toCurrency: str
     rate: float
+    calculationRate: float
     rateDisplay: str
     rateText: str
     amountSellExample: int
@@ -159,6 +160,8 @@ class MiniappOrderCreate(BaseModel):
     currency_sell: str = Field(alias="currencySell", min_length=3, max_length=20)
     amount_sell: int = Field(alias="amountSell", gt=0)
     currency_buy: str = Field(alias="currencyBuy", min_length=3, max_length=20)
+    amount_buy: float = Field(alias="amountBuy", gt=0)
+    rate: float = Field(gt=0)
     method_get: Literal["qrcode", "cash"] = Field(alias="methodGet")
 
 

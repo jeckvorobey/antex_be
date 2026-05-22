@@ -35,7 +35,7 @@ def _make_rate(
 
 
 class TestExchangeService:
-    def test_list_pairs_returns_display_rates_in_expected_orientation(self) -> None:
+    def test_list_pairs_returns_canonical_user_facing_pairs(self) -> None:
         rates = [
             _make_rate("RUBTHB", 0.41, 3.0, country=Country.THAILAND),
             _make_rate("RUBGEL", 0.03, 3.0, country=Country.GEORGIA),
@@ -47,33 +47,33 @@ class TestExchangeService:
 
         assert pairs[0] == ExchangePairSnapshot(
             pair_id="rub-thb",
-            label="THB/RUB",
-            currency_sell="THB",
-            currency_buy="RUB",
+            label="RUB/THB",
+            currency_sell="RUB",
+            currency_buy="THB",
             country=Country.THAILAND,
-            base_rate=pytest.approx(1 / 0.41),
-            client_rate=2.51,
-            rate_display="2.51",
-            rate_text="1 THB = 2.51 RUB",
-            amount_sell_example=100,
-            amount_buy_example=251.0,
+            base_rate=0.41,
+            client_rate=0.4,
+            rate_display="0.40",
+            rate_text="1 RUB = 0.40 THB",
+            amount_sell_example=5000,
+            amount_buy_example=2000.0,
             updated_at=rates[0].updatedAt,
-            available_methods=["card"],
+            available_methods=["qrcode", "cash"],
         )
         assert pairs[1] == ExchangePairSnapshot(
             pair_id="rub-gel",
-            label="GEL/RUB",
-            currency_sell="GEL",
-            currency_buy="RUB",
+            label="RUB/GEL",
+            currency_sell="RUB",
+            currency_buy="GEL",
             country=Country.GEORGIA,
-            base_rate=pytest.approx(1 / 0.03),
-            client_rate=34.36,
-            rate_display="34.36",
-            rate_text="1 GEL = 34.36 RUB",
-            amount_sell_example=100,
-            amount_buy_example=3436.0,
+            base_rate=0.03,
+            client_rate=0.03,
+            rate_display="0.03",
+            rate_text="1 RUB = 0.03 GEL",
+            amount_sell_example=5000,
+            amount_buy_example=150.0,
             updated_at=rates[1].updatedAt,
-            available_methods=["card"],
+            available_methods=["qrcode", "cash"],
         )
         assert pairs[2] == ExchangePairSnapshot(
             pair_id="rub-vnd",
@@ -106,21 +106,36 @@ class TestExchangeService:
             available_methods=["qrcode", "cash"],
         )
 
-    def test_quote_supports_reverse_pair(self) -> None:
+    def test_quote_rejects_reverse_pair_outside_preliminary_contract(self) -> None:
         service = ExchangeService()
         rates = [_make_rate("RUBTHB", 0.4, 0.0, country=Country.THAILAND)]
 
-        quote = service.build_quote(
-            rates,
-            ExchangeQuoteInput(currency_sell="THB", currency_buy="RUB", amount_sell=410),
-        )
+        with pytest.raises(AntExError, match="Unsupported currency pair"):
+            service.build_quote(
+                rates,
+                ExchangeQuoteInput(currency_sell="THB", currency_buy="RUB", amount_sell=410),
+            )
 
-        assert quote.currency_sell == "THB"
-        assert quote.currency_buy == "RUB"
-        assert quote.rate == 2.5
-        assert quote.rate_display == "2.50"
-        assert quote.rate_text == "1 THB = 2.50 RUB"
-        assert quote.amount_buy == pytest.approx(1025.0)
+    def test_featured_pairs_keep_admin_display_orientation(self) -> None:
+        rates = [_make_rate("RUBTHB", 0.41, 3.0, country=Country.THAILAND)]
+
+        [snapshot] = ExchangeService().build_featured_pair_snapshots(rates)
+
+        assert snapshot.pair_id == "rub-thb"
+        assert snapshot.currency_sell == "THB"
+        assert snapshot.currency_buy == "RUB"
+        assert snapshot.rate_display == "2.51"
+        assert snapshot.rate_text == "1 THB = 2.51 RUB"
+
+    def test_quote_rejects_pairs_outside_canonical_scope(self) -> None:
+        service = ExchangeService()
+        rates = [_make_rate("THBUSDT", 0.03, 0.0, country=Country.THAILAND)]
+
+        with pytest.raises(AntExError, match="Unsupported currency pair"):
+            service.build_quote(
+                rates,
+                ExchangeQuoteInput(currency_sell="THB", currency_buy="USDT", amount_sell=1000),
+            )
 
     def test_quote_rejects_unsupported_pair(self) -> None:
         service = ExchangeService()

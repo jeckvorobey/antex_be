@@ -234,6 +234,7 @@ def _build_rate_cards(snapshots: list[ExchangePairSnapshot]) -> list[MiniappRate
             fromCurrency=snapshot.currency_sell,
             toCurrency=snapshot.currency_buy,
             rate=snapshot.client_rate,
+            calculationRate=snapshot.calculation_rate,
             rateDisplay=snapshot.rate_display,
             rateText=snapshot.rate_text,
             amountSellExample=snapshot.amount_sell_example,
