@@ -122,6 +122,9 @@ async def test_miniapp_home_and_exchange_are_backend_driven(
     assert home["rates"]["featured"][0]["country"] == "thailand"
     assert home["rates"]["featured"][0]["fromCurrency"] == "RUB"
     assert home["rates"]["featured"][0]["toCurrency"] == "THB"
+    assert home["rates"]["featured"][0]["rate"] == pytest.approx(2.51)
+    assert home["rates"]["featured"][0]["calculationRate"] == pytest.approx(0.4)
+    assert home["rates"]["featured"][0]["rateDisplay"] == "2.51"
     assert home["rates"]["featured"][0]["amountSellExample"] == 5000
     assert home["rates"]["featured"][0]["availableMethods"] == ["qrcode", "cash"]
     assert home["rates"]["featured"][1]["availableMethods"] == ["qrcode", "cash"]
@@ -140,9 +143,10 @@ async def test_miniapp_home_and_exchange_are_backend_driven(
     assert exchange["pairs"][0]["id"] == "rub-thb"
     assert exchange["pairs"][0]["fromCurrency"] == "RUB"
     assert exchange["pairs"][0]["toCurrency"] == "THB"
-    assert exchange["pairs"][0]["rate"] == pytest.approx(0.4)
-    assert exchange["pairs"][0]["rateDisplay"] == "0.40"
-    assert exchange["pairs"][0]["rateText"] == "1 RUB = 0.40 THB"
+    assert exchange["pairs"][0]["rate"] == pytest.approx(2.51)
+    assert exchange["pairs"][0]["calculationRate"] == pytest.approx(0.4)
+    assert exchange["pairs"][0]["rateDisplay"] == "2.51"
+    assert exchange["pairs"][0]["rateText"] == "1 THB = 2.51 RUB"
     assert {"rub-gel", "rub-vnd", "usdt-gel", "usdt-vnd"} <= {
         pair["id"] for pair in exchange["pairs"]
     }

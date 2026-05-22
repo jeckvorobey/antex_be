@@ -52,9 +52,10 @@ class TestExchangeService:
             currency_buy="THB",
             country=Country.THAILAND,
             base_rate=0.41,
-            client_rate=0.4,
-            rate_display="0.40",
-            rate_text="1 RUB = 0.40 THB",
+            client_rate=2.51,
+            calculation_rate=0.4,
+            rate_display="2.51",
+            rate_text="1 THB = 2.51 RUB",
             amount_sell_example=5000,
             amount_buy_example=2000.0,
             updated_at=rates[0].updatedAt,
@@ -67,9 +68,10 @@ class TestExchangeService:
             currency_buy="GEL",
             country=Country.GEORGIA,
             base_rate=0.03,
-            client_rate=0.03,
-            rate_display="0.03",
-            rate_text="1 RUB = 0.03 GEL",
+            client_rate=34.36,
+            calculation_rate=0.03,
+            rate_display="34.36",
+            rate_text="1 GEL = 34.36 RUB",
             amount_sell_example=5000,
             amount_buy_example=150.0,
             updated_at=rates[1].updatedAt,
@@ -83,6 +85,7 @@ class TestExchangeService:
             country=Country.VIETNAM,
             base_rate=280.0,
             client_rate=271.6,
+            calculation_rate=271.6,
             rate_display="271.60",
             rate_text="1 RUB = 271.60 VND",
             amount_sell_example=5000,
@@ -98,6 +101,7 @@ class TestExchangeService:
             country=Country.THAILAND,
             base_rate=36.2,
             client_rate=35.11,
+            calculation_rate=35.11,
             rate_display="35.11",
             rate_text="1 USDT = 35.11 THB",
             amount_sell_example=100,
@@ -124,6 +128,7 @@ class TestExchangeService:
         assert snapshot.pair_id == "rub-thb"
         assert snapshot.currency_sell == "THB"
         assert snapshot.currency_buy == "RUB"
+        assert snapshot.calculation_rate == 2.51
         assert snapshot.rate_display == "2.51"
         assert snapshot.rate_text == "1 THB = 2.51 RUB"
 
