@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import logging
+
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.enums.order import OrderStatus
@@ -12,6 +14,8 @@ from app.services.order_notifications import (
     build_chat_url_for_user,
     notify_order_status_changed,
 )
+
+logger = logging.getLogger(__name__)
 
 
 async def update_order_status(
@@ -42,6 +46,14 @@ async def update_order_status(
     manager = await UserRepository(db).get_manager()
     manager_chat_url = build_chat_url_for_user(manager) if manager is not None else None
 
-    await notify_order_status_changed(hydrated, manager_chat_url=manager_chat_url)
-    await db.commit()
+    try:
+        await notify_order_status_changed(hydrated, manager_chat_url=manager_chat_url)
+        await db.commit()
+    except Exception:
+        logger.exception(
+            "Failed to send order status notification for order_id=%s status=%s",
+            order_id,
+            int(target_status),
+        )
+        await db.rollback()
     return hydrated

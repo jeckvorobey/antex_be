@@ -32,7 +32,7 @@ async def test_update_order_status_persists_and_notifies(monkeypatch) -> None:
             assert status == int(OrderStatus.PROCESSING)
             return updated_order
 
-    db = SimpleNamespace(commit=commit_mock)
+    db = SimpleNamespace(commit=commit_mock, rollback=AsyncMock())
     notify_mock = AsyncMock()
     manager = SimpleNamespace(telegram_id=700001, username="manager")
 
@@ -55,6 +55,59 @@ async def test_update_order_status_persists_and_notifies(monkeypatch) -> None:
 
     assert updated is hydrated_order
     assert commit_mock.await_count == 2
+    notify_mock.assert_awaited_once_with(
+        hydrated_order,
+        manager_chat_url="https://t.me/manager",
+    )
+
+
+@pytest.mark.asyncio
+async def test_update_order_status_keeps_success_when_notification_fails(monkeypatch) -> None:
+    initial_order = SimpleNamespace(id=5, status=int(OrderStatus.CREATED))
+    updated_order = SimpleNamespace(id=5, status=int(OrderStatus.PROCESSING))
+    hydrated_order = SimpleNamespace(id=5, status=int(OrderStatus.PROCESSING))
+    commit_mock = AsyncMock()
+    rollback_mock = AsyncMock()
+
+    class _FakeRepo:
+        def __init__(self, db) -> None:
+            self.db = db
+
+        async def get_one(self, order_id: int):
+            assert order_id == 5
+            if commit_mock.await_count == 0:
+                return initial_order
+            return hydrated_order
+
+        async def update_status(self, order_id: int, status: int):
+            assert order_id == 5
+            assert status == int(OrderStatus.PROCESSING)
+            return updated_order
+
+    db = SimpleNamespace(commit=commit_mock, rollback=rollback_mock)
+    notify_mock = AsyncMock(side_effect=RuntimeError("proxy down"))
+    manager = SimpleNamespace(telegram_id=700001, username="manager")
+
+    class _FakeUserRepo:
+        def __init__(self, db) -> None:
+            self.db = db
+
+        async def get_manager(self):
+            return manager
+
+    monkeypatch.setattr(order_status, "OrderRepository", _FakeRepo)
+    monkeypatch.setattr(order_status, "UserRepository", _FakeUserRepo)
+    monkeypatch.setattr(order_status, "notify_order_status_changed", notify_mock)
+
+    updated = await update_order_status(
+        db,
+        order_id=5,
+        status=OrderStatus.PROCESSING,
+    )
+
+    assert updated is hydrated_order
+    assert commit_mock.await_count == 1
+    rollback_mock.assert_awaited_once()
     notify_mock.assert_awaited_once_with(
         hydrated_order,
         manager_chat_url="https://t.me/manager",
