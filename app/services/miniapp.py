@@ -5,6 +5,7 @@ from __future__ import annotations
 
 from app.repositories.city import CityRepository
 from app.repositories.order import OrderRepository
+from app.repositories.user import UserRepository
 from app.schemas.city import build_city_out
 from app.schemas.miniapp import (
     MiniappBanner,
@@ -36,6 +37,7 @@ from app.services.exchange import (
     ExchangeQuoteInput,
     ExchangeService,
 )
+from app.services.order_notifications import build_chat_url_for_user
 
 DEFAULT_AMOUNT_SELL = 5000
 DEFAULT_PAIR = ("RUB", "THB")
@@ -214,8 +216,11 @@ async def calculate_miniapp_quote(
     return _build_quote_response(quote)
 
 
-async def get_miniapp_profile_screen(user) -> MiniappProfileScreenResponse:
+async def get_miniapp_profile_screen(db, user) -> MiniappProfileScreenResponse:
     """Возвращает профиль в формате, который ожидает текущий экран miniapp."""
+    manager = await UserRepository(db).get_manager()
+    manager_chat_url = build_chat_url_for_user(manager) if manager is not None else None
+
     return MiniappProfileScreenResponse(
         user=build_miniapp_profile_summary(user),
         menu=[
@@ -230,7 +235,8 @@ async def get_miniapp_profile_screen(user) -> MiniappProfileScreenResponse:
                 id="support",
                 title="Поддержка",
                 icon="support_agent",
-                action="sheet",
+                action="link" if manager_chat_url else "sheet",
+                href=manager_chat_url,
             ),
         ],
         version="1.0.0",

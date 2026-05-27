@@ -223,6 +223,26 @@ async def test_miniapp_stateful_request_without_token_uses_dev_user_from_db(
 
 
 @pytest.mark.asyncio
+async def test_miniapp_profile_support_points_to_manager_chat(
+    api_client: tuple[AsyncClient, AsyncSession],
+) -> None:
+    client, db_session = api_client
+    _, manager, customer = await seed_exchange_data(db_session)
+    token = create_access_token({"sub": str(customer.id), "role": customer.role})
+
+    response = await client.get(
+        "/api/miniapp/profile",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+
+    assert response.status_code == 200
+    profile = response.json()
+    support = next(item for item in profile["menu"] if item["id"] == "support")
+    assert support["action"] == "link"
+    assert support["href"] == f"https://t.me/{manager.username}"
+
+
+@pytest.mark.asyncio
 async def test_miniapp_orders_support_limit_offset_pagination(
     api_client: tuple[AsyncClient, AsyncSession],
 ) -> None:

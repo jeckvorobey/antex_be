@@ -87,5 +87,5 @@ async def create_order(
 
 
 @router.get("/profile", response_model=MiniappProfileScreenResponse)
-async def get_profile(user: MiniappUser) -> MiniappProfileScreenResponse:
-    return await get_miniapp_profile_screen(user)
+async def get_profile(db: DbDep, user: MiniappUser) -> MiniappProfileScreenResponse:
+    return await get_miniapp_profile_screen(db, user)
