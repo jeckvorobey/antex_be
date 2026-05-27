@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from datetime import datetime
+from typing import ClassVar
 
 from sqlalchemy import select
 from sqlalchemy.orm import selectinload
@@ -14,6 +15,7 @@ from app.repositories.base import BaseRepository
 
 class UserRepository(BaseRepository[User]):
     model = User
+    _nullable_refresh_fields: ClassVar[set[str]] = {"photo_url"}
 
     async def get_by_telegram_id(self, tg_id: int) -> User | None:
         result = await self.session.execute(
@@ -26,7 +28,8 @@ class UserRepository(BaseRepository[User]):
         user = result.scalar_one_or_none()
         if user:
             for field, value in defaults.items():
-                if value is not None and hasattr(User, field):
+                should_refresh = value is not None or field in self._nullable_refresh_fields
+                if should_refresh and hasattr(User, field):
                     setattr(user, field, value)
             if user.language_code_app is None:
                 user.language_code_app = "ru"

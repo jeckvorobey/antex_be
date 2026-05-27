@@ -58,6 +58,7 @@ async def seed_exchange_data(db_session: AsyncSession) -> tuple[City, User, User
         telegram_id=700002,
         username="customer",
         first_name="Happy",
+        photo_url="https://t.me/i/userpic/320/customer.jpg",
         role=int(UserRole.USER),
     )
     db_session.add_all(
@@ -101,6 +102,7 @@ async def test_miniapp_home_and_exchange_are_backend_driven(
     assert home_response.status_code == 200
     home = home_response.json()
     assert home["profile"]["displayName"] == "Happy"
+    assert home["profile"]["photoUrl"] == "https://t.me/i/userpic/320/customer.jpg"
     assert home["rates"]["previewLimit"] == 3
     assert [pair["id"] for pair in home["rates"]["featured"]] == [
         "rub-thb",
@@ -237,6 +239,7 @@ async def test_miniapp_profile_support_points_to_manager_chat(
 
     assert response.status_code == 200
     profile = response.json()
+    assert profile["user"]["photoUrl"] == "https://t.me/i/userpic/320/customer.jpg"
     support = next(item for item in profile["menu"] if item["id"] == "support")
     assert support["action"] == "link"
     assert support["href"] == f"https://t.me/{manager.username}"

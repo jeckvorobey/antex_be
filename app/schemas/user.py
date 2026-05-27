@@ -21,6 +21,7 @@ class UserOut(BaseModel):
     last_name: str | None
     language_code: str | None
     language_code_app: str
+    photo_url: str | None
     is_bot: bool
     role: int
     role_name: str
@@ -52,6 +53,7 @@ def build_user_out(user) -> UserOut:
         last_name=user.last_name,
         language_code=user.language_code,
         language_code_app=user.language_code_app or "ru",
+        photo_url=user.photo_url,
         is_bot=user.is_bot,
         role=user.role,
         role_name=get_role_title(user.role),

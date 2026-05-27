@@ -25,6 +25,7 @@ class User(Base, TimestampMixin):
     first_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
     last_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
     language_code: Mapped[str | None] = mapped_column(String(10), nullable=True)
+    photo_url: Mapped[str | None] = mapped_column(Text, nullable=True)
     is_bot: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     session: Mapped[str | None] = mapped_column(Text, nullable=True)
     role: Mapped[int] = mapped_column(Integer, default=int(UserRole.USER), nullable=False)

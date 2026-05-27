@@ -22,6 +22,7 @@ async def test_find_or_create_updates_existing_user_without_chat_id(db_session) 
         language_code="en",
         is_bot=False,
         is_premium=False,
+        photo_url="https://t.me/i/userpic/320/old.jpg",
     )
     assert created is True
     assert user.role == UserRole.USER
@@ -35,6 +36,7 @@ async def test_find_or_create_updates_existing_user_without_chat_id(db_session) 
         language_code="ru",
         is_bot=False,
         is_premium=True,
+        photo_url=None,
     )
 
     assert created is False
@@ -43,6 +45,7 @@ async def test_find_or_create_updates_existing_user_without_chat_id(db_session) 
     assert same_user.first_name == "New"
     assert same_user.language_code == "ru"
     assert same_user.is_premium is True
+    assert same_user.photo_url is None
     assert not hasattr(same_user, "chatId")
 
 
@@ -122,6 +125,63 @@ async def test_telegram_auth_refreshes_existing_user(
     assert user.is_premium is True
 
 
+async def test_telegram_auth_persists_updates_and_clears_photo_url(
+    monkeypatch,
+    db_session,
+) -> None:
+    monkeypatch.setattr(
+        "app.services.auth.validate_telegram_init_data",
+        lambda _: {
+            "user": (
+                '{"id": 654321, "username": "photo_user", "first_name": "Photo", '
+                '"last_name": "User", "language_code": "ru", "is_bot": false, '
+                '"is_premium": false, "photo_url": "https://t.me/i/userpic/320/old.jpg"}'
+            )
+        },
+    )
+    monkeypatch.setattr(
+        "app.services.auth.create_access_token",
+        lambda data: f"token-{data['sub']}",
+    )
+
+    await telegram_auth(db_session, "init-data")
+    user = await UserRepository(db_session).get_one(1)
+    assert user is not None
+    assert user.photo_url == "https://t.me/i/userpic/320/old.jpg"
+
+    monkeypatch.setattr(
+        "app.services.auth.validate_telegram_init_data",
+        lambda _: {
+            "user": (
+                '{"id": 654321, "username": "photo_user", "first_name": "Photo", '
+                '"last_name": "User", "language_code": "ru", "is_bot": false, '
+                '"is_premium": true, "photo_url": "https://t.me/i/userpic/320/new.jpg"}'
+            )
+        },
+    )
+
+    await telegram_auth(db_session, "init-data")
+    refreshed_user = await UserRepository(db_session).get_one(1)
+    assert refreshed_user is not None
+    assert refreshed_user.photo_url == "https://t.me/i/userpic/320/new.jpg"
+
+    monkeypatch.setattr(
+        "app.services.auth.validate_telegram_init_data",
+        lambda _: {
+            "user": (
+                '{"id": 654321, "username": "photo_user", "first_name": "Photo", '
+                '"last_name": "User", "language_code": "ru", "is_bot": false, '
+                '"is_premium": false}'
+            )
+        },
+    )
+
+    await telegram_auth(db_session, "init-data")
+    cleared_user = await UserRepository(db_session).get_one(1)
+    assert cleared_user is not None
+    assert cleared_user.photo_url is None
+
+
 async def test_users_username_is_unique(db_session) -> None:
     first_user = User(
         telegram_id=1001,
@@ -196,6 +256,7 @@ def test_user_role_helpers_and_serializer() -> None:
     fake_user.last_name = "User"
     fake_user.language_code = "ru"
     fake_user.language_code_app = "ru"
+    fake_user.photo_url = "https://t.me/i/userpic/320/user.jpg"
     fake_user.phone = "+79991234567"
     fake_user.is_bot = False
     fake_user.role = UserRole.USER
@@ -209,6 +270,7 @@ def test_user_role_helpers_and_serializer() -> None:
     assert user_out.role == 9
     assert user_out.role_name == "Пользователь"
     assert user_out.language_code_app == "ru"
+    assert user_out.photo_url == "https://t.me/i/userpic/320/user.jpg"
     assert user_out.phone == "+79991234567"
     assert user_out.trusted_contact == "user"
     assert user_out.trusted_contact_source == "username"

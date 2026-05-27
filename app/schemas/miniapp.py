@@ -28,6 +28,7 @@ class MiniappProfileSummary(BaseModel):
     id: int
     displayName: str
     username: str | None
+    photoUrl: str | None
     isPremium: bool
     languageCode: str
 
@@ -208,6 +209,7 @@ def build_miniapp_profile_summary(user) -> MiniappProfileSummary:
         id=user.id,
         displayName=display_name,
         username=user.username,
+        photoUrl=user.photo_url,
         isPremium=user.is_premium,
         languageCode=user.language_code_app or user.language_code or "ru",
     )

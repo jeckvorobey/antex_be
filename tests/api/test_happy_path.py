@@ -42,6 +42,7 @@ async def api_client(
                     "language_code": "ru",
                     "is_bot": False,
                     "is_premium": True,
+                    "photo_url": "https://t.me/i/userpic/320/telegram-user.jpg",
                 }
             )
         },
@@ -92,6 +93,7 @@ async def test_telegram_auth_returns_token_and_allows_get_me(
 
     assert me_response.status_code == 200
     assert me_response.json()["username"] == "telegram_user"
+    assert me_response.json()["photo_url"] == "https://t.me/i/userpic/320/telegram-user.jpg"
 
     stored_user = await db_session.get(User, 1)
     assert stored_user is not None

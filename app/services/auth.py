@@ -34,6 +34,7 @@ async def telegram_auth(db: AsyncSession, init_data: str) -> TokenResponse:
         first_name=user_data.get("first_name"),
         last_name=user_data.get("last_name"),
         language_code=user_data.get("language_code"),
+        photo_url=user_data.get("photo_url"),
         is_bot=user_data.get("is_bot", False),
         is_premium=user_data.get("is_premium", False),
     )
