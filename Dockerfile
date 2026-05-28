@@ -1,7 +1,9 @@
+# syntax=docker/dockerfile:1.7
 FROM ghcr.io/astral-sh/uv:python3.13-bookworm-slim
 
 WORKDIR /app
 
+# Coolify healthcheck обычно использует HTTP-проверку.
 RUN apt-get update && apt-get install -y --no-install-recommends curl \
     && rm -rf /var/lib/apt/lists/*
 
@@ -18,5 +20,6 @@ RUN chmod +x /app/entrypoint.sh
 
 EXPOSE 8000
 
+# entrypoint применяет Alembic-миграции перед запуском API.
 ENTRYPOINT ["/app/entrypoint.sh"]
 CMD ["uv", "run", "python", "run.py", "--no-reload", "--host", "0.0.0.0", "--port", "8000"]
