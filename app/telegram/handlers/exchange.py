@@ -325,10 +325,6 @@ async def confirm_exchange_callback(callback: CallbackQuery, state: FSMContext) 
         callback.message,
         messages.order_created(
             getattr(order, "publicNumber", order.id),
-            order.amountSell,
-            order.currencySell,
-            order.amountBuy,
-            order.currencyBuy,
             translator=translate,
         ),
         reply_markup=home(translate),

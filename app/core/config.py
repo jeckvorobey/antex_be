@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from typing import Literal
 
+from pydantic import model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -50,6 +51,33 @@ class Settings(BaseSettings):
         if self.telegram_webhook_host:
             return f"{self.telegram_webhook_host}{self.telegram_webhook_path}"
         return None
+
+    @model_validator(mode="after")
+    def validate_runtime_config(self) -> Settings:
+        if self.app_env == "production" and not self._has_value(self.jwt_secret):
+            raise ValueError("JWT_SECRET is required when APP_ENV=production")
+
+        if self.telegram_mode == "webhook":
+            if not self._has_value(self.telegram_bot_token):
+                raise ValueError("TELEGRAM_BOT_TOKEN is required when TELEGRAM_MODE=webhook")
+            if not self._has_value(self.telegram_webhook_host):
+                raise ValueError("TELEGRAM_WEBHOOK_HOST is required when TELEGRAM_MODE=webhook")
+
+        if (
+            self.app_env == "production"
+            and self.telegram_mode == "webhook"
+            and not self._has_value(self.telegram_webhook_secret)
+        ):
+            raise ValueError(
+                "TELEGRAM_WEBHOOK_SECRET is required when APP_ENV=production "
+                "and TELEGRAM_MODE=webhook"
+            )
+
+        return self
+
+    @staticmethod
+    def _has_value(value: str | None) -> bool:
+        return value is not None and value.strip() != ""
 
     # Mini App
     frontend_webapp_url: str | None = None

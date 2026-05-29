@@ -177,9 +177,6 @@ async def stop_bot() -> None:
         except Exception:
             logger.warning("Telegram polling task had already failed before shutdown")
 
-    if settings.telegram_mode == "webhook" and bot is not None:
-        await bot.delete_webhook()
-
     if bot is not None and bot.session is not None:
         await bot.session.close()
 

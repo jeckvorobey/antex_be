@@ -129,7 +129,10 @@ async def test_rates_and_order_happy_path(
 
     token = create_access_token({"sub": str(customer.id), "role": customer.role})
 
-    rates_response = await client.get("/api/miniapp/rates")
+    rates_response = await client.get(
+        "/api/miniapp/rates",
+        headers={"Authorization": f"Bearer {token}"},
+    )
 
     assert rates_response.status_code == 200
     assert rates_response.json()["items"][0]["currency"] == "RUBTHB"
