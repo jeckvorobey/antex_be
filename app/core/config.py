@@ -65,7 +65,7 @@ class Settings(BaseSettings):
     operator_chat_id: int | None = None
 
     # Exchange / Rate
-    rate_cache_ttl_seconds: int = 1800
+    rate_cache_ttl_seconds: int = 86400
     currencybeacon_api_key: str | None = None
 
     # Review channel

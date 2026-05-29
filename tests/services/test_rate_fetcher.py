@@ -7,7 +7,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import httpx
 import pytest
 
-from app.core.config import settings
+from app.core.config import Settings, settings
 from app.services.rate_fetcher import fetch_and_save_rates, fetch_raw_rates
 
 MOCK_CURRENCYBEACON_RESPONSE = {
@@ -57,6 +57,9 @@ def mock_currencybeacon(currencybeacon_settings: None) -> AsyncMock:
 
 
 class TestFetchRawRates:
+    def test_rate_refresh_ttl_defaults_to_one_day(self) -> None:
+        assert Settings.model_fields["rate_cache_ttl_seconds"].default == 86400
+
     async def test_returns_expected_usd_based_keys(self, mock_currencybeacon: AsyncMock) -> None:
         raw = await fetch_raw_rates()
 
