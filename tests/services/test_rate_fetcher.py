@@ -146,6 +146,40 @@ class TestFetchRawRates:
         with pytest.raises(RuntimeError, match="CurrencyBeacon"):
             await fetch_raw_rates()
 
+    async def test_refetches_missing_or_null_symbol(self, mock_currencybeacon: AsyncMock) -> None:
+        first_response = MagicMock()
+        first_response.raise_for_status.return_value = None
+        first_response.json.return_value = {
+            "meta": {"code": 200},
+            "response": {
+                "base": "USD",
+                "rates": {
+                    "USDT": 1.0,
+                    "RUB": None,
+                    "THB": 36.0,
+                    "GEL": 2.8,
+                    "VND": 25000.0,
+                },
+            },
+        }
+        second_response = MagicMock()
+        second_response.raise_for_status.return_value = None
+        second_response.json.return_value = {
+            "meta": {"code": 200},
+            "response": {
+                "base": "USD",
+                "rates": {
+                    "RUB": 90.0,
+                },
+            },
+        }
+        mock_currencybeacon.side_effect = [first_response, second_response]
+
+        raw = await fetch_raw_rates()
+
+        assert raw["usd_rub"] == pytest.approx(90.0)
+        assert mock_currencybeacon.await_count == 2
+
 
 class TestFetchAndSaveRates:
     async def test_upserts_all_supported_currencies(
@@ -206,3 +240,50 @@ class TestFetchAndSaveRates:
         all_rates = await repo.get_all()
         currencies = [r.currency for r in all_rates]
         assert len(currencies) == len(set(currencies))
+
+    async def test_persistent_null_rub_keeps_existing_rub_rates(
+        self,
+        db_session,
+        mock_currencybeacon: AsyncMock,
+    ) -> None:
+        from app.enums.country import Country
+        from app.repositories.rate import RateRepository
+
+        repo = RateRepository(db_session)
+        await repo.upsert("RUBTHB", 0.41, country=Country.THAILAND)
+        await db_session.commit()
+
+        first_response = MagicMock()
+        first_response.raise_for_status.return_value = None
+        first_response.json.return_value = {
+            "meta": {"code": 200},
+            "response": {
+                "base": "USD",
+                "rates": {
+                    "USDT": 1.0,
+                    "RUB": None,
+                    "THB": 36.0,
+                    "GEL": 2.8,
+                    "VND": 25000.0,
+                },
+            },
+        }
+        second_response = MagicMock()
+        second_response.raise_for_status.return_value = None
+        second_response.json.return_value = {
+            "meta": {"code": 200},
+            "response": {
+                "base": "USD",
+                "rates": {
+                    "RUB": None,
+                },
+            },
+        }
+        mock_currencybeacon.side_effect = [first_response, second_response]
+
+        rates = await fetch_and_save_rates(db_session)
+
+        all_rates = {r.currency: r for r in await repo.get_all()}
+        assert set(rates) == {"USDTTHB", "USDTGEL", "USDTVND"}
+        assert all_rates["USDTTHB"].price == pytest.approx(36.0)
+        assert all_rates["RUBTHB"].price == pytest.approx(0.41)

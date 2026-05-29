@@ -20,6 +20,7 @@ from app.services.rate_calculator import build_market_rates, calculate_cross_rat
 logger = logging.getLogger(__name__)
 TARGET_CURRENCIES = ("THB", "GEL", "VND")
 SUPPORTED_SYMBOLS = ("USDT", "RUB", "THB", "GEL", "VND")
+OPTIONAL_SYMBOLS = {"RUB"}
 API_BASE_URL = "https://api.currencybeacon.com/v1"
 LATEST_ENDPOINT = "/latest"
 REQUEST_TIMEOUT_SECONDS = 10.0
@@ -33,7 +34,7 @@ def _require_currencybeacon_api_key() -> str:
     return api_key
 
 
-def _extract_rates_payload(payload: dict) -> dict[str, float | int | str]:
+def _extract_rates_payload(payload: dict) -> dict[str, float | int | str | None]:
     """Достаёт блок rates и валидирует прикладной статус ответа."""
     meta = payload.get("meta")
     if isinstance(meta, dict):
@@ -52,7 +53,7 @@ def _extract_rates_payload(payload: dict) -> dict[str, float | int | str]:
     return rates
 
 
-def _extract_valid_rate(rates: dict[str, float | int | str], symbol: str) -> float:
+def _extract_valid_rate(rates: dict[str, float | int | str | None], symbol: str) -> float:
     """Извлекает и валидирует числовой курс для одной валюты."""
     if symbol not in rates:
         raise ValueError(f"CurrencyBeacon response is missing required currency: {symbol}")
@@ -72,7 +73,8 @@ async def fetch_raw_rates() -> dict[str, float]:
     """Запрашивает у CurrencyBeacon USD-базовые курсы по нужным валютам.
 
     Returns:
-        {"usd_usdt": float, "usd_rub": float, "usd_thb": float, "usd_gel": float, "usd_vnd": float}
+        USD-базовые курсы. usd_rub может отсутствовать, если провайдер вернул
+        некорректный RUB и после дозапроса.
     """
     api_key = _require_currencybeacon_api_key()
 
@@ -90,6 +92,44 @@ async def fetch_raw_rates() -> dict[str, float]:
                 },
             )
             response.raise_for_status()
+
+            rates = _extract_rates_payload(response.json())
+            resolved_rates: dict[str, float] = {}
+            missing_symbols: list[str] = []
+
+            for symbol in SUPPORTED_SYMBOLS:
+                try:
+                    resolved_rates[symbol] = _extract_valid_rate(rates, symbol)
+                except ValueError:
+                    missing_symbols.append(symbol)
+
+            if missing_symbols:
+                logger.warning(
+                    "CurrencyBeacon вернул неполные/некорректные данные для %s, выполняем дозапрос",
+                    ",".join(missing_symbols),
+                )
+                retry_response = await client.get(
+                    LATEST_ENDPOINT,
+                    params={
+                        "api_key": api_key,
+                        "base": "USD",
+                        "symbols": ",".join(missing_symbols),
+                    },
+                )
+                retry_response.raise_for_status()
+                retry_rates = _extract_rates_payload(retry_response.json())
+
+                for symbol in missing_symbols:
+                    try:
+                        resolved_rates[symbol] = _extract_valid_rate(retry_rates, symbol)
+                    except ValueError:
+                        if symbol not in OPTIONAL_SYMBOLS:
+                            raise
+                        logger.warning(
+                            "CurrencyBeacon не вернул валидный курс для %s после дозапроса, "
+                            "зависимые пары будут сохранены без обновления",
+                            symbol,
+                        )
     except httpx.TimeoutException as exc:
         # TODO: если потребуется продуктовый fallback, читать последний сохранённый курс из БД.
         raise RuntimeError("CurrencyBeacon request timed out") from exc
@@ -98,10 +138,7 @@ async def fetch_raw_rates() -> dict[str, float]:
     except httpx.HTTPError as exc:
         raise RuntimeError("CurrencyBeacon network error") from exc
 
-    rates = _extract_rates_payload(response.json())
-    return {
-        f"usd_{symbol.lower()}": _extract_valid_rate(rates, symbol) for symbol in SUPPORTED_SYMBOLS
-    }
+    return {f"usd_{symbol.lower()}": rate for symbol, rate in resolved_rates.items()}
 
 
 async def fetch_and_save_rates(db: AsyncSession) -> dict[str, float]:
@@ -111,26 +148,31 @@ async def fetch_and_save_rates(db: AsyncSession) -> dict[str, float]:
         db: активная AsyncSession.
 
     Returns:
-        Словарь сохранённых рыночных курсов для USDT/RUB к THB/GEL/VND.
+        Словарь сохранённых рыночных курсов. RUB-пары не обновляются, если
+        CurrencyBeacon не вернул валидный RUB.
     """
     raw = await fetch_raw_rates()
     logger.debug(
         "Сырые данные CurrencyBeacon: "
-        "usd_usdt=%.4f usd_rub=%.4f usd_thb=%.4f usd_gel=%.4f usd_vnd=%.4f",
+        "usd_usdt=%.4f usd_rub=%s usd_thb=%.4f usd_gel=%.4f usd_vnd=%.4f",
         raw["usd_usdt"],
-        raw["usd_rub"],
+        f"{raw['usd_rub']:.4f}" if "usd_rub" in raw else "missing",
         raw["usd_thb"],
         raw["usd_gel"],
         raw["usd_vnd"],
     )
 
-    rates = build_market_rates(
-        {
-            currency: calculate_cross_rate(raw["usd_usdt"], raw[f"usd_{currency.lower()}"])
-            for currency in TARGET_CURRENCIES
-        },
-        calculate_cross_rate(raw["usd_usdt"], raw["usd_rub"]),
-    )
+    usdt_targets = {
+        currency: calculate_cross_rate(raw["usd_usdt"], raw[f"usd_{currency.lower()}"])
+        for currency in TARGET_CURRENCIES
+    }
+    if "usd_rub" in raw:
+        rates = build_market_rates(
+            usdt_targets,
+            calculate_cross_rate(raw["usd_usdt"], raw["usd_rub"]),
+        )
+    else:
+        rates = {f"USDT{currency}": rate for currency, rate in usdt_targets.items()}
     logger.info("Сохраняем рыночные курсы в БД: %s", rates)
 
     repo = RateRepository(db)
