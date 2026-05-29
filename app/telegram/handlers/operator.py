@@ -12,7 +12,7 @@ from app.core.database import create_db_session
 from app.enums.order import OrderStatus
 from app.enums.user import has_operator_access
 from app.repositories.order import OrderRepository
-from app.services.order_notifications import build_chat_url_for_user
+from app.services.order_notifications import build_chat_url_for_user, build_manager_status_text
 from app.services.order_status import update_order_status
 from app.telegram.keyboards import (
     manager_order_cancel_confirm,
@@ -50,7 +50,7 @@ async def operator_take(callback: CallbackQuery) -> None:
             return
 
     await callback.message.edit_text(  # type: ignore[union-attr]
-        _build_manager_status_text(order),
+        build_manager_status_text(order),
         reply_markup=manager_order_close(order_id=order.id, chat_url=chat_url),
     )
     await callback.answer()
@@ -104,7 +104,7 @@ async def operator_cancel_confirm(callback: CallbackQuery) -> None:
         reply_markup = manager_order_chat_only(chat_url=chat_url)
 
     await callback.message.edit_text(  # type: ignore[union-attr]
-        _build_manager_status_text(order),
+        build_manager_status_text(order),
         reply_markup=reply_markup,
     )
     await callback.answer()
@@ -133,29 +133,7 @@ async def operator_close(callback: CallbackQuery) -> None:
         reply_markup = manager_order_chat_only(chat_url=chat_url)
 
     await callback.message.edit_text(  # type: ignore[union-attr]
-        _build_manager_status_text(order),
+        build_manager_status_text(order),
         reply_markup=reply_markup,
     )
     await callback.answer()
-
-
-def _build_manager_status_text(order) -> str:
-    city_name = order.city.name if getattr(order, "city", None) else "—"
-    return "\n".join(
-        [
-            f"Заявка #{order.publicNumber}",
-            f"Статус: {_status_label(order.status)}",
-            f"Город: {city_name}",
-            f"Пара: {order.currencySell} -> {order.currencyBuy}",
-            f"Сумма: {order.amountSell} {order.currencySell}",
-        ]
-    )
-
-
-def _status_label(status: int) -> str:
-    return {
-        int(OrderStatus.CREATED): "Новая",
-        int(OrderStatus.PROCESSING): "В работе",
-        int(OrderStatus.COMPLETED): "Завершена",
-        int(OrderStatus.CANCELLED): "Отменена",
-    }.get(status, f"Статус {status}")

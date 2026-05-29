@@ -8,6 +8,8 @@ import logging
 from aiogram.exceptions import TelegramBadRequest, TelegramForbiddenError
 from aiogram.types import InlineKeyboardMarkup
 
+from app.enums.country import Country
+from app.enums.order import MethodGet, OrderStatus
 from app.telegram import messages
 from app.telegram.i18n import get_translator, get_user_translator
 from app.telegram.keyboards import (
@@ -31,15 +33,22 @@ async def send_or_replace_user_status_message(
     old_message_id = getattr(order, "userNotificationMessageId", None)
     if old_message_id:
         try:
-            await bot.delete_message(chat_id=chat_id, message_id=old_message_id)
+            await bot.edit_message_text(
+                text=text,
+                chat_id=chat_id,
+                message_id=old_message_id,
+                reply_markup=reply_markup,
+            )
+            order.userNotificationMessageId = old_message_id
+            return old_message_id
         except TelegramBadRequest:
             logger.info(
-                "Previous order message %s for chat %s is already gone",
+                "Failed to edit order message %s for chat %s, sending a new message",
                 old_message_id,
                 chat_id,
             )
         except TelegramForbiddenError:
-            logger.warning("Cannot delete order message for inaccessible chat %s", chat_id)
+            logger.warning("Cannot update order message for inaccessible chat %s", chat_id)
             return None
 
     sent = await bot.send_message(chat_id=chat_id, text=text, reply_markup=reply_markup)
@@ -143,36 +152,137 @@ def _build_user_status_text(order, *, translate) -> str:
     return factory(order.publicNumber, translator=translate)
 
 
+def build_manager_status_text(order) -> str:
+    username = _format_username(getattr(order, "user", None))
+    city_name = _format_city_name(order)
+    direction = _format_direction(order)
+    amount = _format_amount(
+        getattr(order, "amountSell", None),
+        getattr(order, "currencySell", None),
+    )
+
+    if int(order.status) == int(OrderStatus.PROCESSING):
+        return "\n".join(
+            [
+                f"🟢 Заявка #{order.publicNumber}",
+                "",
+                "⏳ Статус: В работе",
+                "",
+                f"💱 Направление: {direction}",
+                f"💸 Сумма: {amount}",
+                "",
+                f"📍 Город: {city_name}",
+                f"👤 {username}",
+                "",
+                "💬 Ожидает завершения обмена",
+            ]
+        )
+
+    if int(order.status) == int(OrderStatus.COMPLETED):
+        return "\n".join(
+            [
+                f"✅ Заявка #{order.publicNumber} завершена",
+                "",
+                f"💱 Направление: {direction}",
+                f"💸 Сумма: {amount}",
+                "",
+                f"📍 {city_name}",
+                "",
+                "🏁 Обмен успешно выполнен",
+            ]
+        )
+
+    if int(order.status) == int(OrderStatus.CANCELLED):
+        return "\n".join(
+            [
+                f"Заявка #{order.publicNumber}",
+                "Статус: Отменена",
+                f"Город: {city_name}",
+                "Пара: "
+                f"{getattr(order, 'currencySell', '—')} -> {getattr(order, 'currencyBuy', '—')}",
+                f"Сумма: {getattr(order, 'amountSell', '—')} {getattr(order, 'currencySell', '—')}",
+            ]
+        )
+
+    return _build_manager_order_text(order, getattr(order, "user", None))
+
+
 def _build_manager_order_text(order, user) -> str:
-    city_name = order.city.name if getattr(order, "city", None) else "—"
-    username = f"@{user.username}" if getattr(user, "username", None) else "—"
-    contact = order.contactTelegram or "—"
-    method = order.methodGet
+    city_name = _format_city_name(order)
+    country_name = _format_country_name(getattr(order, "country", None))
+    username = _format_username(user)
+    method = _format_method(getattr(order, "methodGet", None))
     return "\n".join(
         [
-            f"🆕 <b>Новая заявка #{order.publicNumber}</b>",
+            f"🆕 Новая заявка #{order.publicNumber}",
             "",
-            f"Статус: <b>{_status_label(order.status)}</b>",
-            f"Город: <b>{city_name}</b>",
-            f"Страна: <b>{order.country.value}</b>",
-            f"Пользователь: {username}",
-            f"Telegram ID: <code>{user.telegram_id or '—'}</code>",
-            f"Контакт: <b>{contact}</b>",
-            f"Отдаёт: <b>{order.amountSell:,} {order.currencySell}</b>",
-            f"Получает: <b>{order.amountBuy or '—'} {order.currencyBuy}</b>",
-            f"Курс: <b>{order.rate or '—'}</b>",
-            f"Способ: <b>{method}</b>",
+            f"💱 Направление: {_format_direction(order)}",
+            "",
+            f"💸 Сумма к обмену: {_format_amount(order.amountSell, order.currencySell)}",
+            f"💰 К выдаче: {_format_amount(order.amountBuy, order.currencyBuy)}",
+            f"📊 Курс: {_format_rate(getattr(order, 'rate', None))}",
+            "",
+            f"📍 {city_name}, {country_name}",
+            "",
+            f"👤 Пользователь: {username}",
+            "",
+            f"💵 Получение: {method}",
+            "",
+            "⏳ Ожидает обработки менеджером",
         ]
     )
 
 
-def _status_label(status: int) -> str:
-    return {
-        1: "Новая",
-        2: "В работе",
-        3: "Завершена",
-        4: "Отменена",
-    }.get(status, f"Статус {status}")
+def _format_direction(order) -> str:
+    return f"{getattr(order, 'currencySell', '—')} → {getattr(order, 'currencyBuy', '—')}"
+
+
+def _format_city_name(order) -> str:
+    city = getattr(order, "city", None)
+    return getattr(city, "name", "—")
+
+
+def _format_country_name(country) -> str:
+    if isinstance(country, Country):
+        return country.ru_name
+    if hasattr(country, "ru_name"):
+        return country.ru_name
+    value = getattr(country, "value", None)
+    if value == Country.THAILAND.value:
+        return Country.THAILAND.ru_name
+    if value == Country.VIETNAM.value:
+        return Country.VIETNAM.ru_name
+    if value == Country.GEORGIA.value:
+        return Country.GEORGIA.ru_name
+    return value or "—"
+
+
+def _format_username(user) -> str:
+    username = getattr(user, "username", None)
+    return f"@{username}" if username else "—"
+
+
+def _format_amount(amount: int | float | None, currency: str | None) -> str:
+    if amount is None:
+        return f"— {currency or ''}".strip()
+    if isinstance(amount, float) and amount.is_integer():
+        amount = int(amount)
+    amount_text = f"{amount:,}".replace(",", " ")
+    return f"{amount_text} {currency or '—'}"
+
+
+def _format_rate(rate: float | None) -> str:
+    if rate is None:
+        return "—"
+    return str(rate)
+
+
+def _format_method(method: str | None) -> str:
+    if method == MethodGet.CASH.value:
+        return "Наличные"
+    if method == MethodGet.QRCODE.value:
+        return "QR-код"
+    return method or "—"
 
 
 def _get_telegram_bot():

@@ -98,7 +98,9 @@ async def test_operator_take_moves_order_to_processing(monkeypatch) -> None:
         == "op:close:5"
     )
     assert callback.message.edits[0]["reply_markup"].inline_keyboard[1][0].url == "https://t.me/customer"
-    assert "В работе" in callback.message.edits[0]["text"]
+    assert "🟢 Заявка #2026050001" in callback.message.edits[0]["text"]
+    assert "⏳ Статус: В работе" in callback.message.edits[0]["text"]
+    assert "💬 Ожидает завершения обмена" in callback.message.edits[0]["text"]
 
 
 async def test_operator_open_chat_handler_is_no_longer_used(monkeypatch) -> None:
@@ -173,6 +175,7 @@ async def test_operator_cancel_confirm_marks_order_cancelled(monkeypatch) -> Non
         currencySell="RUB",
         currencyBuy="THB",
         amountSell=25000,
+        methodGet="cash",
     )
 
     async def _fake_get_db():
@@ -194,7 +197,8 @@ async def test_operator_cancel_confirm_marks_order_cancelled(monkeypatch) -> Non
 
     assert callback.answers[-1] == {"text": None, "show_alert": False, "url": None}
     assert callback.message.edits[0]["reply_markup"].inline_keyboard[0][0].url == "https://t.me/customer"
-    assert "Отменена" in callback.message.edits[0]["text"]
+    assert "Заявка #2026050002" in callback.message.edits[0]["text"]
+    assert "Статус: Отменена" in callback.message.edits[0]["text"]
 
 
 async def test_operator_close_marks_order_completed(monkeypatch) -> None:
@@ -209,6 +213,7 @@ async def test_operator_close_marks_order_completed(monkeypatch) -> None:
         currencySell="RUB",
         currencyBuy="THB",
         amountSell=25000,
+        methodGet="cash",
     )
 
     async def _fake_get_db():
@@ -230,4 +235,5 @@ async def test_operator_close_marks_order_completed(monkeypatch) -> None:
 
     assert callback.answers[-1] == {"text": None, "show_alert": False, "url": None}
     assert callback.message.edits[0]["reply_markup"].inline_keyboard[0][0].url == "https://t.me/customer"
-    assert "Завершена" in callback.message.edits[0]["text"]
+    assert "✅ Заявка #2026050002 завершена" in callback.message.edits[0]["text"]
+    assert "🏁 Обмен успешно выполнен" in callback.message.edits[0]["text"]
