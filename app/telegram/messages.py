@@ -9,6 +9,13 @@ from app.services.exchange import ExchangePairSnapshot, format_rate_value
 from app.telegram.i18n import get_translator
 
 Translate = Callable[[str], str]
+_CURRENCY_LABELS = {
+    "RUB": "🇷🇺 RUB",
+    "USDT": "₮ USDT",
+    "THB": "🇹🇭 THB",
+    "GEL": "🇬🇪 GEL",
+    "VND": "🇻🇳 VND",
+}
 
 
 def _resolve_translator(
@@ -16,6 +23,10 @@ def _resolve_translator(
     locale: str | None = None,
 ) -> Translate:
     return translator or get_translator(locale)
+
+
+def format_currency_label(currency: str) -> str:
+    return _CURRENCY_LABELS.get(currency.upper(), currency.upper())
 
 
 def welcome(
@@ -96,7 +107,10 @@ def enter_amount_prompt(
     translator: Translate | None = None,
     locale: str | None = None,
 ) -> str:
-    return _resolve_translator(translator, locale)("exchange-enter-amount", currency=currency)
+    return _resolve_translator(translator, locale)(
+        "exchange-enter-amount",
+        currency=format_currency_label(currency),
+    )
 
 
 def invalid_amount(*, translator: Translate | None = None, locale: str | None = None) -> str:
@@ -135,9 +149,9 @@ def exchange_confirm_summary(
     return _resolve_translator(translator, locale)(
         "exchange-confirm-summary",
         amount=f"{amount:,}",
-        from_currency=from_currency,
+        from_currency=format_currency_label(from_currency),
         result=f"{result:,}",
-        to_currency=to_currency,
+        to_currency=format_currency_label(to_currency),
         method=method,
         current=current,
         total=total,
@@ -156,7 +170,7 @@ def exchange_pair_rates(
     return "\n".join(
         [
             translate("menu-rate-header"),
-            *[f"• {pair.label}: {pair.rate_display}" for pair in pairs],
+            *[f"• {pair.label}: {pair.rate_text}" for pair in pairs],
         ]
     )
 
@@ -168,6 +182,18 @@ def order_created(
     locale: str | None = None,
 ) -> str:
     return _resolve_translator(translator, locale)("order-created", id=order_id)
+
+
+def order_creation_failed(
+    *,
+    code: str | None = None,
+    translator: Translate | None = None,
+    locale: str | None = None,
+) -> str:
+    translate = _resolve_translator(translator, locale)
+    if code == "ORDER_ALREADY_EXISTS":
+        return translate("order-creation-limit-reached")
+    return translate("order-creation-failed")
 
 
 def order_confirmed(
@@ -219,9 +245,9 @@ def orders_item(
         "orders-item",
         id=order_id,
         amount_sell=f"{amount_sell:,}",
-        currency_sell=currency_sell,
+        currency_sell=format_currency_label(currency_sell),
         amount_buy=f"{amount_buy:,}",
-        currency_buy=currency_buy,
+        currency_buy=format_currency_label(currency_buy),
     )
 
 

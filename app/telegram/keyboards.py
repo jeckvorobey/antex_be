@@ -6,6 +6,7 @@ from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup, WebAppInfo
 
 from app.core.config import settings
 from app.telegram.i18n import get_translator
+from app.telegram.messages import format_currency_label
 
 
 def _resolve_translator(translator=None):
@@ -57,7 +58,7 @@ def choose_currency(_, currencies: list[str], **kwargs) -> InlineKeyboardMarkup:
         inline_keyboard=[
             [
                 InlineKeyboardButton(
-                    text=currency,
+                    text=format_currency_label(currency),
                     callback_data=f"exchange:currency:{currency}",
                 )
                 for currency in currencies
@@ -80,7 +81,7 @@ def choose_buy_currency(_, currencies: list[str], **kwargs) -> InlineKeyboardMar
         inline_keyboard=[
             [
                 InlineKeyboardButton(
-                    text=currency,
+                    text=format_currency_label(currency),
                     callback_data=f"exchange:buy:{currency}",
                 )
                 for currency in currencies
@@ -134,7 +135,7 @@ def obtaining(_, methods: list[str], **kwargs) -> InlineKeyboardMarkup:
 
 
 def confirm_exchange(_, **kwargs) -> InlineKeyboardMarkup:
-    """FSM шаг 4/4: confirm + cancel."""
+    """Финальный шаг: подтвердить, отредактировать или вернуться в начало."""
     del kwargs
     translate = _resolve_translator(_)
     return InlineKeyboardMarkup(
@@ -143,12 +144,21 @@ def confirm_exchange(_, **kwargs) -> InlineKeyboardMarkup:
                 InlineKeyboardButton(
                     text=translate("btn-confirm"),
                     callback_data="exchange:confirm",
+                    style="success",
                 ),
                 InlineKeyboardButton(
-                    text=translate("btn-cancel"),
-                    callback_data="fsm:cancel",
+                    text=translate("btn-edit"),
+                    callback_data="fsm:back",
+                    style="primary",
                 ),
-            ]
+            ],
+            [
+                InlineKeyboardButton(
+                    text=translate("btn-home-red"),
+                    callback_data="fsm:cancel",
+                    style="danger",
+                )
+            ],
         ]
     )
 

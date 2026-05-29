@@ -12,6 +12,7 @@ from app.telegram.i18n import get_translator
 from app.telegram.keyboards import (
     choose_buy_currency,
     choose_currency,
+    confirm_exchange,
     home,
     manager_order_close,
     manager_order_open_chat,
@@ -118,11 +119,12 @@ async def test_exchange_keyboards_are_backend_driven() -> None:
     sell_kb = choose_currency(translator, ["RUB", "USDT", "THB"])
     buy_kb = choose_buy_currency(translator, ["THB", "GEL"])
     methods_kb = obtaining(translator, ["cash", "card"])
+    confirm_kb = confirm_exchange(translator)
 
-    assert [button.callback_data for button in sell_kb.inline_keyboard[0]] == [
-        "exchange:currency:RUB",
-        "exchange:currency:USDT",
-        "exchange:currency:THB",
+    assert [button.text for button in sell_kb.inline_keyboard[0]] == [
+        "🇷🇺 RUB",
+        "₮ USDT",
+        "🇹🇭 THB",
     ]
     assert [button.callback_data for button in buy_kb.inline_keyboard[0]] == [
         "exchange:buy:THB",
@@ -132,6 +134,14 @@ async def test_exchange_keyboards_are_backend_driven() -> None:
         "method:cash",
         "method:card",
     ]
+    assert [button.callback_data for button in confirm_kb.inline_keyboard[0]] == [
+        "exchange:confirm",
+        "fsm:back",
+    ]
+    assert confirm_kb.inline_keyboard[0][0].style == "success"
+    assert confirm_kb.inline_keyboard[0][1].style == "primary"
+    assert confirm_kb.inline_keyboard[1][0].style == "danger"
+    assert confirm_kb.inline_keyboard[1][0].callback_data == "fsm:cancel"
 
 
 async def test_manager_order_keyboards_use_new_callbacks() -> None:

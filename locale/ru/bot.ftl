@@ -1,5 +1,9 @@
 ## Main menu
-welcome = 👋 Привет, { $name }!
+welcome =
+    👋 { $name }, привет!
+
+    Помогу быстро создать заявку на обмен без лишних шагов.
+    Нажмите «Новый обмен», чтобы начать.
 menu-exchange = 💱 Новый обмен
 menu-orders = 📋 Мои заявки
 menu-rate-header = 📊 Актуальные пары:
@@ -8,35 +12,42 @@ menu-rate-info =
     • 1 RUB = { $rub_rate } THB
     • 1 USDT = { $usdt_rate } THB
     🕐 Обновлено: { $updated_at }
-home-title = 🏠 Главное меню
+home-title =
+    🏠 Главное меню
+
+    Выберите, что хотите сделать:
 bot-disabled = ⚠️ Бот временно недоступен. Попробуйте позже.
 bot-turned-on = ✅ Бот включён.
 bot-turned-off = 🔴 Бот выключен.
 
 ## FSM — exchange flow
 exchange-step = Шаг { $current } из { $total }
-exchange-choose-currency = Выберите валюту для обмена:
-exchange-choose-buy-currency = Выберите, что получить за { $currency }:
-exchange-enter-amount = Введите сумму в { $currency }:
-exchange-amount-invalid = ❌ Неверная сумма. Введите число больше 0.
-exchange-choose-method = Как вы хотите получить { $currency }?
+exchange-choose-currency = Выберите, что хотите отдать:
+exchange-choose-buy-currency = Выберите, что хотите получить за { $currency }:
+exchange-enter-amount = Введите сумму, которую хотите обменять в { $currency }:
+exchange-amount-invalid = Укажите сумму числом, больше нуля.
+exchange-choose-method = Выберите способ получения { $currency }:
 exchange-rate-unavailable = ⚠️ Курс временно недоступен. Попробуйте позже.
 exchange-confirm-summary =
-    📋 Подтверждение заявки — шаг { $current }/{ $total }
+    📋 Проверьте заявку — шаг { $current }/{ $total }
 
-    Вы отправляете: { $amount } { $from_currency }
-    Вы получаете:   { $result } { $to_currency }
-    Способ:         { $method }
+    Отдаёте: { $amount } { $from_currency }
+    Получаете: { $result } { $to_currency }
+    Способ получения: { $method }
+
+    Если всё верно, нажмите «Подтвердить».
 
 ## Buttons
 btn-confirm = ✅ Подтвердить
 btn-cancel = ❌ Отменить
 btn-back = ◀ Назад
+btn-edit = ✏️ Редактировать
+btn-home-red = 🔴 Вернуться в начало
 btn-home = 🏠 Главное меню
-btn-qr = 📱 QR-код
+btn-qr = 📱 По QR-коду
 btn-transfer = 🏦 Перевод
 btn-cash = 💵 Наличные
-btn-wallet = 👛 Кошелек
+btn-wallet = 👛 Кошелёк
 btn-card = 💳 Карта
 btn-cancel-order = ❌ Отменить
 btn-confirm-cancel-order = ❌ Подтвердить отмену
@@ -62,6 +73,8 @@ order-created =
     ⏳ Мы получили ваш запрос и уже начали обработку.
 
     Пожалуйста, ожидайте подтверждения. Статус заявки будет обновлён автоматически.
+order-creation-failed = Не удалось создать заявку. Попробуйте ещё раз через минуту.
+order-creation-limit-reached = У вас уже слишком много активных заявок. Дождитесь обработки текущих или завершите их.
 order-confirmed =
     ✅ Заявка #{ $id } принята в работу.
 

@@ -11,6 +11,7 @@ from aiogram.fsm.state import State, StatesGroup
 from aiogram.types import CallbackQuery, Message
 
 from app.core.database import create_db_session
+from app.exceptions import AntExException
 from app.repositories.order import OrderRepository
 from app.schemas.miniapp import MiniappOrderCreate
 from app.services.exchange import ExchangePairSnapshot, ExchangeQuoteInput, ExchangeService
@@ -22,13 +23,12 @@ from app.telegram.keyboards import (
     choose_currency,
     confirm_exchange,
     home,
-    obtaining,
 )
 from app.telegram.services.user_service import check_user
 
 logger = logging.getLogger(__name__)
 router = Router(name="exchange")
-TOTAL_STEPS = 5
+TOTAL_STEPS = 4
 
 
 class ExchangeState(StatesGroup):
@@ -87,29 +87,46 @@ async def _render_step(
 def _format_method_label(method: str, translate) -> str:
     return {
         "qr": translate("btn-qr"),
+        "qrcode": translate("btn-qr"),
         "rs": translate("btn-transfer"),
         "cash": translate("btn-cash"),
     }.get(method, method)
 
 
-async def show_confirmation(callback: CallbackQuery, state: FSMContext) -> None:
-    translate = get_user_translator(callback.from_user)
-    data = await state.get_data()
+def _select_default_method(available_methods: list[str]) -> str:
+    if "qrcode" in available_methods:
+        return "qrcode"
+    if available_methods:
+        return available_methods[0]
+    return "qrcode"
+
+
+def _build_confirmation_text(*, translate, data: dict[str, object]) -> str:
     quote = data["quote"]
-    text = messages.exchange_confirm_summary(
+    return messages.exchange_confirm_summary(
         amount=data["amount_sell"],
         from_currency=data["currency_sell"],
         result=quote["amountBuy"],
         to_currency=data["currency_buy"],
         method=_format_method_label(data["method"], translate),
+        current=TOTAL_STEPS,
+        total=TOTAL_STEPS,
         translator=translate,
     )
-    await _safe_edit_text(
-        callback.message,
-        text,
-        reply_markup=confirm_exchange(translate),
-    )
-    await callback.answer()
+
+
+async def _show_confirmation(actor, state: FSMContext, *, edit: bool) -> None:
+    translate = get_user_translator(actor.from_user)
+    data = await state.get_data()
+    text = _build_confirmation_text(translate=translate, data=data)
+    if edit:
+        await _safe_edit_text(
+            actor.message,
+            text,
+            reply_markup=confirm_exchange(translate),
+        )
+    else:
+        await actor.answer(text, reply_markup=confirm_exchange(translate))
 
 
 async def _show_exchange_menu(actor, state: FSMContext, *, edit: bool) -> None:
@@ -250,16 +267,33 @@ async def enter_amount(message: Message, state: FSMContext) -> None:
 
     await state.update_data(amount_sell=amount)
     data = await state.get_data()
-    methods = ExchangeService().get_methods_for_currency(data["currency_buy"])
-    await state.update_data(available_methods=methods)
-    await state.set_state(ExchangeState.choosing_method)
-    await _render_step(
-        actor=message,
-        current=4,
-        body=messages.choose_method_prompt(data["currency_buy"], translator=translate),
-        reply_markup=obtaining(translate, methods),
-        edit=False,
+    db = await _get_db()
+    try:
+        async with db:
+            quote = await ExchangeService().get_quote(
+                db,
+                ExchangeQuoteInput(
+                    currency_sell=data["currency_sell"],
+                    currency_buy=data["currency_buy"],
+                    amount_sell=amount,
+                ),
+            )
+    except AntExException:
+        await message.answer(
+            messages.exchange_rate_unavailable(translator=translate),
+            reply_markup=home(translate),
+        )
+        return
+
+    methods = list(quote.available_methods)
+    default_method = _select_default_method(methods)
+    await state.update_data(
+        available_methods=methods,
+        method=default_method,
+        quote=_quote_to_state_payload(quote),
     )
+    await state.set_state(ExchangeState.confirming)
+    await _show_confirmation(message, state, edit=False)
 
 
 @router.callback_query(F.data.startswith("method:"), ExchangeState.choosing_method)
@@ -285,7 +319,8 @@ async def choose_method(callback: CallbackQuery, state: FSMContext) -> None:
         return
     await state.update_data(method=method, quote=_quote_to_state_payload(quote))
     await state.set_state(ExchangeState.confirming)
-    await show_confirmation(callback, state)
+    await _show_confirmation(callback, state, edit=True)
+    await callback.answer()
 
 
 @router.callback_query(F.data == "exchange:confirm", ExchangeState.confirming)
@@ -301,24 +336,41 @@ async def confirm_exchange_callback(callback: CallbackQuery, state: FSMContext) 
         return
 
     db = await _get_db()
-    async with db:
-        user, _ = await check_user(db, callback.from_user)
-        order = await create_order_for_user(
-            db,
-            user,
-            MiniappOrderCreate(
-                cityId=user.city_id if data["method"] == "cash" else None,
-                country=ExchangeService().infer_country_from_pair(
-                    f"{data['currency_sell']}{data['currency_buy']}"
+    try:
+        async with db:
+            user, _ = await check_user(db, callback.from_user)
+            order = await create_order_for_user(
+                db,
+                user,
+                MiniappOrderCreate(
+                    cityId=user.city_id if data["method"] == "cash" else None,
+                    country=ExchangeService().infer_country_from_pair(
+                        f"{data['currency_sell']}{data['currency_buy']}"
+                    ),
+                    currencySell=data["currency_sell"],
+                    amountSell=data["amount_sell"],
+                    currencyBuy=data["currency_buy"],
+                    amountBuy=quote["amountBuy"],
+                    rate=quote["rate"],
+                    methodGet=data["method"],
                 ),
-                currencySell=data["currency_sell"],
-                amountSell=data["amount_sell"],
-                currencyBuy=data["currency_buy"],
-                amountBuy=quote["amountBuy"],
-                rate=quote["rate"],
-                methodGet=data["method"],
+            )
+    except AntExException as exc:
+        await callback.answer(
+            messages.order_creation_failed(
+                code=getattr(exc, "code", None),
+                translator=translate,
             ),
+            show_alert=True,
         )
+        return
+    except Exception:
+        logger.exception("Failed to create order in Telegram exchange flow")
+        await callback.answer(
+            messages.order_creation_failed(translator=translate),
+            show_alert=True,
+        )
+        return
 
     await state.clear()
     await _safe_edit_text(
@@ -365,15 +417,15 @@ async def fsm_back(callback: CallbackQuery, state: FSMContext) -> None:
             edit=True,
         )
     elif current_state == ExchangeState.confirming.state:
-        await state.set_state(ExchangeState.choosing_method)
+        await state.set_state(ExchangeState.entering_amount)
         await _render_step(
             actor=callback,
-            current=4,
-            body=messages.choose_method_prompt(
-                data.get("currency_buy", "THB"),
+            current=3,
+            body=messages.enter_amount_prompt(
+                data.get("currency_sell", "RUB"),
                 translator=translate,
             ),
-            reply_markup=obtaining(translate, data.get("available_methods", ["cash"])),
+            reply_markup=home(translate),
             edit=True,
         )
     elif current_state == ExchangeState.choosing_buy_currency.state:
