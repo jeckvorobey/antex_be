@@ -99,6 +99,9 @@ uv run python run.py --host 0.0.0.0 --port 8000
 - Основной источник рыночных курсов: `CurrencyBeacon`
 - Backend запрашивает `USD -> USDT,RUB,THB,GEL,VND` и строит из них пары:
   `USDTTHB`, `USDTGEL`, `USDTVND`, `RUBTHB`, `RUBGEL`, `RUBVND`
+- Если `CurrencyBeacon` не возвращает валидный `RUB`, backend дозапрашивает
+  `USD/RUB` через бесплатный `Frankfurter` fallback и продолжает пересчёт
+  RUB-пар.
 - Переменные окружения:
   - `CURRENCYBEACON_API_KEY`
 - Логика наценки хранится отдельно в `Rates.margin` и не зависит от провайдера

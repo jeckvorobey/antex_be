@@ -183,6 +183,43 @@ class TestFetchRawRates:
         assert raw["usd_rub"] == pytest.approx(90.0)
         assert mock_currencybeacon.await_count == 2
 
+    async def test_falls_back_to_frankfurter_when_rub_stays_null(
+        self,
+        mock_currencybeacon: AsyncMock,
+    ) -> None:
+        first_response = MagicMock()
+        first_response.raise_for_status.return_value = None
+        first_response.json.return_value = {
+            "meta": {"code": 200},
+            "response": {
+                "base": "USD",
+                "rates": {
+                    "USDT": 1.0,
+                    "RUB": None,
+                    "THB": 36.0,
+                    "GEL": 2.8,
+                    "VND": 25000.0,
+                },
+            },
+        }
+        second_response = MagicMock()
+        second_response.raise_for_status.return_value = None
+        second_response.json.return_value = {
+            "meta": {"code": 200},
+            "response": {"base": "USD", "rates": {"RUB": None}},
+        }
+        frankfurter_response = MagicMock()
+        frankfurter_response.raise_for_status.return_value = None
+        frankfurter_response.json.return_value = [
+            {"date": "2026-05-30", "base": "USD", "quote": "RUB", "rate": 71.128}
+        ]
+        mock_currencybeacon.side_effect = [first_response, second_response, frankfurter_response]
+
+        raw = await fetch_raw_rates()
+
+        assert raw["usd_rub"] == pytest.approx(71.128)
+        assert mock_currencybeacon.await_count == 3
+
 
 class TestFetchAndSaveRates:
     async def test_upserts_all_supported_currencies(
@@ -282,7 +319,10 @@ class TestFetchAndSaveRates:
                 },
             },
         }
-        mock_currencybeacon.side_effect = [first_response, second_response]
+        frankfurter_response = MagicMock()
+        frankfurter_response.raise_for_status.return_value = None
+        frankfurter_response.json.return_value = []
+        mock_currencybeacon.side_effect = [first_response, second_response, frankfurter_response]
 
         rates = await fetch_and_save_rates(db_session)
 
@@ -290,3 +330,41 @@ class TestFetchAndSaveRates:
         assert set(rates) == {"USDTTHB", "USDTGEL", "USDTVND"}
         assert all_rates["USDTTHB"].price == pytest.approx(36.0)
         assert all_rates["RUBTHB"].price == pytest.approx(0.41)
+
+    async def test_rub_fallback_still_upserts_all_supported_currencies(
+        self,
+        db_session,
+        mock_currencybeacon: AsyncMock,
+    ) -> None:
+        first_response = MagicMock()
+        first_response.raise_for_status.return_value = None
+        first_response.json.return_value = {
+            "meta": {"code": 200},
+            "response": {
+                "base": "USD",
+                "rates": {
+                    "USDT": 1.0,
+                    "RUB": None,
+                    "THB": 36.0,
+                    "GEL": 2.8,
+                    "VND": 25000.0,
+                },
+            },
+        }
+        second_response = MagicMock()
+        second_response.raise_for_status.return_value = None
+        second_response.json.return_value = {
+            "meta": {"code": 200},
+            "response": {"base": "USD", "rates": {"RUB": None}},
+        }
+        frankfurter_response = MagicMock()
+        frankfurter_response.raise_for_status.return_value = None
+        frankfurter_response.json.return_value = [
+            {"date": "2026-05-30", "base": "USD", "quote": "RUB", "rate": 90.0}
+        ]
+        mock_currencybeacon.side_effect = [first_response, second_response, frankfurter_response]
+
+        rates = await fetch_and_save_rates(db_session)
+
+        assert set(rates) == {"USDTTHB", "USDTGEL", "USDTVND", "RUBTHB", "RUBGEL", "RUBVND"}
+        assert rates["RUBTHB"] == pytest.approx(36.0 / 90.0, rel=1e-6)

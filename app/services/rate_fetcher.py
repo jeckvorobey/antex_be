@@ -23,6 +23,7 @@ SUPPORTED_SYMBOLS = ("USDT", "RUB", "THB", "GEL", "VND")
 OPTIONAL_SYMBOLS = {"RUB"}
 API_BASE_URL = "https://api.currencybeacon.com/v1"
 LATEST_ENDPOINT = "/latest"
+FRANKFURTER_RATES_URL = "https://api.frankfurter.dev/v2/rates"
 REQUEST_TIMEOUT_SECONDS = 10.0
 
 
@@ -67,6 +68,40 @@ def _extract_valid_rate(rates: dict[str, float | int | str | None], symbol: str)
         raise ValueError(f"CurrencyBeacon returned non-positive rate for {symbol}")
 
     return rate
+
+
+def _extract_frankfurter_rate(payload: object, symbol: str) -> float:
+    """Извлекает курс из ответа Frankfurter /v2/rates."""
+    if not isinstance(payload, list) or not payload:
+        raise ValueError("Frankfurter response does not contain rates")
+
+    first_rate = payload[0]
+    if not isinstance(first_rate, dict):
+        raise ValueError("Frankfurter response contains invalid rate item")
+
+    quote = str(first_rate.get("quote", "")).upper()
+    if quote != symbol.upper():
+        raise ValueError(f"Frankfurter response does not contain {symbol}")
+
+    try:
+        rate = float(first_rate["rate"])
+    except (KeyError, TypeError, ValueError) as exc:
+        raise ValueError(f"Frankfurter returned invalid rate for {symbol}") from exc
+
+    if rate <= 0:
+        raise ValueError(f"Frankfurter returned non-positive rate for {symbol}")
+
+    return rate
+
+
+async def _fetch_usd_rub_from_frankfurter(client: httpx.AsyncClient) -> float:
+    """Получает USD/RUB из Frankfurter как fallback для CurrencyBeacon."""
+    response = await client.get(
+        FRANKFURTER_RATES_URL,
+        params={"base": "USD", "quotes": "RUB"},
+    )
+    response.raise_for_status()
+    return _extract_frankfurter_rate(response.json(), "RUB")
 
 
 async def fetch_raw_rates() -> dict[str, float]:
@@ -123,6 +158,21 @@ async def fetch_raw_rates() -> dict[str, float]:
                     try:
                         resolved_rates[symbol] = _extract_valid_rate(retry_rates, symbol)
                     except ValueError:
+                        if symbol == "RUB":
+                            try:
+                                resolved_rates[symbol] = await _fetch_usd_rub_from_frankfurter(
+                                    client
+                                )
+                                logger.warning(
+                                    "CurrencyBeacon не вернул RUB, используем Frankfurter USD/RUB"
+                                )
+                                continue
+                            except (ValueError, httpx.HTTPError) as exc:
+                                logger.warning(
+                                    "Frankfurter не вернул валидный fallback-курс для %s: %s",
+                                    symbol,
+                                    exc,
+                                )
                         if symbol not in OPTIONAL_SYMBOLS:
                             raise
                         logger.warning(

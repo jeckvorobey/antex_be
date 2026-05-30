@@ -7,7 +7,7 @@
     python scripts/check_rates.py --margin 3.5
 
 Выводит в лог:
-  - raw USD-базовые курсы от CurrencyBeacon
+  - raw USD-базовые курсы от провайдеров
   - рассчитанный RUBTHB (кросс-курс через USDT)
   - базовые и пользовательские курсы с применённой наценкой
 """
@@ -45,9 +45,12 @@ async def main(margin_pct: float) -> None:
     logger.info("Запрашиваем курсы у CurrencyBeacon...")
     raw = await fetch_raw_rates()
 
-    logger.info("--- Raw данные от CurrencyBeacon ---")
+    logger.info("--- Raw данные от провайдеров ---")
     logger.info("  USD/USDT (рыночный): %.6f", raw["usd_usdt"])
     logger.info("  USD/THB  (рыночный): %.6f", raw["usd_thb"])
+    if "usd_rub" not in raw:
+        logger.warning("  USD/RUB  недоступен: RUB-пары не будут пересчитаны")
+        return
     logger.info("  USD/RUB  (рыночный): %.6f", raw["usd_rub"])
 
     usdt_thb_market = calculate_cross_rate(raw["usd_usdt"], raw["usd_thb"])
