@@ -86,6 +86,16 @@ class OrderRepository(BaseRepository[Order]):
         )
         return list(result.scalars().all())
 
+    async def list_by_status(self, status: int, *, limit: int = 10) -> list[Order]:
+        result = await self.session.execute(
+            select(Order)
+            .where(Order.status == int(status), Order.destroyTime.is_(None))
+            .options(selectinload(Order.user), selectinload(Order.city))
+            .order_by(desc(Order.createdAt))
+            .limit(limit)
+        )
+        return list(result.scalars().all())
+
     async def list_all(self) -> list[Order]:
         result = await self.session.execute(
             select(Order)

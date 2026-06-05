@@ -58,7 +58,7 @@ def manager_home(_, **kwargs) -> InlineKeyboardMarkup:
         [
             InlineKeyboardButton(
                 text=translate("menu-new-site-leads"),
-                callback_data="manager:site_leads",
+                callback_data="manager:new_orders",
             )
         ]
     ]
@@ -82,26 +82,27 @@ def _truncate_button_text(text: str, *, limit: int = 48) -> str:
     return f"{text[: limit - 1]}…"
 
 
-def manager_site_leads_list(_, leads: list[object], **kwargs) -> InlineKeyboardMarkup:
-    """Инлайн-лист последних site leads для менеджера."""
+def manager_new_orders_list(_, orders: list[object], **kwargs) -> InlineKeyboardMarkup:
+    """Инлайн-лист новых заявок на обмен для менеджера."""
     del kwargs
     translate = _resolve_translator(_)
     inline_keyboard = [
         [
             InlineKeyboardButton(
                 text=_truncate_button_text(
-                    f"🆕 #{lead.id} {getattr(lead, 'messenger', None) or 'Сайт'}: {lead.contact}"
+                    f"🆕 #{getattr(order, 'publicNumber', order.id)} "
+                    f"{order.currencySell} → {order.currencyBuy}"
                 ),
-                callback_data=f"manager:site_lead:{lead.id}",
+                callback_data=f"manager:order:{order.id}",
             )
         ]
-        for lead in leads
+        for order in orders
     ]
     inline_keyboard.append(
         [
             InlineKeyboardButton(
                 text=translate("menu-new-site-leads"),
-                callback_data="manager:site_leads",
+                callback_data="manager:new_orders",
             )
         ]
     )

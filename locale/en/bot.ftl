@@ -68,8 +68,8 @@ orders-empty = 📭 You have no orders yet.
 orders-item = #{ $id }: { $amount_sell } { $currency_sell } → { $amount_buy } { $currency_buy }
 
 ## Manager
-manager-site-leads-header = 🆕 New site requests:
-manager-site-leads-empty = 📭 No new site requests.
+manager-new-orders-header = 🆕 New exchange requests:
+manager-new-orders-empty = 📭 No new exchange requests.
 manager-access-denied = Access denied.
 
 ## Order statuses

@@ -68,8 +68,8 @@ orders-empty = 📭 У вас пока нет заявок.
 orders-item = #{ $id }: { $amount_sell } { $currency_sell } → { $amount_buy } { $currency_buy }
 
 ## Manager
-manager-site-leads-header = 🆕 Новые заявки с сайта:
-manager-site-leads-empty = 📭 Новых заявок с сайта нет.
+manager-new-orders-header = 🆕 Новые заявки на обмен:
+manager-new-orders-empty = 📭 Новых заявок на обмен нет.
 manager-access-denied = Недостаточно прав.
 
 ## Order statuses

@@ -11,13 +11,19 @@ from aiogram.types import CallbackQuery, Message
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import create_db_session
+from app.enums.order import OrderStatus
 from app.enums.user import has_admin_access, has_operator_access
 from app.repositories.config import ConfigRepository
-from app.repositories.site_lead import SiteLeadRepository
-from app.services.site_lead_notifications import build_site_lead_manager_text
+from app.repositories.order import OrderRepository
+from app.services.order_notifications import build_chat_url_for_user, build_manager_status_text
 from app.telegram import messages
 from app.telegram.i18n import get_user_translator
-from app.telegram.keyboards import home, manager_home, manager_site_leads_list
+from app.telegram.keyboards import (
+    home,
+    manager_home,
+    manager_new_orders_list,
+    manager_order_open_chat,
+)
 from app.telegram.services.user_service import check_user
 
 logger = logging.getLogger(__name__)
@@ -82,8 +88,8 @@ async def cmd_start(message: Message) -> None:
     logger.info("Sent /start response: telegram_id=%s, menu=%s", message.from_user.id, menu_type)
 
 
-@router.callback_query(F.data == "manager:site_leads")
-async def manager_site_leads(callback: CallbackQuery) -> None:
+@router.callback_query(F.data == "manager:new_orders")
+async def manager_new_orders(callback: CallbackQuery) -> None:
     translate = get_user_translator(callback.from_user)
     db = await _get_db()
     async with db:
@@ -93,27 +99,27 @@ async def manager_site_leads(callback: CallbackQuery) -> None:
         if not has_operator_access(user.role):
             await callback.answer(translate("manager-access-denied"), show_alert=True)
             return
-        leads = await SiteLeadRepository(db).list_recent(limit=10)
+        orders = await OrderRepository(db).list_by_status(OrderStatus.CREATED, limit=10)
 
-    if not leads:
+    if not orders:
         await _safe_edit_text(
             callback.message,
-            translate("manager-site-leads-empty"),
+            translate("manager-new-orders-empty"),
             reply_markup=manager_home(translate),
         )
     else:
         await _safe_edit_text(
             callback.message,
-            translate("manager-site-leads-header"),
-            reply_markup=manager_site_leads_list(translate, leads),
+            translate("manager-new-orders-header"),
+            reply_markup=manager_new_orders_list(translate, orders),
         )
     await callback.answer()
 
 
-@router.callback_query(F.data.startswith("manager:site_lead:"))
-async def manager_site_lead_detail(callback: CallbackQuery) -> None:
+@router.callback_query(F.data.startswith("manager:order:"))
+async def manager_order_detail(callback: CallbackQuery) -> None:
     translate = get_user_translator(callback.from_user)
-    lead_id = int(callback.data.rsplit(":", 1)[-1])  # type: ignore[union-attr]
+    order_id = int(callback.data.rsplit(":", 1)[-1])  # type: ignore[union-attr]
     db = await _get_db()
     async with db:
         user, created = await check_user(db, callback.from_user)
@@ -122,16 +128,17 @@ async def manager_site_lead_detail(callback: CallbackQuery) -> None:
         if not has_operator_access(user.role):
             await callback.answer(translate("manager-access-denied"), show_alert=True)
             return
-        lead = await SiteLeadRepository(db).get_by_id(lead_id)
+        order = await OrderRepository(db).get_one(order_id)
 
-    if lead is None:
-        await callback.answer(translate("manager-site-leads-empty"), show_alert=True)
+    if order is None or order.status != int(OrderStatus.CREATED):
+        await callback.answer(translate("manager-new-orders-empty"), show_alert=True)
         return
 
+    chat_url = build_chat_url_for_user(order.user)
     await _safe_edit_text(
         callback.message,
-        build_site_lead_manager_text(lead),
-        reply_markup=manager_site_leads_list(translate, [lead]),
+        build_manager_status_text(order),
+        reply_markup=manager_order_open_chat(order_id=order.id, chat_url=chat_url),
     )
     await callback.answer()
 

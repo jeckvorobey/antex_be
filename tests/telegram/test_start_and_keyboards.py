@@ -100,7 +100,7 @@ async def test_manager_home_keyboard_has_new_requests_and_site(monkeypatch) -> N
 
     assert len(kb.inline_keyboard) == 2
     assert kb.inline_keyboard[0][0].text == "🆕 Новые заявки"
-    assert kb.inline_keyboard[0][0].callback_data == "manager:site_leads"
+    assert kb.inline_keyboard[0][0].callback_data == "manager:new_orders"
     assert kb.inline_keyboard[1][0].text == "🚀 Открыть сайт"
     assert kb.inline_keyboard[1][0].web_app is not None
     assert kb.inline_keyboard[1][0].web_app.url == "https://example.com/miniapp"
@@ -175,11 +175,11 @@ async def test_start_uses_manager_keyboard_for_manager(monkeypatch) -> None:
 
     assert len(message.answers) == 1
     reply_markup = message.answers[0]["reply_markup"]
-    assert reply_markup.inline_keyboard[0][0].callback_data == "manager:site_leads"
+    assert reply_markup.inline_keyboard[0][0].callback_data == "manager:new_orders"
     assert reply_markup.inline_keyboard[1][0].web_app.url == "https://example.com/app"
 
 
-async def test_manager_site_leads_callback_lists_recent_leads(monkeypatch) -> None:
+async def test_manager_new_orders_callback_lists_created_orders(monkeypatch) -> None:
     user = TgUser(
         id=777,
         is_bot=False,
@@ -187,11 +187,25 @@ async def test_manager_site_leads_callback_lists_recent_leads(monkeypatch) -> No
         username="manager",
         language_code="ru",
     )
-    callback = _FakeCallback("manager:site_leads", user)
+    callback = _FakeCallback("manager:new_orders", user)
     fake_db = _FakeDbSession()
-    leads = [
-        SimpleNamespace(id=2, messenger="Max", contact="79206629860"),
-        SimpleNamespace(id=1, messenger="Telegram", contact="@client"),
+    orders = [
+        SimpleNamespace(
+            id=2,
+            publicNumber="2026060002",
+            amountSell=10000,
+            currencySell="RUB",
+            amountBuy=225.5,
+            currencyBuy="THB",
+        ),
+        SimpleNamespace(
+            id=1,
+            publicNumber="2026060001",
+            amountSell=500,
+            currencySell="USDT",
+            amountBuy=16200,
+            currencyBuy="THB",
+        ),
     ]
 
     async def _fake_get_db():
@@ -200,25 +214,26 @@ async def test_manager_site_leads_callback_lists_recent_leads(monkeypatch) -> No
     async def _fake_check_user(db, tg_user):
         return (SimpleNamespace(role=2), False)
 
-    class _FakeSiteLeadRepo:
+    class _FakeOrderRepo:
         def __init__(self, db) -> None:
             self.db = db
 
-        async def list_recent(self, *, limit: int = 10):
+        async def list_by_status(self, status: int, *, limit: int = 10):
+            assert status == 1
             assert limit == 10
-            return leads
+            return orders
 
     monkeypatch.setattr(start_handler, "_get_db", _fake_get_db)
     monkeypatch.setattr(start_handler, "check_user", _fake_check_user)
-    monkeypatch.setattr(start_handler, "SiteLeadRepository", _FakeSiteLeadRepo)
+    monkeypatch.setattr(start_handler, "OrderRepository", _FakeOrderRepo)
 
-    await start_handler.manager_site_leads(callback)
+    await start_handler.manager_new_orders(callback)
 
-    assert callback.message.edits[0]["text"] == get_translator("ru")("manager-site-leads-header")
+    assert callback.message.edits[0]["text"] == get_translator("ru")("manager-new-orders-header")
     reply_markup = callback.message.edits[0]["reply_markup"]
-    assert reply_markup.inline_keyboard[0][0].text == "🆕 #2 Max: 79206629860"
-    assert reply_markup.inline_keyboard[0][0].callback_data == "manager:site_lead:2"
-    assert reply_markup.inline_keyboard[1][0].text == "🆕 #1 Telegram: @client"
+    assert reply_markup.inline_keyboard[0][0].text == "🆕 #2026060002 RUB → THB"
+    assert reply_markup.inline_keyboard[0][0].callback_data == "manager:order:2"
+    assert reply_markup.inline_keyboard[1][0].text == "🆕 #2026060001 USDT → THB"
     assert callback.answers[-1] == {"text": None, "show_alert": False}
 
 
