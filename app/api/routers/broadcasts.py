@@ -2,10 +2,10 @@
 
 from __future__ import annotations
 
-from fastapi import APIRouter, status
+from fastapi import APIRouter, HTTPException, status
 
 from app.api.deps import AdminUser, DbDep
-from app.modules.broadcasts.runner import schedule_broadcast
+from app.modules.broadcasts.runner import schedule_broadcast, stop_broadcast
 from app.modules.broadcasts.schemas import BroadcastCreate, BroadcastOut
 from app.modules.broadcasts.service import create_broadcast, list_broadcasts
 
@@ -31,4 +31,16 @@ async def create_broadcast_route(
 ) -> BroadcastOut:
     broadcast = await create_broadcast(db, payload=payload, admin_id=admin.id)  # type: ignore[attr-defined]
     await schedule_broadcast(broadcast_id=broadcast.id)
+    return BroadcastOut.model_validate(broadcast)
+
+
+@router.post("/{broadcast_id}/stop", response_model=BroadcastOut)
+async def stop_broadcast_route(
+    broadcast_id: int,
+    db: DbDep,
+    _: AdminUser,
+) -> BroadcastOut:
+    broadcast = await stop_broadcast(broadcast_id=broadcast_id, session=db)
+    if broadcast is None:
+        raise HTTPException(status_code=404, detail="Broadcast not found")
     return BroadcastOut.model_validate(broadcast)

@@ -9,20 +9,24 @@ from sqlalchemy import select
 from app.modules.broadcasts.models import Broadcast
 from app.repositories.base import BaseRepository
 
+ACTIVE_BROADCAST_STATUSES = ("pending", "running")
+FINAL_BROADCAST_STATUSES = ("completed", "failed", "stopped")
+STOPPED_BY_ADMIN_ERROR = "Остановлена администратором"
+
 
 class BroadcastRepository(BaseRepository[Broadcast]):
     model = Broadcast
 
     async def has_active_broadcast(self) -> bool:
         result = await self.session.execute(
-            select(Broadcast.id).where(Broadcast.status.in_(("pending", "running"))).limit(1)
+            select(Broadcast.id).where(Broadcast.status.in_(ACTIVE_BROADCAST_STATUSES)).limit(1)
         )
         return result.scalar_one_or_none() is not None
 
     async def get_active(self) -> list[Broadcast]:
         result = await self.session.execute(
             select(Broadcast)
-            .where(Broadcast.status.in_(("pending", "running")))
+            .where(Broadcast.status.in_(ACTIVE_BROADCAST_STATUSES))
             .order_by(Broadcast.id.asc())
         )
         return list(result.scalars().all())
@@ -80,4 +84,10 @@ class BroadcastRepository(BaseRepository[Broadcast]):
         broadcast.failed_count = failed_count
         broadcast.finished_at = datetime.now(UTC)
         broadcast.last_error = error_message
+        return await self.update(broadcast)
+
+    async def mark_stopped(self, broadcast: Broadcast) -> Broadcast:
+        broadcast.status = "stopped"
+        broadcast.finished_at = datetime.now(UTC)
+        broadcast.last_error = STOPPED_BY_ADMIN_ERROR
         return await self.update(broadcast)

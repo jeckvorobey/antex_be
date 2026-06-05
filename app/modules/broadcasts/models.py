@@ -41,7 +41,7 @@ class Broadcast(Base, TimestampMixin):
     status: Mapped[str] = mapped_column(
         String(32),
         nullable=False,
-        comment="Текущий статус рассылки: pending, running, completed или failed",
+        comment="Текущий статус рассылки: pending, running, completed, failed или stopped",
     )
     audience_type: Mapped[str] = mapped_column(
         String(64),

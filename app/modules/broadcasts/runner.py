@@ -18,7 +18,12 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.core.database import async_session
 from app.modules.broadcasts.audience import BroadcastRecipient, TelegramUserAudienceProvider
-from app.modules.broadcasts.repository import BroadcastRepository
+from app.modules.broadcasts.models import Broadcast
+from app.modules.broadcasts.repository import (
+    ACTIVE_BROADCAST_STATUSES,
+    FINAL_BROADCAST_STATUSES,
+    BroadcastRepository,
+)
 
 DEFAULT_PROGRESS_BATCH_SIZE = 10
 _active_tasks: dict[int, asyncio.Task[None]] = {}
@@ -40,20 +45,15 @@ class BroadcastRateLimiter:
 
     async def acquire(self) -> None:
         loop = asyncio.get_running_loop()
-        while True:
-            delay = 0.0
-            async with self._lock:
-                now = loop.time()
-                if self._pause_until > now:
-                    delay = self._pause_until - now
-                else:
-                    slot = max(now, self._next_slot)
-                    delay = max(slot - now, 0.0)
-                    self._next_slot = slot + self.interval
+        async with self._lock:
+            now = loop.time()
+            slot = max(now, self._next_slot, self._pause_until)
+            delay = max(slot - now, 0.0)
+            self._next_slot = slot + self.interval
 
-            if delay <= 0:
-                return
-            await asyncio.sleep(delay)
+        if delay <= 0:
+            return
+        await asyncio.sleep(delay)
 
     async def pause(self, seconds: float) -> None:
         loop = asyncio.get_running_loop()
@@ -84,6 +84,34 @@ async def schedule_broadcast(*, broadcast_id: int) -> None:
         _active_tasks.pop(broadcast_id, None)
 
     task.add_done_callback(_cleanup)
+
+
+async def stop_broadcast(
+    *,
+    broadcast_id: int,
+    session: AsyncSession,
+) -> Broadcast | None:
+    repo = BroadcastRepository(session)
+    broadcast = await repo.get_by_id(broadcast_id)
+    if broadcast is None:
+        return None
+
+    if broadcast.status in FINAL_BROADCAST_STATUSES:
+        return broadcast
+
+    if broadcast.status not in ACTIVE_BROADCAST_STATUSES:
+        return broadcast
+
+    task = _active_tasks.get(broadcast_id)
+    if task is not None and not task.done():
+        task.cancel()
+        with suppress(asyncio.CancelledError):
+            await task
+
+    await repo.mark_stopped(broadcast)
+    await session.commit()
+    await session.refresh(broadcast)
+    return broadcast
 
 
 async def recover_stale_broadcasts_on_startup(
@@ -127,7 +155,7 @@ async def _persist_progress(
     async with session_factory() as session:
         repo = BroadcastRepository(session)
         broadcast = await repo.get_by_id(broadcast_id)
-        if broadcast is None:
+        if broadcast is None or broadcast.status not in ACTIVE_BROADCAST_STATUSES:
             return
         await repo.update_counts(
             broadcast,
@@ -151,7 +179,7 @@ async def run_broadcast(
     async with session_factory() as session:
         repo = BroadcastRepository(session)
         broadcast = await repo.get_by_id(broadcast_id)
-        if broadcast is None:
+        if broadcast is None or broadcast.status not in ACTIVE_BROADCAST_STATUSES:
             return
 
         audience = TelegramUserAudienceProvider(session)
@@ -189,7 +217,7 @@ async def run_broadcast(
         async with session_factory() as session:
             repo = BroadcastRepository(session)
             current = await repo.get_by_id(broadcast_id)
-            if current is not None:
+            if current is not None and current.status in ACTIVE_BROADCAST_STATUSES:
                 await repo.mark_failed(
                     current,
                     success_count=success_count,
@@ -202,7 +230,7 @@ async def run_broadcast(
         async with session_factory() as session:
             repo = BroadcastRepository(session)
             current = await repo.get_by_id(broadcast_id)
-            if current is not None:
+            if current is not None and current.status in ACTIVE_BROADCAST_STATUSES:
                 await repo.mark_failed(
                     current,
                     success_count=success_count,
@@ -215,7 +243,7 @@ async def run_broadcast(
     async with session_factory() as session:
         repo = BroadcastRepository(session)
         current = await repo.get_by_id(broadcast_id)
-        if current is None:
+        if current is None or current.status not in ACTIVE_BROADCAST_STATUSES:
             return
         await repo.mark_completed(
             current,
