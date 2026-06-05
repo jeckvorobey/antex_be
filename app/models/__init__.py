@@ -6,6 +6,7 @@ from app.models.config import Config
 from app.models.order import Order
 from app.models.order_number_counter import OrderNumberCounter
 from app.models.rate import Rate
+from app.models.site_lead import SiteLead
 from app.models.user import User
 from app.modules.broadcasts.models import Broadcast
 
@@ -17,5 +18,6 @@ __all__ = [
     "Order",
     "OrderNumberCounter",
     "Rate",
+    "SiteLead",
     "User",
 ]

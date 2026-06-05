@@ -20,6 +20,7 @@ from app.repositories.city import CityRepository
 from app.repositories.config import ConfigRepository
 from app.repositories.order import OrderRepository
 from app.repositories.rate import RateRepository
+from app.repositories.site_lead import SiteLeadRepository
 from app.repositories.user import UserRepository
 from app.schemas.admin import (
     AdminLogin,
@@ -31,6 +32,7 @@ from app.schemas.city import CityCreate, CityOut, CityUpdate, build_city_out
 from app.schemas.config import AppConfigOut, AppConfigUpdate
 from app.schemas.order import OrderOut, OrderStatusUpdate, build_order_out
 from app.schemas.rate import AdminRateOut, RateCreate, RateUpdate, build_admin_rate_out
+from app.schemas.site_lead import SiteLeadOut, build_site_lead_out
 from app.schemas.user import UserOut, UserUpdate, build_user_out
 from app.services.exchange import ExchangeService
 from app.services.order_status import update_order_status as apply_order_status
@@ -255,6 +257,11 @@ async def update_order_status(
             ) from exc
         raise
     return build_order_out(hydrated)
+
+
+@router.get("/site-leads", response_model=list[SiteLeadOut])
+async def list_site_leads(db: DbDep, _: AdminUser) -> list[SiteLeadOut]:
+    return [build_site_lead_out(lead) for lead in await SiteLeadRepository(db).list_all()]
 
 
 @router.get("/rates", response_model=list[AdminRateOut])

@@ -449,7 +449,7 @@ async def test_miniapp_order_is_created_with_preliminary_client_quote(
     assert order["amountBuy"] == pytest.approx(123.45)
     assert order["contactTelegram"] == "customer"
     assert order["city"] is None
-    assert order["publicNumber"] == "2026050001"
+    assert order["publicNumber"] == f"{datetime.now(UTC):%Y%m}0001"
 
 
 @pytest.mark.asyncio

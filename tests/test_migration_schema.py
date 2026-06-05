@@ -19,6 +19,7 @@ EXPECTED_TABLES = {
     "Orders",
     "OrderNumberCounters",
     "Broadcasts",
+    "SiteLeads",
 }
 EXPECTED_BROADCAST_COLUMNS = {
     "id",
@@ -51,6 +52,16 @@ EXPECTED_ORDER_COLUMNS = {
     "userNotificationMessageId",
     "endTime",
     "destroyTime",
+    "createdAt",
+    "updatedAt",
+}
+EXPECTED_SITE_LEAD_COLUMNS = {
+    "id",
+    "messenger",
+    "contact",
+    "topic",
+    "message",
+    "source",
     "createdAt",
     "updatedAt",
 }
@@ -102,6 +113,7 @@ def test_model_metadata_contains_required_migration_columns() -> None:
     assert "allowance" not in Base.metadata.tables["Configs"].columns
     assert set(Base.metadata.tables["Broadcasts"].columns.keys()) >= EXPECTED_BROADCAST_COLUMNS
     assert set(Base.metadata.tables["Orders"].columns.keys()) >= EXPECTED_ORDER_COLUMNS
+    assert set(Base.metadata.tables["SiteLeads"].columns.keys()) >= EXPECTED_SITE_LEAD_COLUMNS
     assert "address" not in Base.metadata.tables["Orders"].columns
     assert Base.metadata.tables["Orders"].columns["CityId"].nullable is True
     assert Base.metadata.tables["Orders"].columns["country"].nullable is False
