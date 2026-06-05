@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import logging
+
 from aiogram import F, Router
 from aiogram.exceptions import TelegramBadRequest
 from aiogram.filters import Command, CommandStart
@@ -18,6 +20,7 @@ from app.telegram.i18n import get_user_translator
 from app.telegram.keyboards import home, manager_home, manager_site_leads_list
 from app.telegram.services.user_service import check_user
 
+logger = logging.getLogger(__name__)
 router = Router(name="start")
 
 
@@ -36,6 +39,11 @@ async def _safe_edit_text(message, text: str, *, reply_markup) -> None:
 @router.message(CommandStart())
 async def cmd_start(message: Message) -> None:
     translate = get_user_translator(message.from_user)
+    logger.info(
+        "Handling /start: telegram_id=%s, username=%s",
+        message.from_user.id,
+        message.from_user.username,
+    )
     db = await _get_db()
     async with db:
         config_repo = ConfigRepository(db)
@@ -44,15 +52,34 @@ async def cmd_start(message: Message) -> None:
         user, _ = await check_user(db, message.from_user)
         await db.commit()
 
+    logger.info(
+        "Resolved /start user: telegram_id=%s, user_id=%s, role=%s, bot_enabled=%s",
+        message.from_user.id,
+        getattr(user, "id", None),
+        user.role,
+        config.enabled,
+    )
     if not config.enabled:
         await message.answer(messages.bot_disabled(translator=translate))
+        logger.info("Sent bot-disabled response for /start: telegram_id=%s", message.from_user.id)
         return
 
-    reply_markup = manager_home(translate) if has_operator_access(user.role) else home(translate)
-    await message.answer(
-        messages.welcome(message.from_user.first_name, translator=translate),
-        reply_markup=reply_markup,
+    menu_type = "manager" if has_operator_access(user.role) else "user"
+    reply_markup = manager_home(translate) if menu_type == "manager" else home(translate)
+    logger.info(
+        "Sending /start response: telegram_id=%s, menu=%s",
+        message.from_user.id,
+        menu_type,
     )
+    try:
+        await message.answer(
+            messages.welcome(message.from_user.first_name, translator=translate),
+            reply_markup=reply_markup,
+        )
+    except Exception:
+        logger.exception("Failed to send /start response: telegram_id=%s", message.from_user.id)
+        raise
+    logger.info("Sent /start response: telegram_id=%s, menu=%s", message.from_user.id, menu_type)
 
 
 @router.callback_query(F.data == "manager:site_leads")

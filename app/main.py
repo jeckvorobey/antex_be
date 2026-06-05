@@ -53,6 +53,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator:
     if settings.telegram_bot_token:
         from app.telegram import bot as telegram_bot
 
+        logger.info("Starting Telegram bot in %s mode", settings.telegram_mode)
         await telegram_bot.init_bot()
         if settings.telegram_mode == "polling":
             await telegram_bot.start_polling()

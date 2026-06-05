@@ -27,12 +27,16 @@ async def telegram_webhook(
     if settings.telegram_webhook_secret:
         expected = settings.telegram_webhook_secret
         if not hmac.compare_digest(x_telegram_bot_api_secret_token or "", expected):
+            logger.warning("Rejected Telegram webhook: invalid secret")
             raise HTTPException(status_code=403, detail="Invalid webhook secret")
 
     if telegram_bot.bot is None or telegram_bot.dp is None:
+        logger.error("Telegram webhook received before bot initialization")
         raise HTTPException(status_code=503, detail="Bot is not initialized")
 
     body = await request.json()
+    logger.info("Telegram webhook received: update_id=%s", body.get("update_id"))
     update = Update.model_validate(body)
     await telegram_bot.dp.feed_update(bot=telegram_bot.bot, update=update)
+    logger.info("Telegram webhook dispatched: update_id=%s", update.update_id)
     return {"ok": True}
