@@ -6,6 +6,7 @@ welcome =
     Нажмите «Новый обмен», чтобы начать.
 menu-exchange = 💱 Новый обмен
 menu-orders = 📋 Мои заявки
+menu-new-site-leads = 🆕 Новые заявки
 menu-rate-header = 📊 Актуальные пары:
 menu-rate-info =
     📊 Текущий курс:
@@ -65,6 +66,11 @@ menu-open-site = 🚀 Открыть сайт
 orders-header = 📋 Ваши заявки:
 orders-empty = 📭 У вас пока нет заявок.
 orders-item = #{ $id }: { $amount_sell } { $currency_sell } → { $amount_buy } { $currency_buy }
+
+## Manager
+manager-site-leads-header = 🆕 Новые заявки с сайта:
+manager-site-leads-empty = 📭 Новых заявок с сайта нет.
+manager-access-denied = Недостаточно прав.
 
 ## Order statuses
 order-created =

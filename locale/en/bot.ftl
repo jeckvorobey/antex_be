@@ -6,6 +6,7 @@ welcome =
     Tap "New exchange" to start.
 menu-exchange = 💱 New exchange
 menu-orders = 📋 My orders
+menu-new-site-leads = 🆕 New requests
 menu-rate-header = 📊 Available pairs:
 menu-rate-info =
     📊 Current rate:
@@ -65,6 +66,11 @@ menu-open-site = 🚀 Open site
 orders-header = 📋 Your orders:
 orders-empty = 📭 You have no orders yet.
 orders-item = #{ $id }: { $amount_sell } { $currency_sell } → { $amount_buy } { $currency_buy }
+
+## Manager
+manager-site-leads-header = 🆕 New site requests:
+manager-site-leads-empty = 📭 No new site requests.
+manager-access-denied = Access denied.
 
 ## Order statuses
 order-created = ✅ Order #{ $id } created. Please wait for confirmation.

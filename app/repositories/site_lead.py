@@ -14,3 +14,9 @@ class SiteLeadRepository(BaseRepository[SiteLead]):
     async def list_all(self) -> list[SiteLead]:
         result = await self.session.execute(select(SiteLead).order_by(desc(SiteLead.createdAt)))
         return list(result.scalars().all())
+
+    async def list_recent(self, *, limit: int = 10) -> list[SiteLead]:
+        result = await self.session.execute(
+            select(SiteLead).order_by(desc(SiteLead.createdAt)).limit(limit)
+        )
+        return list(result.scalars().all())

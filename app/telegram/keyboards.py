@@ -50,6 +50,75 @@ def home(_, **kwargs) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(inline_keyboard=inline_keyboard)
 
 
+def manager_home(_, **kwargs) -> InlineKeyboardMarkup:
+    """Главное меню менеджера: новые заявки + сайт."""
+    del kwargs
+    translate = _resolve_translator(_)
+    inline_keyboard = [
+        [
+            InlineKeyboardButton(
+                text=translate("menu-new-site-leads"),
+                callback_data="manager:site_leads",
+            )
+        ]
+    ]
+
+    if settings.frontend_webapp_url:
+        inline_keyboard.append(
+            [
+                InlineKeyboardButton(
+                    text=translate("menu-open-site"),
+                    web_app=WebAppInfo(url=settings.frontend_webapp_url),
+                )
+            ]
+        )
+
+    return InlineKeyboardMarkup(inline_keyboard=inline_keyboard)
+
+
+def _truncate_button_text(text: str, *, limit: int = 48) -> str:
+    if len(text) <= limit:
+        return text
+    return f"{text[: limit - 1]}…"
+
+
+def manager_site_leads_list(_, leads: list[object], **kwargs) -> InlineKeyboardMarkup:
+    """Инлайн-лист последних site leads для менеджера."""
+    del kwargs
+    translate = _resolve_translator(_)
+    inline_keyboard = [
+        [
+            InlineKeyboardButton(
+                text=_truncate_button_text(
+                    f"🆕 #{lead.id} {getattr(lead, 'messenger', None) or 'Сайт'}: {lead.contact}"
+                ),
+                callback_data=f"manager:site_lead:{lead.id}",
+            )
+        ]
+        for lead in leads
+    ]
+    inline_keyboard.append(
+        [
+            InlineKeyboardButton(
+                text=translate("menu-new-site-leads"),
+                callback_data="manager:site_leads",
+            )
+        ]
+    )
+
+    if settings.frontend_webapp_url:
+        inline_keyboard.append(
+            [
+                InlineKeyboardButton(
+                    text=translate("menu-open-site"),
+                    web_app=WebAppInfo(url=settings.frontend_webapp_url),
+                )
+            ]
+        )
+
+    return InlineKeyboardMarkup(inline_keyboard=inline_keyboard)
+
+
 def choose_currency(_, currencies: list[str], **kwargs) -> InlineKeyboardMarkup:
     """FSM шаг выбора валюты продажи."""
     del kwargs
@@ -197,7 +266,7 @@ def confirm_order(
             ],
             [
                 _chat_button(translate, chat_url),
-            ]
+            ],
         ]
     )
 
@@ -211,6 +280,7 @@ def manager_order_open_chat(
 ) -> InlineKeyboardMarkup:
     del kwargs
     return confirm_order(_, order_id=order_id, chat_url=chat_url)
+
 
 def manager_order_close(
     _=None,
