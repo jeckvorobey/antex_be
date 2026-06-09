@@ -60,7 +60,7 @@ btn-close-order = ✅ Close order
 btn-leave-review = ⭐ Leave a review
 btn-rub-thb = 🇷🇺 RUB → THB
 btn-usdt-thb = 💎 USDT → THB
-menu-open-site = 🚀 Open site
+menu-open-site = 🚀 Open app
 
 ## Orders
 orders-header = 📋 Your orders:

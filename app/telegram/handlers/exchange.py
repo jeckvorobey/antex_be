@@ -74,7 +74,7 @@ async def _render_step(
     text = "\n".join(
         [
             messages.exchange_step(current, TOTAL_STEPS, translator=translate),
-            messages.exchange_pair_rates(featured_pairs[:3], translator=translate),
+            messages.exchange_pair_rates(featured_pairs, translator=translate),
             body,
         ]
     )

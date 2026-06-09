@@ -69,3 +69,48 @@ def test_exchange_pair_rates_match_miniapp_display_orientation() -> None:
 
     assert "THB/RUB" in text
     assert "1 THB = 2.51 RUB" in text
+
+
+def test_exchange_pair_rates_format_is_readable_with_currency_emoji() -> None:
+    stamp = datetime(2026, 5, 29, 12, 0, tzinfo=UTC)
+    pairs = [
+        ExchangePairSnapshot(
+            pair_id="rub-thb",
+            label="THB/RUB",
+            currency_sell="THB",
+            currency_buy="RUB",
+            country=Country.THAILAND,
+            base_rate=2.51,
+            client_rate=2.51,
+            calculation_rate=2.51,
+            rate_display="2.51",
+            rate_text="1 THB = 2.51 RUB",
+            amount_sell_example=100,
+            amount_buy_example=251.0,
+            updated_at=stamp,
+            available_methods=["qrcode", "cash"],
+        ),
+        ExchangePairSnapshot(
+            pair_id="usdt-thb",
+            label="USDT/THB",
+            currency_sell="USDT",
+            currency_buy="THB",
+            country=Country.THAILAND,
+            base_rate=35.11,
+            client_rate=35.11,
+            calculation_rate=35.11,
+            rate_display="35.11",
+            rate_text="1 USDT = 35.11 THB",
+            amount_sell_example=100,
+            amount_buy_example=3511.0,
+            updated_at=stamp,
+            available_methods=["qrcode", "cash"],
+        ),
+    ]
+
+    text = messages.exchange_pair_rates(pairs, locale="ru")
+
+    assert "• 🇹🇭 THB → 🇷🇺 RUB (THB/RUB)" in text
+    assert "  1 THB = 2.51 RUB" in text
+    assert "• ₮ USDT → 🇹🇭 THB (USDT/THB)" in text
+    assert "  1 USDT = 35.11 THB" in text

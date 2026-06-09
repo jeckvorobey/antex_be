@@ -170,7 +170,14 @@ def exchange_pair_rates(
     return "\n".join(
         [
             translate("menu-rate-header"),
-            *[f"• {pair.label}: {pair.rate_text}" for pair in pairs],
+            *[
+                (
+                    f"• {format_currency_label(pair.currency_sell)}"
+                    f" → {format_currency_label(pair.currency_buy)} ({pair.label})\n"
+                    f"  {pair.rate_text}"
+                )
+                for pair in pairs
+            ],
         ]
     )
 

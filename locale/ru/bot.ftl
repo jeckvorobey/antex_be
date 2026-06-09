@@ -60,7 +60,7 @@ btn-close-order = ✅ Закрыть заявку
 btn-leave-review = ⭐ Оставить отзыв
 btn-rub-thb = 🇷🇺 RUB → THB
 btn-usdt-thb = 💎 USDT → THB
-menu-open-site = 🚀 Открыть сайт
+menu-open-site = 🚀 Открыть приложение
 
 ## Orders
 orders-header = 📋 Ваши заявки:

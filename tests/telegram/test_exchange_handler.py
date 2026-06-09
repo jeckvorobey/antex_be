@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+from datetime import UTC, datetime
 from types import SimpleNamespace
 
 from aiogram.exceptions import TelegramBadRequest
@@ -13,6 +14,7 @@ from app.enums.order import OrderStatus
 from app.exceptions import AntExException
 from app.models.city import City
 from app.models.user import User
+from app.services.exchange import ExchangePairSnapshot
 from app.telegram.handlers import exchange as exchange_handler
 
 
@@ -87,6 +89,60 @@ class _FakeState:
 
     async def clear(self) -> None:
         self.cleared = True
+
+
+def _pair_snapshot(pair_id: str, sell: str, buy: str, rate_text: str) -> ExchangePairSnapshot:
+    return ExchangePairSnapshot(
+        pair_id=pair_id,
+        label=f"{sell}/{buy}",
+        currency_sell=sell,
+        currency_buy=buy,
+        country=Country.THAILAND,
+        base_rate=1.0,
+        client_rate=1.0,
+        calculation_rate=1.0,
+        rate_display="1.00",
+        rate_text=rate_text,
+        amount_sell_example=100,
+        amount_buy_example=100.0,
+        updated_at=datetime(2026, 6, 9, 12, 0, tzinfo=UTC),
+        available_methods=["qrcode", "cash"],
+    )
+
+
+async def test_render_step_shows_all_loaded_pairs(monkeypatch) -> None:
+    callback = _FakeCallback(
+        TgUser(
+            id=777004,
+            is_bot=False,
+            first_name="Reader",
+            username="reader",
+            language_code="ru",
+        )
+    )
+    pairs = [
+        _pair_snapshot("rub-thb", "THB", "RUB", "1 THB = 2.51 RUB"),
+        _pair_snapshot("usdt-thb", "USDT", "THB", "1 USDT = 35.11 THB"),
+        _pair_snapshot("usdt-gel", "USDT", "GEL", "1 USDT = 2.57 GEL"),
+        _pair_snapshot("rub-vnd", "RUB", "VND", "1 RUB = 271.60 VND"),
+    ]
+
+    async def _fake_get_exchange_pairs():
+        return pairs
+
+    monkeypatch.setattr(exchange_handler, "_get_exchange_pairs", _fake_get_exchange_pairs)
+
+    await exchange_handler._render_step(
+        actor=callback,
+        current=1,
+        body="Выберите, что хотите отдать:",
+        reply_markup=None,
+        edit=True,
+    )
+
+    text = callback.message.edits[0]["text"]
+    for pair in pairs:
+        assert pair.rate_text in text
 
 
 async def test_enter_amount_moves_directly_to_confirmation(monkeypatch) -> None:

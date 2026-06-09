@@ -101,7 +101,7 @@ async def test_manager_home_keyboard_has_new_requests_and_site(monkeypatch) -> N
     assert len(kb.inline_keyboard) == 2
     assert kb.inline_keyboard[0][0].text == "🆕 Новые заявки"
     assert kb.inline_keyboard[0][0].callback_data == "manager:new_orders"
-    assert kb.inline_keyboard[1][0].text == "🚀 Открыть сайт"
+    assert kb.inline_keyboard[1][0].text == "🚀 Открыть приложение"
     assert kb.inline_keyboard[1][0].web_app is not None
     assert kb.inline_keyboard[1][0].web_app.url == "https://example.com/miniapp"
 
