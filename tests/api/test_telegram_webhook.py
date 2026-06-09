@@ -1,11 +1,15 @@
 from __future__ import annotations
 
+import asyncio
+import time
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
 import pytest
+from aiogram import Bot, Dispatcher
 from httpx import ASGITransport, AsyncClient
 
+from app.api.routers import telegram as telegram_router
 from app.core.config import settings
 from app.main import app
 from app.telegram import bot as telegram_bot
@@ -40,7 +44,7 @@ async def test_telegram_webhook_rejects_invalid_secret(monkeypatch: pytest.Monke
     monkeypatch.setattr(settings, "telegram_mode", "webhook")
     monkeypatch.setattr(settings, "telegram_webhook_secret", "secret-token")
     monkeypatch.setattr(telegram_bot, "bot", object())
-    monkeypatch.setattr(telegram_bot, "dp", SimpleNamespace(feed_update=AsyncMock()))
+    monkeypatch.setattr(telegram_bot, "dp", SimpleNamespace(feed_webhook_update=AsyncMock()))
 
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as client:
@@ -51,19 +55,23 @@ async def test_telegram_webhook_rejects_invalid_secret(monkeypatch: pytest.Monke
         )
 
     assert response.status_code == 403
-    telegram_bot.dp.feed_update.assert_not_awaited()
+    telegram_bot.dp.feed_webhook_update.assert_not_awaited()
 
 
 @pytest.mark.asyncio
-async def test_telegram_webhook_feeds_update_with_valid_secret(
+async def test_telegram_webhook_feeds_webhook_update_with_valid_secret(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    feed_update = AsyncMock()
+    feed_webhook_update = AsyncMock()
     bot = object()
     monkeypatch.setattr(settings, "telegram_mode", "webhook")
     monkeypatch.setattr(settings, "telegram_webhook_secret", "secret-token")
     monkeypatch.setattr(telegram_bot, "bot", bot)
-    monkeypatch.setattr(telegram_bot, "dp", SimpleNamespace(feed_update=feed_update))
+    monkeypatch.setattr(
+        telegram_bot,
+        "dp",
+        SimpleNamespace(feed_webhook_update=feed_webhook_update),
+    )
 
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as client:
@@ -74,9 +82,62 @@ async def test_telegram_webhook_feeds_update_with_valid_secret(
         )
 
     assert response.status_code == 200
-    feed_update.assert_awaited_once()
-    assert feed_update.await_args.kwargs["bot"] is bot
-    assert feed_update.await_args.kwargs["update"].update_id == 1
+    feed_webhook_update.assert_awaited_once()
+    assert feed_webhook_update.await_args.kwargs["bot"] is bot
+    assert feed_webhook_update.await_args.kwargs["update"].update_id == 1
+    assert feed_webhook_update.await_args.kwargs["_timeout"] == 1.0
+
+
+@pytest.mark.asyncio
+@pytest.mark.filterwarnings("ignore:Detected slow response into webhook.:RuntimeWarning")
+async def test_telegram_webhook_slow_dispatcher_does_not_hold_response(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    handler_started = asyncio.Event()
+    bot = Bot("123456:test-token")
+    dispatcher = Dispatcher()
+
+    @dispatcher.message()
+    async def _slow_handler(message) -> None:
+        handler_started.set()
+        await asyncio.sleep(0.2)
+
+    monkeypatch.setattr(settings, "telegram_mode", "webhook")
+    monkeypatch.setattr(settings, "telegram_webhook_secret", "secret-token")
+    monkeypatch.setattr(telegram_router, "WEBHOOK_DISPATCH_TIMEOUT_SECONDS", 0.01)
+    monkeypatch.setattr(telegram_bot, "bot", bot)
+    monkeypatch.setattr(telegram_bot, "dp", dispatcher)
+
+    transport = ASGITransport(app=app)
+    started_at = time.perf_counter()
+    try:
+        async with AsyncClient(transport=transport, base_url="http://test") as client:
+            response = await client.post(
+                "/telegram/webhook",
+                headers={"X-Telegram-Bot-Api-Secret-Token": "secret-token"},
+                json={
+                    "update_id": 1,
+                    "message": {
+                        "message_id": 10,
+                        "date": 1_717_871_000,
+                        "chat": {"id": 777, "type": "private", "first_name": "Tester"},
+                        "from": {
+                            "id": 777,
+                            "is_bot": False,
+                            "first_name": "Tester",
+                            "username": "tester",
+                        },
+                        "text": "/start",
+                    },
+                },
+            )
+        duration = time.perf_counter() - started_at
+        await asyncio.wait_for(handler_started.wait(), timeout=0.1)
+    finally:
+        await bot.session.close()
+
+    assert response.status_code == 200
+    assert duration < 0.15
 
 
 @pytest.mark.asyncio

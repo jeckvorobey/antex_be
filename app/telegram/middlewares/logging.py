@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import time
 from collections.abc import Awaitable, Callable
 from typing import Any
 
@@ -26,13 +27,27 @@ class LoggingMiddleware(BaseMiddleware):
         elif isinstance(event, CallbackQuery):
             event_name = f"CallbackQuery data={event.data!r}"
 
+        user_id = getattr(user, "id", None)
+        username = getattr(user, "username", None)
+
         if user:
             logger.info(
                 "Telegram update received: event=%s, user_id=%s, username=%s",
                 event_name,
-                user.id,
-                user.username,
+                user_id,
+                username,
             )
         else:
             logger.info("Telegram update received: event=%s, user_id=unknown", event_name)
-        return await handler(event, data)
+
+        started_at = time.perf_counter()
+        try:
+            return await handler(event, data)
+        finally:
+            duration_ms = (time.perf_counter() - started_at) * 1000
+            logger.info(
+                "Telegram update handled: event=%s, user_id=%s, duration_ms=%.2f",
+                event_name,
+                user_id or "unknown",
+                duration_ms,
+            )
