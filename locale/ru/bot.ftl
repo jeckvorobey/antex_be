@@ -7,7 +7,7 @@ welcome =
 menu-exchange = 💱 Новый обмен
 menu-orders = 📋 Мои заявки
 menu-new-site-leads = 🆕 Новые заявки
-menu-rate-header = 📊 Актуальные пары:
+menu-rate-header = 💱 Курс сейчас
 menu-rate-info =
     📊 Текущий курс:
     • 1 RUB = { $rub_rate } THB
@@ -22,8 +22,8 @@ bot-turned-on = ✅ Бот включён.
 bot-turned-off = 🔴 Бот выключен.
 
 ## FSM — exchange flow
-exchange-step = Шаг { $current } из { $total }
-exchange-choose-currency = Выберите, что хотите отдать:
+exchange-step = Шаг { $current }/{ $total }
+exchange-choose-currency = Что отдаёте?
 exchange-choose-buy-currency = Выберите, что хотите получить за { $currency }:
 exchange-enter-amount = Введите сумму, которую хотите обменять в { $currency }:
 exchange-amount-invalid = Укажите сумму числом, больше нуля.

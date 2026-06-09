@@ -167,17 +167,18 @@ def exchange_pair_rates(
     translate = _resolve_translator(translator, locale)
     if not pairs:
         return translate("exchange-rate-unavailable")
+
+    def _format_pair(pair: ExchangePairSnapshot) -> str:
+        return (
+            f"• {format_currency_label(pair.currency_sell)} → "
+            f"{format_currency_label(pair.currency_buy)}\n"
+            f"  {pair.rate_text}"
+        )
+
     return "\n".join(
         [
             translate("menu-rate-header"),
-            *[
-                (
-                    f"• {format_currency_label(pair.currency_sell)}"
-                    f" → {format_currency_label(pair.currency_buy)} ({pair.label})\n"
-                    f"  {pair.rate_text}"
-                )
-                for pair in pairs
-            ],
+            *[_format_pair(pair) for pair in pairs],
         ]
     )
 
