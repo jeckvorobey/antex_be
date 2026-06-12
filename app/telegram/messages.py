@@ -183,6 +183,7 @@ def exchange_pair_rates(
     return "\n".join(
         [
             translate("menu-rate-header"),
+            '\n',
             *[_format_pair(pair) for pair in pairs],
         ]
     )
