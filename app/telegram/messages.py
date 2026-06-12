@@ -69,23 +69,6 @@ def exchange_step(
     return _resolve_translator(translator, locale)("exchange-step", current=current, total=total)
 
 
-def exchange_rate(
-    rubthb: float,
-    usdtthb: float | None = None,
-    updated_at: str | None = None,
-    *,
-    translator: Translate | None = None,
-    locale: str | None = None,
-) -> str:
-    translate = _resolve_translator(translator, locale)
-    return translate(
-        "menu-rate-info",
-        rub_rate=format_rate_value(rubthb),
-        usdt_rate=format_rate_value(usdtthb or 0.0),
-        updated_at=updated_at or datetime.utcnow().strftime("%H:%M"),
-    )
-
-
 def choose_currency_prompt(
     *,
     translator: Translate | None = None,
@@ -175,15 +158,14 @@ def exchange_pair_rates(
 
     def _format_pair(pair: ExchangePairSnapshot) -> str:
         return (
-            f"👉 {_format_currency_emoji(pair.currency_sell)} "
-            f"1 {pair.currency_sell} → {pair.rate_display} {pair.currency_buy} "
+            f"{_format_currency_emoji(pair.currency_sell)} "
+            f"1 {pair.currency_sell} → <b>{pair.rate_display}</b>  {pair.currency_buy} "
             f"{_format_currency_emoji(pair.currency_buy)}"
         )
 
     return "\n".join(
         [
-            translate("menu-rate-header"),
-            '\n',
+            f"<b>{translate('menu-rate-header')}</b>\n",
             *[_format_pair(pair) for pair in pairs],
         ]
     )

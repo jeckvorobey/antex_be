@@ -7,12 +7,7 @@ welcome =
 menu-exchange = 💱 Новый обмен
 menu-orders = 📋 Мои заявки
 menu-new-site-leads = 🆕 Новые заявки
-menu-rate-header = 💱 Курс сейчас:
-menu-rate-info =
-    📊 Текущий курс:
-    • 1 RUB = { $rub_rate } THB
-    • 1 USDT = { $usdt_rate } THB
-    🕐 Обновлено: { $updated_at }
+menu-rate-header = 💱 Текущий курс от:
 home-title =
     🏠 Главное меню
 
@@ -23,7 +18,7 @@ bot-turned-off = 🔴 Бот выключен.
 
 ## FSM — exchange flow
 exchange-step = Шаг { $current }/{ $total }
-exchange-choose-currency = Что отдаёте?
+exchange-choose-currency = <u>Что отдаёте?</u>
 exchange-choose-buy-currency = Выберите, что хотите получить за { $currency }:
 exchange-enter-amount = Введите сумму, которую хотите обменять в { $currency }:
 exchange-amount-invalid = Укажите сумму числом, больше нуля.
@@ -58,8 +53,6 @@ btn-open-chat = 💬 Написать в чат
 btn-write-manager = 💬 Написать менеджеру
 btn-close-order = ✅ Закрыть заявку
 btn-leave-review = ⭐ Оставить отзыв
-btn-rub-thb = 🇷🇺 RUB → THB
-btn-usdt-thb = 💎 USDT → THB
 menu-open-site = 🚀 Открыть приложение
 
 ## Orders

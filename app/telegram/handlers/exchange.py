@@ -71,7 +71,7 @@ async def _render_step(
 ) -> None:
     translate = get_user_translator(actor.from_user)
     featured_pairs = await _get_exchange_pairs()
-    text = "\n".join(
+    text = "\n\n".join(
         [
             messages.exchange_step(current, TOTAL_STEPS, translator=translate),
             messages.exchange_pair_rates(featured_pairs, translator=translate),
