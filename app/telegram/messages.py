@@ -59,6 +59,41 @@ def home_title(*, translator: Translate | None = None, locale: str | None = None
     return _resolve_translator(translator, locale)("home-title")
 
 
+def exchange_start_welcome(
+    first_name: str,
+    *,
+    translator: Translate | None = None,
+    locale: str | None = None,
+) -> str:
+    return _resolve_translator(translator, locale)("exchange-start-welcome", name=first_name)
+
+
+def choose_country_prompt(
+    *,
+    translator: Translate | None = None,
+    locale: str | None = None,
+) -> str:
+    return _resolve_translator(translator, locale)("exchange-choose-country")
+
+
+def choose_service_prompt(
+    country: str,
+    *,
+    translator: Translate | None = None,
+    locale: str | None = None,
+) -> str:
+    return _resolve_translator(translator, locale)("exchange-choose-service", country=country)
+
+
+def choose_city_prompt(
+    service: str,
+    *,
+    translator: Translate | None = None,
+    locale: str | None = None,
+) -> str:
+    return _resolve_translator(translator, locale)("exchange-choose-city", service=service)
+
+
 def exchange_step(
     current: int,
     total: int,
@@ -146,6 +181,10 @@ def exchange_confirm_summary(
     )
 
 
+def exchange_rate(sell_rate: float, buy_rate: float) -> str:
+    return f"{sell_rate:.2f} / {buy_rate:.2f}"
+
+
 def exchange_pair_rates(
     pairs: list[ExchangePairSnapshot],
     *,
@@ -158,14 +197,14 @@ def exchange_pair_rates(
 
     def _format_pair(pair: ExchangePairSnapshot) -> str:
         return (
-            f"{_format_currency_emoji(pair.currency_sell)} "
-            f"1 {pair.currency_sell} → <b>{pair.rate_display}</b>  {pair.currency_buy} "
+            f"👉 {_format_currency_emoji(pair.currency_sell)} "
+            f"1 {pair.currency_sell} → {pair.rate_display} {pair.currency_buy} "
             f"{_format_currency_emoji(pair.currency_buy)}"
         )
 
     return "\n".join(
         [
-            f"<b>{translate('menu-rate-header')}</b>\n",
+            f"{translate('menu-rate-header')}\n",
             *[_format_pair(pair) for pair in pairs],
         ]
     )

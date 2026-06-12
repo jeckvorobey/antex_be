@@ -9,8 +9,11 @@ from aiogram.exceptions import TelegramBadRequest
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.types import CallbackQuery, Message
+from app.enums.country import Country
+from sqlalchemy import select
 
 from app.core.database import create_db_session
+from app.models.city import City
 from app.exceptions import AntExException
 from app.repositories.order import OrderRepository
 from app.schemas.miniapp import MiniappOrderCreate
@@ -20,7 +23,10 @@ from app.telegram import messages
 from app.telegram.i18n import get_user_translator
 from app.telegram.keyboards import (
     choose_buy_currency,
+    choose_city,
+    choose_country,
     choose_currency,
+    choose_service,
     confirm_exchange,
     home,
 )
@@ -28,10 +34,19 @@ from app.telegram.services.user_service import check_user
 
 logger = logging.getLogger(__name__)
 router = Router(name="exchange")
-TOTAL_STEPS = 4
+TOTAL_STEPS = 5
+SERVICE_OPTIONS = {
+    "cash_delivery": {"label": "Доставка наличных", "method": "cash", "needs_city": True},
+    "cash_atm": {"label": "Получение наличных через банкомат", "method": "cash", "needs_city": True},
+    "bank_account": {"label": "Получение на местный банковский счет", "method": "qrcode", "needs_city": False},
+    "pay_services": {"label": "Оплата сервисов", "method": "qrcode", "needs_city": False},
+}
 
 
 class ExchangeState(StatesGroup):
+    choosing_country = State()
+    choosing_service = State()
+    choosing_city = State()
     choosing_currency = State()
     choosing_buy_currency = State()
     entering_amount = State()
@@ -51,14 +66,24 @@ async def _safe_edit_text(message, text: str, *, reply_markup) -> None:
             raise
 
 
-async def _get_exchange_pairs() -> list[ExchangePairSnapshot]:
+async def _get_exchange_pairs(country: str | None = None) -> list[ExchangePairSnapshot]:
     try:
         db = await _get_db()
         async with db:
-            return await ExchangeService().get_featured_pair_snapshots(db)
+            snapshots = await ExchangeService().get_featured_pair_snapshots(db)
     except Exception:
         logger.exception("Failed to load exchange rates for Telegram exchange flow")
         return []
+
+    if country is None:
+        return snapshots
+
+    try:
+        selected_country = Country(country)
+    except ValueError:
+        return snapshots
+
+    return [snapshot for snapshot in snapshots if snapshot.country == selected_country]
 
 
 async def _render_step(
@@ -68,16 +93,16 @@ async def _render_step(
     body: str,
     reply_markup,
     edit: bool,
+    featured_pairs: list[ExchangePairSnapshot] | None = None,
 ) -> None:
     translate = get_user_translator(actor.from_user)
-    featured_pairs = await _get_exchange_pairs()
-    text = "\n\n".join(
-        [
-            messages.exchange_step(current, TOTAL_STEPS, translator=translate),
-            messages.exchange_pair_rates(featured_pairs, translator=translate),
-            body,
-        ]
-    )
+    if featured_pairs is None:
+        featured_pairs = await _get_exchange_pairs()
+    parts = [messages.exchange_step(current, TOTAL_STEPS, translator=translate)]
+    if featured_pairs:
+        parts.append(messages.exchange_pair_rates(featured_pairs, translator=translate))
+    parts.append(body)
+    text = "\n\n".join(parts)
     if edit:
         await _safe_edit_text(actor.message, text, reply_markup=reply_markup)
     else:
@@ -103,12 +128,13 @@ def _select_default_method(available_methods: list[str]) -> str:
 
 def _build_confirmation_text(*, translate, data: dict[str, object]) -> str:
     quote = data["quote"]
+    method_label = data.get("service_label") or _format_method_label(data["method"], translate)
     return messages.exchange_confirm_summary(
         amount=data["amount_sell"],
         from_currency=data["currency_sell"],
         result=quote["amountBuy"],
         to_currency=data["currency_buy"],
-        method=_format_method_label(data["method"], translate),
+        method=method_label,
         current=TOTAL_STEPS,
         total=TOTAL_STEPS,
         translator=translate,
@@ -129,21 +155,87 @@ async def _show_confirmation(actor, state: FSMContext, *, edit: bool) -> None:
         await actor.answer(text, reply_markup=confirm_exchange(translate))
 
 
-async def _show_exchange_menu(actor, state: FSMContext, *, edit: bool) -> None:
+async def _show_country_step(actor, state: FSMContext, *, edit: bool) -> None:
     translate = get_user_translator(actor.from_user)
+    await state.clear()
+    await state.set_state(ExchangeState.choosing_country)
+    await _render_step(
+        actor=actor,
+        current=1,
+        body=messages.choose_country_prompt(translator=translate),
+        reply_markup=choose_country(translate),
+        edit=edit,
+        featured_pairs=[],
+    )
+
+
+async def _show_service_step(actor, state: FSMContext, *, edit: bool) -> None:
+    translate = get_user_translator(actor.from_user)
+    data = await state.get_data()
+    country = data.get("country")
+    if not country:
+        await _show_country_step(actor, state, edit=edit)
+        return
+    await state.set_state(ExchangeState.choosing_service)
+    await _render_step(
+        actor=actor,
+        current=2,
+        body=messages.choose_service_prompt(str(country), translator=translate),
+        reply_markup=choose_service(translate),
+        edit=edit,
+        featured_pairs=[],
+    )
+
+
+async def _show_city_step(actor, state: FSMContext, *, edit: bool) -> None:
+    translate = get_user_translator(actor.from_user)
+    data = await state.get_data()
+    country = data.get("country")
+    service_label = data.get("service_label", "")
+    if not country:
+        await _show_country_step(actor, state, edit=edit)
+        return
     db = await _get_db()
     async with db:
-        snapshots = await ExchangeService().list_pair_snapshots(db)
+        result = await db.execute(
+            select(City).where(City.country == Country(str(country))).order_by(City.name)
+        )
+        cities = list(result.scalars().all())
+    if not cities:
+        await _show_currency_step(actor, state, edit=edit)
+        return
+    await state.set_state(ExchangeState.choosing_city)
+    await _render_step(
+        actor=actor,
+        current=3,
+        body=messages.choose_city_prompt(str(service_label), translator=translate),
+        reply_markup=choose_city(translate, cities),
+        edit=edit,
+        featured_pairs=[],
+    )
+
+
+async def _show_currency_step(actor, state: FSMContext, *, edit: bool) -> None:
+    translate = get_user_translator(actor.from_user)
+    data = await state.get_data()
+    country = data.get("country")
+    if not country:
+        await _show_country_step(actor, state, edit=edit)
+        return
+    snapshots = await _get_exchange_pairs(str(country))
     supported_pairs = ExchangeService().build_supported_pairs(snapshots)
-    await state.clear()
+    if not supported_pairs:
+        await actor.answer(messages.exchange_rate_unavailable(translator=translate), reply_markup=home(translate))
+        return
     await state.set_state(ExchangeState.choosing_currency)
     await state.update_data(supported_pairs=supported_pairs)
     await _render_step(
         actor=actor,
-        current=1,
+        current=4,
         body=messages.choose_currency_prompt(translator=translate),
         reply_markup=choose_currency(translate, list(supported_pairs)),
         edit=edit,
+        featured_pairs=snapshots,
     )
 
 
@@ -189,7 +281,7 @@ async def _show_enter_amount_step(
     data = await state.get_data()
     await _render_step(
         actor=actor,
-        current=3,
+        current=5,
         body=messages.enter_amount_prompt(data["currency_sell"], translator=translate),
         reply_markup=home(translate),
         edit=edit,
@@ -214,13 +306,51 @@ async def _show_home(actor, state: FSMContext, *, edit: bool) -> None:
 
 @router.callback_query(F.data == "menu:exchange")
 async def menu_exchange(callback: CallbackQuery, state: FSMContext) -> None:
-    await _show_exchange_menu(callback, state, edit=True)
+    await _show_country_step(callback, state, edit=True)
     await callback.answer()
 
 
 @router.callback_query(F.data == "menu:orders")
 async def menu_orders(callback: CallbackQuery) -> None:
     await _show_orders(callback, edit=True)
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("exchange:country:"), ExchangeState.choosing_country)
+async def choose_exchange_country(callback: CallbackQuery, state: FSMContext) -> None:
+    country = callback.data.rsplit(":", 1)[-1]  # type: ignore[union-attr]
+    translate = get_user_translator(callback.from_user)
+    await state.update_data(country=country)
+    await _show_service_step(callback, state, edit=True)
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("exchange:service:"), ExchangeState.choosing_service)
+async def choose_exchange_service(callback: CallbackQuery, state: FSMContext) -> None:
+    service_id = callback.data.rsplit(":", 1)[-1]  # type: ignore[union-attr]
+    translate = get_user_translator(callback.from_user)
+    option = SERVICE_OPTIONS.get(service_id)
+    if option is None:
+        await callback.answer(messages.exchange_rate_unavailable(translator=translate), show_alert=True)
+        return
+    await state.update_data(
+        service=service_id,
+        service_label=option["label"],
+        method=option["method"],
+        needs_city=option["needs_city"],
+    )
+    if option["needs_city"]:
+        await _show_city_step(callback, state, edit=True)
+    else:
+        await _show_currency_step(callback, state, edit=True)
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("exchange:city:"), ExchangeState.choosing_city)
+async def choose_exchange_city(callback: CallbackQuery, state: FSMContext) -> None:
+    city_id = int(callback.data.rsplit(":", 1)[-1])  # type: ignore[union-attr]
+    await state.update_data(city_id=city_id)
+    await _show_currency_step(callback, state, edit=True)
     await callback.answer()
 
 
@@ -235,7 +365,7 @@ async def choose_exchange_currency(callback: CallbackQuery, state: FSMContext) -
     await state.set_state(ExchangeState.choosing_buy_currency)
     await _render_step(
         actor=callback,
-        current=2,
+        current=4,
         body=messages.choose_buy_currency_prompt(currency, translator=translate),
         reply_markup=choose_buy_currency(translate, buy_currencies),
         edit=True,
@@ -339,14 +469,20 @@ async def confirm_exchange_callback(callback: CallbackQuery, state: FSMContext) 
     try:
         async with db:
             user, _ = await check_user(db, callback.from_user)
+            country_value = data.get("country")
+            if country_value is None:
+                country_value = ExchangeService().infer_country_from_pair(
+                    f"{data['currency_sell']}{data['currency_buy']}"
+                ).value
+            city_id = data.get("city_id")
+            if city_id is None and data["method"] == "cash":
+                city_id = getattr(user, "city_id", None)
             order = await create_order_for_user(
                 db,
                 user,
                 MiniappOrderCreate(
-                    cityId=user.city_id if data["method"] == "cash" else None,
-                    country=ExchangeService().infer_country_from_pair(
-                        f"{data['currency_sell']}{data['currency_buy']}"
-                    ),
+                    cityId=city_id if data["method"] == "cash" else None,
+                    country=Country(str(country_value)),
                     currencySell=data["currency_sell"],
                     amountSell=data["amount_sell"],
                     currencyBuy=data["currency_buy"],
@@ -429,7 +565,7 @@ async def fsm_back(callback: CallbackQuery, state: FSMContext) -> None:
             edit=True,
         )
     elif current_state == ExchangeState.choosing_buy_currency.state:
-        await _show_exchange_menu(callback, state, edit=True)
+        await _show_currency_step(callback, state, edit=True)
     await callback.answer()
 
 
@@ -441,7 +577,7 @@ async def fsm_cancel(callback: CallbackQuery, state: FSMContext) -> None:
 
 @router.message(F.text == "💱 Обмен")
 async def legacy_menu_exchange(message: Message, state: FSMContext) -> None:
-    await _show_exchange_menu(message, state, edit=False)
+    await _show_country_step(message, state, edit=False)
 
 
 @router.message(F.text == "📋 Мои заявки")

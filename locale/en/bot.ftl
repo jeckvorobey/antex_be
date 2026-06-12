@@ -4,10 +4,19 @@ welcome =
 
     I will help you create an exchange order in a few simple steps.
     Tap "New exchange" to start.
+
+exchange-start-welcome =
+    👋 { $name }, hello!
+
+    Let's build your request quickly.
+    First, choose a country.
+exchange-choose-country = Choose a country
+exchange-choose-service = Choose a service
+exchange-choose-city = Choose a city
 menu-exchange = 💱 New exchange
 menu-orders = 📋 My orders
 menu-new-site-leads = 🆕 New requests
-menu-rate-header = 💱 Actual rate from:
+menu-rate-header = 💱 Current rate from:
 home-title =
     🏠 Main menu
 

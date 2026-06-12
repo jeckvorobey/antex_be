@@ -143,7 +143,7 @@ async def test_render_step_shows_all_loaded_pairs(monkeypatch) -> None:
     text = str(callback.message.edits[0]["text"])
     assert "Шаг" in text
     assert "1" in text
-    assert "4" in text
+    assert "5" in text
     assert "💱 \u041a\u0443\u0440\u0441 \u0441\u0435\u0439\u0447\u0430\u0441:" in text
     for pair in pairs:
         assert pair.rate_text not in text

@@ -8,6 +8,7 @@ import time
 from aiogram import F, Router
 from aiogram.exceptions import TelegramBadRequest
 from aiogram.filters import Command, CommandStart
+from aiogram.fsm.context import FSMContext
 from aiogram.types import CallbackQuery, Message
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -20,11 +21,13 @@ from app.services.order_notifications import build_chat_url_for_user, build_mana
 from app.telegram import messages
 from app.telegram.i18n import get_user_translator
 from app.telegram.keyboards import (
+    choose_country,
     home,
     manager_home,
     manager_new_orders_list,
     manager_order_open_chat,
 )
+from app.telegram.handlers.exchange import ExchangeState
 from app.telegram.services.user_service import check_user
 
 logger = logging.getLogger(__name__)
@@ -44,7 +47,7 @@ async def _safe_edit_text(message, text: str, *, reply_markup) -> None:
 
 
 @router.message(CommandStart())
-async def cmd_start(message: Message) -> None:
+async def cmd_start(message: Message, state: FSMContext) -> None:
     translate = get_user_translator(message.from_user)
     started_at = time.perf_counter()
     logger.info(
@@ -96,7 +99,6 @@ async def cmd_start(message: Message) -> None:
         return
 
     menu_type = "manager" if has_operator_access(user.role) else "user"
-    reply_markup = manager_home(translate) if menu_type == "manager" else home(translate)
     logger.info(
         "Sending /start response: telegram_id=%s, menu=%s",
         message.from_user.id,
@@ -104,10 +106,18 @@ async def cmd_start(message: Message) -> None:
     )
     try:
         answer_started_at = time.perf_counter()
-        await message.answer(
-            messages.welcome(message.from_user.first_name, translator=translate),
-            reply_markup=reply_markup,
-        )
+        if menu_type == "manager":
+            await message.answer(
+                messages.welcome(message.from_user.first_name, translator=translate),
+                reply_markup=manager_home(translate),
+            )
+        else:
+            await state.clear()
+            await state.set_state(ExchangeState.choosing_country)
+            await message.answer(
+                messages.exchange_start_welcome(message.from_user.first_name, translator=translate),
+                reply_markup=choose_country(translate),
+            )
         answer_duration_ms = (time.perf_counter() - answer_started_at) * 1000
     except Exception:
         logger.exception("Failed to send /start response: telegram_id=%s", message.from_user.id)

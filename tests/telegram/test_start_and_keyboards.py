@@ -10,6 +10,8 @@ os.environ.setdefault("DATABASE_URL", "sqlite+aiosqlite:///:memory:")
 from app.telegram.handlers import start as start_handler
 from app.telegram.i18n import get_translator
 from app.telegram.keyboards import (
+    choose_city,
+    choose_country,
     choose_buy_currency,
     choose_currency,
     confirm_exchange,
@@ -39,6 +41,18 @@ class _FakeConfigRepo:
 
     async def get_or_create(self):
         return SimpleNamespace(enabled=True)
+
+
+class _FakeState:
+    def __init__(self) -> None:
+        self.cleared = False
+        self.state = None
+
+    async def clear(self) -> None:
+        self.cleared = True
+
+    async def set_state(self, state) -> None:
+        self.state = getattr(state, "state", state)
 
 
 class _FakeMessage:
@@ -106,7 +120,7 @@ async def test_manager_home_keyboard_has_new_requests_and_site(monkeypatch) -> N
     assert kb.inline_keyboard[1][0].web_app.url == "https://example.com/miniapp"
 
 
-async def test_start_always_uses_home_keyboard(monkeypatch) -> None:
+async def test_start_shows_country_selection_for_customer(monkeypatch) -> None:
     user = TgUser(
         id=777,
         is_bot=False,
@@ -133,16 +147,48 @@ async def test_start_always_uses_home_keyboard(monkeypatch) -> None:
         "app.telegram.keyboards.settings.frontend_webapp_url", "https://example.com/app"
     )
 
-    await start_handler.cmd_start(message)
+    await start_handler.cmd_start(message, _FakeState())
 
     assert len(message.answers) == 1
     reply_markup = message.answers[0]["reply_markup"]
     assert reply_markup is not None
-    assert len(reply_markup.inline_keyboard) == 2
-    assert reply_markup.inline_keyboard[0][0].callback_data == "menu:exchange"
-    assert reply_markup.inline_keyboard[0][1].callback_data == "menu:orders"
-    assert reply_markup.inline_keyboard[1][0].web_app is not None
-    assert reply_markup.inline_keyboard[1][0].web_app.url == "https://example.com/app"
+    assert "Сначала выберите страну" in message.answers[0]["text"]
+    assert [button.callback_data for button in reply_markup.inline_keyboard[0]] == [
+        "exchange:country:thailand",
+        "exchange:country:vietnam",
+        "exchange:country:georgia",
+    ]
+
+
+async def test_country_and_city_keyboards_are_country_specific() -> None:
+    country_kb = choose_country(get_translator("ru"))
+    thailand_cities = choose_city(
+        get_translator("ru"),
+        [SimpleNamespace(id=11, name="Bangkok"), SimpleNamespace(id=12, name="Phuket")],
+    )
+    vietnam_cities = choose_city(
+        get_translator("ru"),
+        [
+            SimpleNamespace(id=21, name="Danang"),
+            SimpleNamespace(id=22, name="Nha Trang"),
+            SimpleNamespace(id=23, name="Phu Quoc"),
+        ],
+    )
+
+    assert [button.text for button in country_kb.inline_keyboard[0]] == [
+        "🇹🇭 Таиланд",
+        "🇻🇳 Вьетнам",
+        "🇬🇪 Грузия",
+    ]
+    assert [button.callback_data for button in thailand_cities.inline_keyboard[0]] == [
+        "exchange:city:11",
+        "exchange:city:12",
+    ]
+    assert [button.callback_data for button in vietnam_cities.inline_keyboard[0]] == [
+        "exchange:city:21",
+        "exchange:city:22",
+        "exchange:city:23",
+    ]
 
 
 async def test_start_uses_manager_keyboard_for_manager(monkeypatch) -> None:
@@ -171,7 +217,7 @@ async def test_start_uses_manager_keyboard_for_manager(monkeypatch) -> None:
         "app.telegram.keyboards.settings.frontend_webapp_url", "https://example.com/app"
     )
 
-    await start_handler.cmd_start(message)
+    await start_handler.cmd_start(message, _FakeState())
 
     assert len(message.answers) == 1
     reply_markup = message.answers[0]["reply_markup"]

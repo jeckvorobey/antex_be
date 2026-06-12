@@ -50,6 +50,60 @@ def home(_, **kwargs) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(inline_keyboard=inline_keyboard)
 
 
+COUNTRY_CITY_BUTTONS = {
+    "thailand": [("pattya", "Паттайя"), ("phuket", "Пхукет")],
+    "vietnam": [("danang", "Дананг"), ("nhatrang", "Нячанг"), ("phuquoc", "Фукуок")],
+    "georgia": [("batumi", "Батуми"), ("tbilisi", "Тбилиси")],
+}
+
+
+def choose_country(_, **kwargs) -> InlineKeyboardMarkup:
+    """FSM шаг выбора страны."""
+    del kwargs
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(text="🇹🇭 Таиланд", callback_data="exchange:country:thailand"),
+                InlineKeyboardButton(text="🇻🇳 Вьетнам", callback_data="exchange:country:vietnam"),
+                InlineKeyboardButton(text="🇬🇪 Грузия", callback_data="exchange:country:georgia"),
+            ]
+        ]
+    )
+
+
+def choose_city(_, cities: list[object], **kwargs) -> InlineKeyboardMarkup:
+    """FSM шаг выбора города."""
+    del kwargs
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(
+                    text=getattr(city, "name", str(city)),
+                    callback_data=f"exchange:city:{getattr(city, 'id')}",
+                )
+                for city in cities
+            ]
+        ]
+    )
+
+
+def choose_service(_, **kwargs) -> InlineKeyboardMarkup:
+    """FSM шаг выбора услуги."""
+    del kwargs
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(text="Доставка наличных", callback_data="exchange:service:cash_delivery"),
+                InlineKeyboardButton(text="Получение наличных через банкомат", callback_data="exchange:service:cash_atm"),
+            ],
+            [
+                InlineKeyboardButton(text="Получение на местный банковский счет", callback_data="exchange:service:bank_account"),
+                InlineKeyboardButton(text="Оплата сервисов", callback_data="exchange:service:pay_services"),
+            ],
+        ]
+    )
+
+
 def manager_home(_, **kwargs) -> InlineKeyboardMarkup:
     """Главное меню менеджера: новые заявки + сайт."""
     del kwargs
