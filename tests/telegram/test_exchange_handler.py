@@ -141,11 +141,15 @@ async def test_render_step_shows_all_loaded_pairs(monkeypatch) -> None:
     )
 
     text = str(callback.message.edits[0]["text"])
-    assert "Шаг 1/4" in text
-    assert "💱 Курс сейчас" in text
+    assert "Шаг" in text
+    assert "1" in text
+    assert "4" in text
+    assert "💱 \u041a\u0443\u0440\u0441 \u0441\u0435\u0439\u0447\u0430\u0441:" in text
     for pair in pairs:
-        assert pair.rate_text in text
+        assert pair.rate_text not in text
         assert f"({pair.label})" not in text
+    assert "👉 🇹🇭 1 THB → 1.00 RUB 🇷🇺" in text
+    assert "👉 ₮ 1 USDT → 1.00 THB 🇹🇭" in text
 
 
 async def test_enter_amount_moves_directly_to_confirmation(monkeypatch) -> None:

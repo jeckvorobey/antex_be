@@ -7,7 +7,7 @@ welcome =
 menu-exchange = 💱 New exchange
 menu-orders = 📋 My orders
 menu-new-site-leads = 🆕 New requests
-menu-rate-header = 💱 Current rates
+menu-rate-header = 💱 Current rates:
 menu-rate-info =
     📊 Current rate:
     • 1 RUB = { $rub_rate } THB

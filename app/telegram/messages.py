@@ -29,6 +29,11 @@ def format_currency_label(currency: str) -> str:
     return _CURRENCY_LABELS.get(currency.upper(), currency.upper())
 
 
+def _format_currency_emoji(currency: str) -> str:
+    label = format_currency_label(currency)
+    return label.split(maxsplit=1)[0]
+
+
 def welcome(
     first_name: str,
     *,
@@ -170,9 +175,9 @@ def exchange_pair_rates(
 
     def _format_pair(pair: ExchangePairSnapshot) -> str:
         return (
-            f"• {format_currency_label(pair.currency_sell)} → "
-            f"{format_currency_label(pair.currency_buy)}\n"
-            f"  {pair.rate_text}"
+            f"👉 {_format_currency_emoji(pair.currency_sell)} "
+            f"1 {pair.currency_sell} → {pair.rate_display} {pair.currency_buy} "
+            f"{_format_currency_emoji(pair.currency_buy)}"
         )
 
     return "\n".join(
