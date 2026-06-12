@@ -3,9 +3,8 @@
 from __future__ import annotations
 
 from collections.abc import Callable
-from datetime import datetime
 
-from app.services.exchange import ExchangePairSnapshot, format_rate_value
+from app.services.exchange import ExchangePairSnapshot
 from app.telegram.i18n import get_translator
 
 Translate = Callable[[str], str]

@@ -19,15 +19,14 @@ from app.repositories.config import ConfigRepository
 from app.repositories.order import OrderRepository
 from app.services.order_notifications import build_chat_url_for_user, build_manager_status_text
 from app.telegram import messages
+from app.telegram.handlers.exchange import ExchangeState
 from app.telegram.i18n import get_user_translator
 from app.telegram.keyboards import (
     choose_country,
-    home,
     manager_home,
     manager_new_orders_list,
     manager_order_open_chat,
 )
-from app.telegram.handlers.exchange import ExchangeState
 from app.telegram.services.user_service import check_user
 
 logger = logging.getLogger(__name__)

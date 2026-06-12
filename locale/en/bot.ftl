@@ -13,7 +13,6 @@ exchange-start-welcome =
 exchange-choose-country = Choose a country
 exchange-choose-service = Choose a service
 exchange-choose-city = Choose a city
-menu-exchange = 💱 New exchange
 menu-orders = 📋 My orders
 menu-new-site-leads = 🆕 New requests
 menu-rate-header = 💱 Current rate from:

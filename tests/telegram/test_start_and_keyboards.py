@@ -10,12 +10,12 @@ os.environ.setdefault("DATABASE_URL", "sqlite+aiosqlite:///:memory:")
 from app.telegram.handlers import start as start_handler
 from app.telegram.i18n import get_translator
 from app.telegram.keyboards import (
+    amount_controls,
+    choose_buy_currency,
     choose_city,
     choose_country,
-    choose_buy_currency,
     choose_currency,
     confirm_exchange,
-    home,
     manager_home,
     manager_order_close,
     manager_order_open_chat,
@@ -79,29 +79,34 @@ class _FakeCallback:
         self.answers.append({"text": text, "show_alert": show_alert})
 
 
-async def test_home_keyboard_without_webapp_url(monkeypatch) -> None:
+async def test_country_keyboard_has_orders_under_countries(monkeypatch) -> None:
     monkeypatch.setattr("app.telegram.keyboards.settings.frontend_webapp_url", None)
 
-    kb = home(get_translator("ru"))
+    kb = choose_country(get_translator("ru"))
 
-    assert len(kb.inline_keyboard) == 1
-    assert len(kb.inline_keyboard[0]) == 2
-    assert kb.inline_keyboard[0][0].callback_data == "menu:exchange"
-    assert kb.inline_keyboard[0][1].callback_data == "menu:orders"
+    assert [button.callback_data for button in kb.inline_keyboard[0]] == [
+        "exchange:country:thailand",
+        "exchange:country:vietnam",
+        "exchange:country:georgia",
+    ]
+    assert len(kb.inline_keyboard) == 2
+    assert kb.inline_keyboard[1][0].text == "📋 Мои заявки"
+    assert kb.inline_keyboard[1][0].callback_data == "menu:orders"
 
 
-async def test_home_keyboard_with_webapp_url(monkeypatch) -> None:
+async def test_country_keyboard_keeps_open_app_button(monkeypatch) -> None:
     monkeypatch.setattr(
         "app.telegram.keyboards.settings.frontend_webapp_url",
-        "https://example.com/miniapp",
+        "https://example.com/app",
     )
 
-    kb = home(get_translator("ru"))
+    kb = choose_country(get_translator("ru"))
 
-    assert len(kb.inline_keyboard) == 2
-    assert len(kb.inline_keyboard[1]) == 1
-    assert kb.inline_keyboard[1][0].web_app is not None
-    assert kb.inline_keyboard[1][0].web_app.url == "https://example.com/miniapp"
+    assert len(kb.inline_keyboard) == 3
+    assert kb.inline_keyboard[1][0].callback_data == "menu:orders"
+    assert kb.inline_keyboard[2][0].text == "🚀 Открыть приложение"
+    assert kb.inline_keyboard[2][0].web_app is not None
+    assert kb.inline_keyboard[2][0].web_app.url == "https://example.com/app"
 
 
 async def test_manager_home_keyboard_has_new_requests_and_site(monkeypatch) -> None:
@@ -158,6 +163,9 @@ async def test_start_shows_country_selection_for_customer(monkeypatch) -> None:
         "exchange:country:vietnam",
         "exchange:country:georgia",
     ]
+    assert [button.callback_data for button in reply_markup.inline_keyboard[1]] == [
+        "menu:orders",
+    ]
 
 
 async def test_country_and_city_keyboards_are_country_specific() -> None:
@@ -179,6 +187,9 @@ async def test_country_and_city_keyboards_are_country_specific() -> None:
         "🇹🇭 Таиланд",
         "🇻🇳 Вьетнам",
         "🇬🇪 Грузия",
+    ]
+    assert [button.callback_data for button in country_kb.inline_keyboard[1]] == [
+        "menu:orders",
     ]
     assert [button.callback_data for button in thailand_cities.inline_keyboard[0]] == [
         "exchange:city:11",
@@ -288,6 +299,7 @@ async def test_exchange_keyboards_are_backend_driven() -> None:
 
     sell_kb = choose_currency(translator, ["RUB", "USDT", "THB"])
     buy_kb = choose_buy_currency(translator, ["THB", "GEL"])
+    amount_kb = amount_controls(translator)
     methods_kb = obtaining(translator, ["cash", "card"])
     confirm_kb = confirm_exchange(translator)
 
@@ -299,6 +311,10 @@ async def test_exchange_keyboards_are_backend_driven() -> None:
     assert [button.callback_data for button in buy_kb.inline_keyboard[0]] == [
         "exchange:buy:THB",
         "exchange:buy:GEL",
+    ]
+    assert [button.callback_data for button in amount_kb.inline_keyboard[0]] == [
+        "fsm:back",
+        "fsm:cancel",
     ]
     assert [button.callback_data for button in methods_kb.inline_keyboard[0]] == [
         "method:cash",

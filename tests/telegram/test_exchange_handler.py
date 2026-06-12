@@ -373,4 +373,37 @@ async def test_menu_orders_commits_new_user_and_ignores_not_modified(monkeypatch
 
     assert fake_db.committed is True
     assert len(callback.message.edits) == 1
+    reply_markup = callback.message.edits[0]["reply_markup"]
+    assert reply_markup.inline_keyboard[1][0].callback_data == "menu:orders"
+    assert callback.answers[-1] == {"text": None, "show_alert": False}
+
+
+async def test_fsm_cancel_returns_to_country_step() -> None:
+    callback = _FakeCallback(
+        TgUser(
+            id=777005,
+            is_bot=False,
+            first_name="Cancel",
+            username="cancel-user",
+            language_code="ru",
+        )
+    )
+    state = _FakeState({"currency_sell": "RUB"})
+    state.state = exchange_handler.ExchangeState.entering_amount.state
+
+    await exchange_handler.fsm_cancel(callback, state)
+
+    assert state.cleared is True
+    assert state.state == exchange_handler.ExchangeState.choosing_country.state
+    assert len(callback.message.edits) == 1
+    text = str(callback.message.edits[0]["text"])
+    assert "Выберите страну" in text
+    assert "Главное меню" not in text
+    reply_markup = callback.message.edits[0]["reply_markup"]
+    assert [button.callback_data for button in reply_markup.inline_keyboard[0]] == [
+        "exchange:country:thailand",
+        "exchange:country:vietnam",
+        "exchange:country:georgia",
+    ]
+    assert reply_markup.inline_keyboard[1][0].callback_data == "menu:orders"
     assert callback.answers[-1] == {"text": None, "show_alert": False}

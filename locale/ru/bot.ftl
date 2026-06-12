@@ -14,7 +14,6 @@ exchange-choose-country = Выберите страну
 exchange-choose-service = Выберите услугу
 exchange-choose-city = Выберите город
 
-menu-exchange = 💱 Новый обмен
 menu-orders = 📋 Мои заявки
 menu-new-site-leads = 🆕 Новые заявки
 menu-rate-header = 💱 Курс сейчас:
