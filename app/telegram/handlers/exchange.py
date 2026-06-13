@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+from typing import cast
 
 from aiogram import F, Router
 from aiogram.exceptions import TelegramBadRequest
@@ -15,6 +16,7 @@ from app.core.database import create_db_session
 from app.enums.country import Country
 from app.exceptions import AntExException
 from app.models.city import City
+from app.repositories.city import CityRepository
 from app.repositories.order import OrderRepository
 from app.schemas.miniapp import MiniappOrderCreate
 from app.services.exchange import (
@@ -87,6 +89,22 @@ async def _safe_edit_text(message, text: str, *, reply_markup) -> None:
             raise
 
 
+async def _safe_delete_message(message) -> None:
+    try:
+        await message.delete()
+    except TelegramBadRequest as exc:
+        if "message to delete not found" not in str(exc).lower():
+            raise
+
+
+async def _safe_delete_chat_message(bot, chat_id: int, message_id: int) -> None:
+    try:
+        await bot.delete_message(chat_id=chat_id, message_id=message_id)
+    except TelegramBadRequest as exc:
+        if "message to delete not found" not in str(exc).lower():
+            raise
+
+
 async def _get_exchange_pairs(country: str | None = None) -> list[ExchangePairSnapshot]:
     try:
         db = await _get_db()
@@ -148,14 +166,29 @@ def _select_default_method(available_methods: list[str]) -> str:
 
 
 def _build_confirmation_text(*, translate, data: dict[str, object]) -> str:
-    quote = data["quote"]
-    method_label = data.get("service_label") or _format_method_label(data["method"], translate)
+    quote = cast(dict[str, object], data["quote"])
+    amount_sell = cast(int, data["amount_sell"])
+    currency_sell = cast(str, data["currency_sell"])
+    currency_buy = cast(str, data["currency_buy"])
+    method = cast(str, data["method"])
+    method_label = cast(str, data.get("service_label") or _format_method_label(method, translate))
+    country_value = data.get("country")
+    try:
+        country_label = (
+            Country(str(country_value)).ru_name if country_value is not None else str(country_value)
+        )
+    except ValueError:
+        country_label = str(country_value)
+    city_label = cast(str | None, data.get("city_name"))
     return messages.exchange_confirm_summary(
-        amount=data["amount_sell"],
-        from_currency=data["currency_sell"],
-        result=quote["amountBuy"],
-        to_currency=data["currency_buy"],
+        country=country_label,
+        rate=str(quote.get("rateText") or quote.get("rate") or ""),
+        amount=amount_sell,
+        from_currency=currency_sell,
+        result=cast(int | float, quote["amountBuy"]),
+        to_currency=currency_buy,
         method=method_label,
+        city=city_label,
         current=TOTAL_STEPS,
         total=TOTAL_STEPS,
         translator=translate,
@@ -355,6 +388,7 @@ async def _show_enter_amount_step(
     snapshots = await _get_exchange_pairs(str(data["country"])) if data.get("country") else []
     current_sell = data.get("currency_sell")
     current_buy = data.get("currency_buy")
+    await state.update_data(amount_prompt_message_id=getattr(actor.message, "message_id", None))
     featured_pairs = [
         pair
         for pair in snapshots
@@ -448,7 +482,13 @@ async def choose_exchange_service(callback: CallbackQuery, state: FSMContext) ->
 @router.callback_query(F.data.startswith("exchange:city:"), ExchangeState.choosing_city)
 async def choose_exchange_city(callback: CallbackQuery, state: FSMContext) -> None:
     city_id = int(callback.data.rsplit(":", 1)[-1])  # type: ignore[union-attr]
-    await state.update_data(city_id=city_id)
+    city_name = None
+    db = await _get_db()
+    async with db:
+        city = await CityRepository(db).get_by_id(city_id)
+    if city is not None:
+        city_name = city.name
+    await state.update_data(city_id=city_id, city_name=city_name)
     await _show_currency_step(callback, state, edit=True)
     await callback.answer()
 
@@ -504,6 +544,11 @@ async def enter_amount(message: Message, state: FSMContext) -> None:
     )
     await state.set_state(ExchangeState.confirming)
     await _show_confirmation(message, state, edit=False)
+    state_data = await state.get_data()
+    prompt_message_id = state_data.get("amount_prompt_message_id")
+    if prompt_message_id is not None:
+        await _safe_delete_chat_message(message.bot, message.chat.id, int(prompt_message_id))
+    await _safe_delete_message(message)
 
 
 @router.callback_query(F.data.startswith("method:"), ExchangeState.choosing_method)
@@ -551,9 +596,11 @@ async def confirm_exchange_callback(callback: CallbackQuery, state: FSMContext) 
             user, _ = await check_user(db, callback.from_user)
             country_value = data.get("country")
             if country_value is None:
-                country_value = ExchangeService().infer_country_from_pair(
-                    f"{data['currency_sell']}{data['currency_buy']}"
-                ).value
+                country_value = (
+                    ExchangeService()
+                    .infer_country_from_pair(f"{data['currency_sell']}{data['currency_buy']}")
+                    .value
+                )
             city_id = data.get("city_id")
             if city_id is None and data["method"] == "cash":
                 city_id = getattr(user, "city_id", None)
@@ -633,4 +680,5 @@ def _quote_to_state_payload(quote) -> dict[str, object]:
         "amountSell": quote.amount_sell,
         "amountBuy": quote.amount_buy,
         "rate": quote.rate,
+        "rateText": quote.rate_text,
     }

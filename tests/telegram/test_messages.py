@@ -25,17 +25,40 @@ def test_order_created_includes_order_number() -> None:
 
 def test_exchange_confirm_summary_uses_human_currency_labels() -> None:
     text = messages.exchange_confirm_summary(
+        country="Таиланд",
+        city="Бангкок",
+        rate="1 RUB = 0.34 THB",
         amount=15000,
         from_currency="RUB",
         result=5100,
         to_currency="THB",
         method="📱 По QR-коду",
-        translator=messages.get_translator("ru"),
+        locale="ru",
     )
 
-    assert "🇷🇺 RUB" in text
-    assert "🇹🇭 THB" in text
+    assert "🌍 Страна: Таиланд" in text
+    assert "🏙️ Город: Бангкок" in text
+    assert "📈 Курс: 1 RUB = 0.34 THB" in text  # noqa: RUF001
+    assert "💸 Отдаёте: 15,000 🇷🇺 RUB" in text
+    assert "💰 Получаете: 5,100 🇹🇭 THB" in text
+    assert "🧾 Способ получения: 📱 По QR-коду" in text
     assert "Проверьте заявку" in text
+
+
+def test_exchange_confirm_summary_omits_city_when_missing() -> None:
+    text = messages.exchange_confirm_summary(
+        country="Грузия",
+        rate="1 RUB = 0.031 GEL",
+        amount=10000,
+        from_currency="RUB",
+        result=310,
+        to_currency="GEL",
+        method="💵 Наличные",
+        locale="ru",
+    )
+
+    assert "🏙️ Город:" not in text
+    assert "🌍 Страна: Грузия" in text
 
 
 def test_order_creation_failed_for_limit_is_human_readable() -> None:

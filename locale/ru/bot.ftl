@@ -42,14 +42,14 @@ exchange-enter-amount = <b>Введите сумму, которую хотит�
 exchange-amount-invalid = Укажите сумму числом, больше нуля.
 exchange-choose-method = Выберите способ получения { $currency }:
 exchange-rate-unavailable = ⚠️ Курс временно недоступен. Попробуйте позже.
-exchange-confirm-summary =
-    📋 Проверьте заявку — шаг { $current }/{ $total }
-
-    Отдаёте: { $amount } { $from_currency }
-    Получаете: { $result } { $to_currency }
-    Способ получения: { $method }
-
-    Если всё верно, нажмите «Подтвердить».
+exchange-confirm-summary-top = 📋 Проверьте заявку — шаг { $current }/{ $total }
+exchange-confirm-summary-bottom = Если всё верно, нажмите «Подтвердить».
+exchange-summary-country = Страна
+exchange-summary-city = Город
+exchange-summary-rate = Курс
+exchange-summary-sell = Отдаёте
+exchange-summary-buy = Получаете
+exchange-summary-method = Способ получения
 
 ## Buttons
 btn-confirm = ✅ Подтвердить

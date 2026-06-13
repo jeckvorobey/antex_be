@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import os
-
 from datetime import UTC, datetime
 from types import SimpleNamespace
 
@@ -34,10 +33,17 @@ class _FakeDbSession:
 
 
 class _FakeMessage:
+    _next_message_id = 1000
+
     def __init__(self, *, fail_with_not_modified: bool = False) -> None:
         self.edits: list[dict[str, object]] = []
         self.answers: list[dict[str, object]] = []
+        self.deletes: list[dict[str, object]] = []
         self.fail_with_not_modified = fail_with_not_modified
+        self.message_id = _FakeMessage._next_message_id
+        _FakeMessage._next_message_id += 1
+        self.chat = SimpleNamespace(id=555001)
+        self.bot = _FakeBot()
 
     async def edit_text(self, text: str, reply_markup=None) -> None:
         self.edits.append({"text": text, "reply_markup": reply_markup})
@@ -54,9 +60,16 @@ class _FakeMessage:
     async def answer(self, text: str, reply_markup=None) -> None:
         self.answers.append({"text": text, "reply_markup": reply_markup})
 
+    async def delete(self) -> None:
+        self.deletes.append({"message_id": self.message_id})
+
 
 class _FakeBot:
-    pass
+    def __init__(self) -> None:
+        self.deleted: list[dict[str, object]] = []
+
+    async def delete_message(self, *, chat_id: int, message_id: int) -> None:
+        self.deleted.append({"chat_id": chat_id, "message_id": message_id})
 
 
 class _FakeCallback:
@@ -175,6 +188,7 @@ async def test_enter_amount_moves_directly_to_confirmation(monkeypatch) -> None:
         {
             "currency_sell": "RUB",
             "currency_buy": "THB",
+            "amount_prompt_message_id": 999,
         }
     )
 
@@ -192,6 +206,7 @@ async def test_enter_amount_moves_directly_to_confirmation(monkeypatch) -> None:
             amount_sell=15000,
             amount_buy=5100.0,
             rate=0.34,
+            rate_text="1 RUB = 0.34 THB",
             available_methods=["qrcode", "cash"],
         )
 
@@ -206,6 +221,8 @@ async def test_enter_amount_moves_directly_to_confirmation(monkeypatch) -> None:
     assert state._data["quote"]["amountBuy"] == 5100.0
     assert len(message.answers) == 1
     assert "Проверьте заявку" in message.answers[0]["text"]
+    assert message.deletes == [{"message_id": message.message_id}]
+    assert message.bot.deleted == [{"chat_id": message.chat.id, "message_id": 999}]
 
 
 async def test_country_sets_buy_currency_and_shows_only_canonical_sell_currencies(
@@ -518,6 +535,7 @@ async def test_confirm_exchange_creates_order_with_default_qrcode(monkeypatch) -
             "quote": {
                 "amountBuy": 5100,
                 "rate": 0.34,
+                "rateText": "1 RUB = 0.34 THB",
             },
             "method": "qrcode",
         }
@@ -580,6 +598,7 @@ async def test_confirm_exchange_shows_human_error_on_order_creation_failure(monk
             "quote": {
                 "amountBuy": 5100,
                 "rate": 0.34,
+                "rateText": "1 RUB = 0.34 THB",
             },
             "method": "qrcode",
         }

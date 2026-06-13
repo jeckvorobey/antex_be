@@ -41,14 +41,14 @@ exchange-enter-amount = <b>Enter the amount you want to exchange in { $currency 
 exchange-amount-invalid = Enter an amount greater than zero.
 exchange-choose-method = How would you like to receive { $currency }?
 exchange-rate-unavailable = ⚠️ Exchange rate is temporarily unavailable. Please try again later.
-exchange-confirm-summary =
-    📋 Review your order — step { $current }/{ $total }
-
-    You send: { $amount } { $from_currency }
-    You receive: { $result } { $to_currency }
-    Receive method: { $method }
-
-    If everything looks correct, tap "Confirm".
+exchange-confirm-summary-top = 📋 Review your order — step { $current }/{ $total }
+exchange-confirm-summary-bottom = If everything is correct, press “Confirm”.
+exchange-summary-country = Country
+exchange-summary-city = City
+exchange-summary-rate = Rate
+exchange-summary-sell = You send
+exchange-summary-buy = You receive
+exchange-summary-method = Receive method
 
 ## Buttons
 btn-confirm = ✅ Confirm

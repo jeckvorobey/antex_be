@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable
+from typing import Any, cast
 
 from app.services.exchange import ExchangePairSnapshot
 from app.telegram.i18n import get_translator
@@ -156,28 +157,41 @@ def exchange_rate_unavailable(
     return _resolve_translator(translator, locale)("exchange-rate-unavailable")
 
 
+def _format_number(value: int | float) -> str:
+    if isinstance(value, int):
+        return f"{value:,}"
+    text = f"{value:,.2f}"
+    return text.rstrip("0").rstrip(".")
+
+
 def exchange_confirm_summary(
     *,
+    country: str,
+    rate: str,
     amount: int,
     from_currency: str,
-    result: int,
+    result: int | float,
     to_currency: str,
     method: str,
+    city: str | None = None,
     current: int = 4,
     total: int = 4,
     translator: Translate | None = None,
     locale: str | None = None,
 ) -> str:
-    return _resolve_translator(translator, locale)(
-        "exchange-confirm-summary",
-        amount=f"{amount:,}",
-        from_currency=format_currency_label(from_currency),
-        result=f"{result:,}",
-        to_currency=format_currency_label(to_currency),
-        method=method,
-        current=current,
-        total=total,
-    )
+    translate = cast(Any, _resolve_translator(translator, locale))
+    lines = [translate("exchange-confirm-summary-top", current=current, total=total), ""]
+    lines.append(f"🌍 {translate('exchange-summary-country')}: {country}")
+    if city:
+        lines.append(f"🏙️ {translate('exchange-summary-city')}: {city}")
+    lines.append(f"📈 {translate('exchange-summary-rate')}: {rate}")
+    sell_label = format_currency_label(from_currency)
+    buy_label = format_currency_label(to_currency)
+    lines.append(f"💸 {translate('exchange-summary-sell')}: {_format_number(amount)} {sell_label}")
+    lines.append(f"💰 {translate('exchange-summary-buy')}: {_format_number(result)} {buy_label}")
+    lines.append(f"🧾 {translate('exchange-summary-method')}: {method}")
+    lines.extend(["", translate("exchange-confirm-summary-bottom")])
+    return "\n".join(lines)
 
 
 def exchange_rate(sell_rate: float, buy_rate: float) -> str:
@@ -190,7 +204,7 @@ def exchange_pair_rates(
     translator: Translate | None = None,
     locale: str | None = None,
 ) -> str:
-    translate = _resolve_translator(translator, locale)
+    translate = cast(Any, _resolve_translator(translator, locale))
     if not pairs:
         return translate("exchange-rate-unavailable")
 
@@ -219,7 +233,7 @@ def order_creation_failed(
     translator: Translate | None = None,
     locale: str | None = None,
 ) -> str:
-    translate = _resolve_translator(translator, locale)
+    translate = cast(Any, _resolve_translator(translator, locale))
     if code == "ORDER_ALREADY_EXISTS":
         return translate("order-creation-limit-reached")
     return translate("order-creation-failed")
