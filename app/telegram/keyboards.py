@@ -475,49 +475,6 @@ def manager_order_close(
     )
 
 
-def manager_order_cancel_confirm(
-    _=None,
-    *,
-    order_id: int | None = None,
-    status: int | None = None,
-    chat_url: str | None = None,
-    **kwargs,
-) -> InlineKeyboardMarkup:
-    del kwargs
-    if order_id is None and isinstance(_, int):
-        order_id = _
-        _ = None
-    if order_id is None:
-        raise ValueError("order_id is required")
-    if not chat_url:
-        raise ValueError("chat_url is required")
-
-    translate = _resolve_translator(_)
-    followup_callback = f"op:close:{order_id}"
-    if status == 1:
-        followup_callback = f"op:take:{order_id}"
-
-    return InlineKeyboardMarkup(
-        inline_keyboard=[
-            [
-                InlineKeyboardButton(
-                    text=translate("btn-confirm-cancel-order"),
-                    callback_data=f"op:cancel_confirm:{order_id}",
-                    style="danger",
-                ),
-                InlineKeyboardButton(
-                    text=translate("btn-keep-order"),
-                    callback_data=followup_callback,
-                    style="success",
-                ),
-            ],
-            [
-                _chat_button(translate, chat_url),
-            ],
-        ]
-    )
-
-
 def manager_order_chat_only(
     _=None,
     *,

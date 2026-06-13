@@ -128,46 +128,9 @@ async def test_operator_open_chat_handler_is_no_longer_used(monkeypatch) -> None
     assert callback.message.edits == []
 
 
-async def test_operator_cancel_requests_confirmation(monkeypatch) -> None:
+async def test_operator_cancel_marks_order_cancelled(monkeypatch) -> None:
     fake_db = _FakeDbSession()
-    callback = _FakeCallback("op:cancel:5")
-    order = SimpleNamespace(
-        id=5,
-        publicNumber="2026050001",
-        status=int(OrderStatus.PROCESSING),
-        user=SimpleNamespace(username="customer", telegram_id=700002),
-    )
-
-    async def _fake_get_db():
-        return fake_db
-
-    async def _fake_check_user(db, tg_user):
-        return SimpleNamespace(role=2), False
-
-    async def _fake_get_order_for_action(db, order_id: int):
-        assert order_id == 5
-        return order
-
-    monkeypatch.setattr(operator_handler, "_get_db", _fake_get_db)
-    monkeypatch.setattr(operator_handler, "check_user", _fake_check_user)
-    monkeypatch.setattr(operator_handler, "_get_order_for_action", _fake_get_order_for_action)
-
-    await operator_handler.operator_cancel(callback)
-
-    assert callback.answers[-1] == {
-        "text": "Подтвердите отмену заявки",
-        "show_alert": True,
-        "url": None,
-    }
-    assert (
-        callback.message.edits[0]["reply_markup"].inline_keyboard[0][0].callback_data
-        == "op:cancel_confirm:5"
-    )
-
-
-async def test_operator_cancel_confirm_marks_order_cancelled(monkeypatch) -> None:
-    fake_db = _FakeDbSession()
-    callback = _FakeCallback("op:cancel_confirm:9")
+    callback = _FakeCallback("op:cancel:9")
     updated_order = SimpleNamespace(
         id=9,
         publicNumber="2026050002",
@@ -195,9 +158,9 @@ async def test_operator_cancel_confirm_marks_order_cancelled(monkeypatch) -> Non
     monkeypatch.setattr(operator_handler, "check_user", _fake_check_user)
     monkeypatch.setattr(operator_handler, "update_order_status", _fake_update_order_status)
 
-    await operator_handler.operator_cancel_confirm(callback)
+    await operator_handler.operator_cancel(callback)
 
-    assert callback.answers[-1] == {"text": None, "show_alert": False, "url": None}
+    assert callback.answers[-1] == {"text": "Заявка отменена", "show_alert": True, "url": None}
     assert callback.message.edits[0]["reply_markup"].inline_keyboard[0][0].url == "https://t.me/customer"
     assert "Заявка #2026050002" in callback.message.edits[0]["text"]
     assert "Статус: Отменена" in callback.message.edits[0]["text"]
