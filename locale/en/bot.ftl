@@ -8,7 +8,7 @@ welcome =
 exchange-start-welcome =
     👋 Hello, { $name }!
 
-    <b>Antex</b> is a service that helps you quickly exchange money and pay for the services you need without extra effort.
+    <b>AntEx</b> is a service that helps you <u>quickly exchange money</u> and pay for the services you need without extra effort.
 
     📝 To create a request, open the app or choose a country from the list below.
 
