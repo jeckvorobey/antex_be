@@ -151,12 +151,12 @@ async def test_render_step_shows_all_loaded_pairs(monkeypatch) -> None:
     assert "Шаг" in text
     assert "1" in text
     assert "5" in text
-    assert "🏦 \u0422\u0435\u043a\u0443\u0449\u0438\u0439 \u043a\u0443\u0440\u0441:" in text
+    assert "🏦 Текущий курс:" not in text
     for pair in pairs:
         assert pair.rate_text not in text
         assert f"({pair.label})" not in text
-    assert "👉 🇹🇭 1 THB от 1.00 RUB 🇷🇺" in text
-    assert "👉 ₮ 1 USDT от 1.00 THB 🇹🇭" in text
+    assert "🇹🇭 1 THB от 1.00 RUB 🇷🇺" in text
+    assert "₮ 1 USDT от 1.00 THB 🇹🇭" in text
 
 
 async def test_enter_amount_moves_directly_to_confirmation(monkeypatch) -> None:
@@ -238,8 +238,8 @@ async def test_country_sets_buy_currency_and_shows_only_canonical_sell_currencie
     assert state._data["currency_buy"] == "THB"
     reply_markup = callback.message.edits[0]["reply_markup"]
     assert [button.callback_data for button in reply_markup.inline_keyboard[0]] == [
-        "exchange:currency:USDT",
         "exchange:currency:RUB",
+        "exchange:currency:USDT",
     ]
 
 
@@ -352,6 +352,10 @@ async def test_fsm_back_from_amount_returns_to_sell_currency_step(monkeypatch) -
             "country": Country.THAILAND.value,
             "currency_sell": "RUB",
             "currency_buy": "THB",
+            "pair_snapshots": [
+                _pair_snapshot("rub-thb", "RUB", "THB", "1 RUB = 0.34 THB"),
+                _pair_snapshot("usdt-thb", "USDT", "THB", "1 USDT = 35.11 THB"),
+            ],
         }
     )
     state.state = exchange_handler.ExchangeState.entering_amount.state
@@ -372,8 +376,8 @@ async def test_fsm_back_from_amount_returns_to_sell_currency_step(monkeypatch) -
     assert "Выберите валюту, которую хотите обменять" in str(callback.message.edits[0]["text"])
     reply_markup = callback.message.edits[0]["reply_markup"]
     assert [button.callback_data for button in reply_markup.inline_keyboard[0]] == [
-        "exchange:currency:USDT",
         "exchange:currency:RUB",
+        "exchange:currency:USDT",
     ]
     assert callback.answers[-1] == {"text": None, "show_alert": False}
 

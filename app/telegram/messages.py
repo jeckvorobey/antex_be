@@ -196,17 +196,12 @@ def exchange_pair_rates(
 
     def _format_pair(pair: ExchangePairSnapshot) -> str:
         return (
-            f"👉 {_format_currency_emoji(pair.currency_sell)} "
-            f"1 {pair.currency_sell} от {pair.rate_display} {pair.currency_buy} "
+            f"{_format_currency_emoji(pair.currency_sell)} 1 {pair.currency_sell} "
+            f"от {pair.rate_display} {pair.currency_buy} "
             f"{_format_currency_emoji(pair.currency_buy)}"
         )
 
-    return "\n".join(
-        [
-            f"{translate('menu-rate-header')}\n",
-            *[_format_pair(pair) for pair in pairs],
-        ]
-    )
+    return "\n".join(_format_pair(pair) for pair in pairs)
 
 
 def order_created(

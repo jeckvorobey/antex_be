@@ -83,7 +83,7 @@ def test_exchange_pair_rates_match_miniapp_display_orientation() -> None:
 
     text = messages.exchange_pair_rates(pairs, locale="ru")
 
-    assert "👉 🇹🇭 1 THB от 2.51 RUB 🇷🇺" in text
+    assert "🇹🇭 1 THB от 2.51 RUB 🇷🇺" in text
     assert "THB/RUB" not in text
     assert "1 THB = 2.51 RUB" not in text
 
@@ -119,13 +119,13 @@ def test_exchange_pair_rates_format_is_readable_with_currency_emoji() -> None:
 
     text = messages.exchange_pair_rates(pairs, locale="ru")
 
-    assert "🏦 \u0422\u0435\u043a\u0443\u0449\u0438\u0439 \u043a\u0443\u0440\u0441:" in text
-    assert "👉 🇹🇭 1 THB от 2.51 RUB 🇷🇺" in text
-    assert "👉 ₮ 1 USDT от 35.11 THB 🇹🇭" in text
-    assert "👉 ₮ 1 USDT от 2.57 GEL 🇬🇪" in text
-    assert "👉 🇬🇪 1 GEL от 28.03 RUB 🇷🇺" in text
-    assert "👉 🇷🇺 1 RUB от 354.16 VND 🇻🇳" in text
-    assert "👉 ₮ 1 USDT от 25511.92 VND 🇻🇳" in text
+    assert "🏦 Текущий курс:" not in text
+    assert "🇹🇭 1 THB от 2.51 RUB 🇷🇺" in text
+    assert "₮ 1 USDT от 35.11 THB 🇹🇭" in text
+    assert "₮ 1 USDT от 2.57 GEL 🇬🇪" in text
+    assert "🇬🇪 1 GEL от 28.03 RUB 🇷🇺" in text
+    assert "🇷🇺 1 RUB от 354.16 VND 🇻🇳" in text
+    assert "₮ 1 USDT от 25511.92 VND 🇻🇳" in text
     for pair in pairs:
         assert pair.label not in text
         assert pair.rate_text not in text
