@@ -44,6 +44,16 @@ def test_order_creation_failed_for_limit_is_human_readable() -> None:
     assert "слишком много активных заявок" in text
 
 
+def test_choose_service_prompt_lists_service_options() -> None:
+    text = messages.choose_service_prompt("thailand", locale="ru")
+
+    assert "💠 Выберите подходящую услугу" in text
+    assert "🚕 Доставка наличных" in text
+    assert "🏧 Наличные по QR" in text
+    assert "💳 Перевод" in text
+    assert "🧰 Оплата сервисов" in text
+
+
 def test_exchange_pair_rates_match_miniapp_display_orientation() -> None:
     stamp = datetime(2026, 5, 29, 12, 0, tzinfo=UTC)
     pairs = [

@@ -270,6 +270,32 @@ async def test_choose_exchange_currency_moves_directly_to_amount(monkeypatch) ->
     assert callback.answers[-1] == {"text": None, "show_alert": False}
 
 
+async def test_fsm_back_from_service_returns_to_country_step(monkeypatch) -> None:
+    callback = _FakeCallback(
+        TgUser(
+            id=777018,
+            is_bot=False,
+            first_name="Back",
+            username="back-service-user",
+            language_code="ru",
+        )
+    )
+    state = _FakeState({"country": Country.THAILAND.value})
+    state.state = exchange_handler.ExchangeState.choosing_service.state
+
+    async def _fake_get_exchange_pairs(country: str | None = None):
+        assert country is None
+        return []
+
+    monkeypatch.setattr(exchange_handler, "_get_exchange_pairs", _fake_get_exchange_pairs)
+
+    await exchange_handler.fsm_back(callback, state)
+
+    assert state.state == exchange_handler.ExchangeState.choosing_country.state
+    assert "Выберите страну" in str(callback.message.edits[0]["text"])
+    assert callback.answers[-1] == {"text": None, "show_alert": False}
+
+
 async def test_fsm_back_from_amount_returns_to_sell_currency_step(monkeypatch) -> None:
     callback = _FakeCallback(
         TgUser(

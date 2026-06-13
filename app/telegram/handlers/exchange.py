@@ -42,18 +42,26 @@ logger = logging.getLogger(__name__)
 router = Router(name="exchange")
 TOTAL_STEPS = 5
 SERVICE_OPTIONS = {
-    "cash_delivery": {"label": "Доставка наличных", "method": "cash", "needs_city": True},
+    "cash_delivery": {
+        "label_key": "btn-service-cash-delivery",
+        "method": "cash",
+        "needs_city": True,
+    },
     "cash_atm": {
-        "label": "Получение наличных через банкомат",
+        "label_key": "btn-service-cash-atm",
         "method": "cash",
         "needs_city": False,
     },
     "bank_account": {
-        "label": "Получение на местный банковский счет",
+        "label_key": "btn-service-bank-account",
         "method": "qrcode",
         "needs_city": False,
     },
-    "pay_services": {"label": "Оплата сервисов", "method": "qrcode", "needs_city": False},
+    "pay_services": {
+        "label_key": "btn-service-pay-services",
+        "method": "qrcode",
+        "needs_city": False,
+    },
 }
 
 
@@ -356,7 +364,7 @@ async def choose_exchange_service(callback: CallbackQuery, state: FSMContext) ->
         return
     await state.update_data(
         service=service_id,
-        service_label=option["label"],
+        service_label=translate(option["label_key"]),
         method=option["method"],
         needs_city=option["needs_city"],
     )
@@ -530,6 +538,8 @@ async def fsm_back(callback: CallbackQuery, state: FSMContext) -> None:
         await _show_enter_amount_step(callback, state, edit=True)
     elif current_state == ExchangeState.entering_amount.state:
         await _show_currency_step(callback, state, edit=True)
+    elif current_state == ExchangeState.choosing_service.state:
+        await _show_country_step(callback, state, edit=True)
     elif current_state == ExchangeState.confirming.state:
         await _show_enter_amount_step(callback, state, edit=True)
     await callback.answer()

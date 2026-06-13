@@ -96,27 +96,34 @@ def back_to_main_menu(_, **kwargs) -> InlineKeyboardMarkup:
 def choose_service(_, **kwargs) -> InlineKeyboardMarkup:
     """FSM шаг выбора услуги."""
     del kwargs
+    translate = _resolve_translator(_)
     return InlineKeyboardMarkup(
         inline_keyboard=[
             [
                 InlineKeyboardButton(
-                    text="Доставка наличных",
+                    text=translate("btn-service-cash-delivery"),
                     callback_data="exchange:service:cash_delivery",
                 ),
                 InlineKeyboardButton(
-                    text="Получение наличных через банкомат",
+                    text=translate("btn-service-cash-atm"),
                     callback_data="exchange:service:cash_atm",
                 ),
             ],
             [
                 InlineKeyboardButton(
-                    text="Получение на местный банковский счет",
+                    text=translate("btn-service-bank-account"),
                     callback_data="exchange:service:bank_account",
                 ),
                 InlineKeyboardButton(
-                    text="Оплата сервисов",
+                    text=translate("btn-service-pay-services"),
                     callback_data="exchange:service:pay_services",
                 ),
+            ],
+            [
+                InlineKeyboardButton(
+                    text=translate("btn-back"),
+                    callback_data="fsm:back",
+                )
             ],
         ]
     )

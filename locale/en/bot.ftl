@@ -14,7 +14,13 @@ exchange-start-welcome =
 
     ☝️ We’ll guide you at every step.
 exchange-choose-country = Choose a country
-exchange-choose-service = Choose a service
+exchange-choose-service =
+    💠 Choose the service you need
+
+    🚕 Cash delivery — we’ll deliver cash to a place convenient for you.
+    🏧 Cash by QR — withdraw cash from an ATM using a QR code.
+    💳 Transfer — we’ll send funds to a local bank account.
+    🧰 Service payments — we’ll help pay for the services you need.
 exchange-choose-city = Choose a city
 menu-orders = 📋 My orders
 menu-new-site-leads = 🆕 New requests
@@ -48,6 +54,10 @@ exchange-confirm-summary =
 btn-confirm = ✅ Confirm
 btn-cancel = ❌ Cancel
 btn-back = ◀ Back
+btn-service-cash-delivery = 🚕 Cash delivery
+btn-service-cash-atm = 🏧 Cash by QR
+btn-service-bank-account = 💳 Transfer
+btn-service-pay-services = 🧰 Service payments
 btn-edit = ✏️ Edit
 btn-home-red = 🔴 Back to start
 btn-home = 🏠 Main menu

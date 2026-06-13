@@ -15,6 +15,7 @@ from app.telegram.keyboards import (
     choose_city,
     choose_country,
     choose_currency,
+    choose_service,
     confirm_exchange,
     manager_home,
     manager_order_close,
@@ -107,6 +108,21 @@ async def test_country_keyboard_keeps_open_app_button(monkeypatch) -> None:
     assert kb.inline_keyboard[2][0].text == "🚀 Открыть приложение"
     assert kb.inline_keyboard[2][0].web_app is not None
     assert kb.inline_keyboard[2][0].web_app.url == "https://example.com/app"
+
+
+async def test_service_keyboard_has_short_labels_and_back_button() -> None:
+    kb = choose_service(get_translator("ru"))
+
+    assert [button.text for button in kb.inline_keyboard[0]] == [
+        "🚕 Доставка наличных",
+        "🏧 Наличные по QR",
+    ]
+    assert [button.text for button in kb.inline_keyboard[1]] == [
+        "💳 Перевод",
+        "🧰 Оплата сервисов",
+    ]
+    assert kb.inline_keyboard[2][0].text == "◀ Назад"
+    assert kb.inline_keyboard[2][0].callback_data == "fsm:back"
 
 
 async def test_manager_home_keyboard_has_new_requests_and_site(monkeypatch) -> None:

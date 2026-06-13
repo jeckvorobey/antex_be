@@ -14,7 +14,13 @@ exchange-start-welcome =
 
     ☝️ Мы будем сопровождать вас на каждом этапе.
 exchange-choose-country = Выберите страну
-exchange-choose-service = Выберите услугу
+exchange-choose-service =
+    💠 Выберите подходящую услугу
+
+    🚕 Доставка наличных — доставим денежные средства в удобное для вас место.
+    🏧 Наличные по QR — получите наличные через банкомат.
+    💳 Перевод — переведём средства на местный банковский счёт.
+    🧰 Оплата сервисов — поможем оплатить необходимые услуги.
 exchange-choose-city = Выберите город
 
 menu-orders = 📋 Мои заявки
@@ -49,6 +55,10 @@ exchange-confirm-summary =
 btn-confirm = ✅ Подтвердить
 btn-cancel = ❌ Отменить
 btn-back = ◀ Назад
+btn-service-cash-delivery = 🚕 Доставка наличных
+btn-service-cash-atm = 🏧 Наличные по QR
+btn-service-bank-account = 💳 Перевод
+btn-service-pay-services = 🧰 Оплата сервисов
 btn-edit = ✏️ Редактировать
 btn-home-red = 🔴 Вернуться в начало
 btn-home = 🏠 Главное меню
