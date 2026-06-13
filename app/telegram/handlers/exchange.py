@@ -536,7 +536,12 @@ async def enter_amount(message: Message, state: FSMContext) -> None:
         return
 
     methods = list(quote.available_methods)
-    default_method = _select_default_method(methods)
+    current_method = data.get("method")
+    default_method = (
+        current_method
+        if isinstance(current_method, str) and current_method in methods
+        else _select_default_method(methods)
+    )
     await state.update_data(
         available_methods=methods,
         method=default_method,

@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from types import SimpleNamespace
+from typing import Any, cast
 
 import pytest
 from aiogram.exceptions import TelegramBadRequest
@@ -119,15 +120,20 @@ async def test_notify_order_created_sends_user_message_with_order_payload(
     )
 
     monkeypatch.setattr(order_notifications, "_get_telegram_bot", lambda: bot)
-    monkeypatch.setattr(
-        order_notifications,
-        "get_translator",
-        lambda _: lambda key, **kwargs: key,
-    )
+    manager_button: dict[str, object] = {}
+
+    def _fake_manager_order_open_chat(*args, **kwargs):
+        manager_button.update(kwargs)
+        return SimpleNamespace(
+            inline_keyboard=[
+                [SimpleNamespace(text="💬 Написать в чат", url="https://t.me/share/url")]
+            ]
+        )
+
     monkeypatch.setattr(
         order_notifications,
         "manager_order_open_chat",
-        lambda *args, **kwargs: None,
+        _fake_manager_order_open_chat,
     )
 
     await notify_order_created(order, user, manager)
@@ -137,6 +143,9 @@ async def test_notify_order_created_sends_user_message_with_order_payload(
     assert "Мы получили ваш запрос" in bot.sent[0]["text"]
     assert bot.sent[0]["reply_markup"].inline_keyboard[0][0].callback_data == "menu:orders"
     assert bot.sent[0]["reply_markup"].inline_keyboard[1][0].callback_data == "fsm:cancel"
+    manager_text = str(manager_button["message_text"]).replace("\u2068", "").replace("\u2069", "")
+    assert manager_text.startswith("Здравствуйте! Вы оставляли заявку #2026050008")
+    assert "100 USDT" in manager_text
     text = str(bot.sent[1]["text"])
     assert "🌍 Страна: Таиланд" in text
     assert "📈 Курс: 30.96" in text
@@ -214,7 +223,8 @@ async def test_notify_order_status_changed_adds_summary_for_completed_order(
     assert "💰 Получаете: 47,250 🇹🇭 THB" in text
     assert "🧾 Способ получения: Наличные" in text
     assert "Спасибо, что воспользовались нашим сервисом!" in text
-    assert bot.edited[0]["reply_markup"].inline_keyboard[0][0].text == "⭐ Оставить отзыв"
+    reply_markup = cast(Any, bot.edited[0]["reply_markup"])
+    assert reply_markup.inline_keyboard[0][0].text == "⭐ Оставить отзыв"
 
 
 @pytest.mark.asyncio
@@ -234,21 +244,32 @@ async def test_notify_order_status_changed_adds_write_manager_button_for_process
         userNotificationMessageId=55,
     )
 
+    user_button: dict[str, object] = {}
+
+    def _fake_user_order_write_manager(*args, **kwargs):
+        user_button.update(kwargs)
+        return SimpleNamespace(
+            inline_keyboard=[
+                [SimpleNamespace(text="💬 Написать в чат", url="https://t.me/share/url")]
+            ]
+        )
+
     monkeypatch.setattr(order_notifications, "_get_telegram_bot", lambda: bot)
     monkeypatch.setattr(
         order_notifications,
         "user_order_write_manager",
-        lambda _, chat_url: SimpleNamespace(
-            inline_keyboard=[[SimpleNamespace(text="Написать менеджеру", url=chat_url)]]
-        ),
+        _fake_user_order_write_manager,
     )
 
     await notify_order_status_changed(order, manager_chat_url="https://t.me/manager")
 
     assert bot.edited[0]["chat_id"] == 700002
     assert "принята в работу" in bot.edited[0]["text"]
-    assert bot.edited[0]["reply_markup"].inline_keyboard[0][0].text == "Написать менеджеру"
-    assert bot.edited[0]["reply_markup"].inline_keyboard[0][0].url == "https://t.me/manager"
+    reply_markup = cast(Any, bot.edited[0]["reply_markup"])
+    user_text = str(user_button["message_text"]).replace("\u2068", "").replace("\u2069", "")
+    assert user_text.startswith("Привет! Я оставил заявку #2026050008")
+    assert reply_markup.inline_keyboard[0][0].text == "💬 Написать в чат"
+    assert reply_markup.inline_keyboard[0][0].url == "https://t.me/share/url"
 
 
 def test_build_manager_order_text_uses_new_created_format() -> None:

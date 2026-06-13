@@ -225,6 +225,60 @@ async def test_enter_amount_moves_directly_to_confirmation(monkeypatch) -> None:
     assert message.bot.deleted == [{"chat_id": message.chat.id, "message_id": 999}]
 
 
+async def test_enter_amount_preserves_selected_cash_method(monkeypatch) -> None:
+    fake_db = _FakeDbSession()
+    message = _FakeMessage()
+    message.from_user = TgUser(
+        id=777000,
+        is_bot=False,
+        first_name="Test",
+        username="customer",
+        language_code="ru",
+    )
+    message.text = "15000"
+    state = _FakeState(
+        {
+            "currency_sell": "RUB",
+            "currency_buy": "VND",
+            "city_id": 11,
+            "city_name": "Фукуок",
+            "method": "cash",
+            "amount_prompt_message_id": 999,
+        }
+    )
+
+    async def _fake_get_db():
+        return fake_db
+
+    async def _fake_get_quote(self, db, payload):
+        assert db is fake_db
+        assert payload.currency_sell == "RUB"
+        assert payload.currency_buy == "VND"
+        assert payload.amount_sell == 15000
+        return SimpleNamespace(
+            currency_sell="RUB",
+            currency_buy="VND",
+            amount_sell=15000,
+            amount_buy=5100.0,
+            rate=0.34,
+            rate_text="1 RUB = 0.34 VND",
+            available_methods=["qrcode", "cash"],
+        )
+
+    monkeypatch.setattr(exchange_handler, "_get_db", _fake_get_db)
+    monkeypatch.setattr(exchange_handler.ExchangeService, "get_quote", _fake_get_quote)
+
+    await exchange_handler.enter_amount(message, state)
+
+    assert state.state == exchange_handler.ExchangeState.confirming.state
+    assert state._data["method"] == "cash"
+    assert state._data["city_id"] == 11
+    assert state._data["quote"]["amountBuy"] == 5100.0
+    assert len(message.answers) == 1
+    assert "Проверьте заявку" in message.answers[0]["text"]
+    assert "Фукуок" in message.answers[0]["text"]
+
+
 async def test_country_sets_buy_currency_and_shows_only_canonical_sell_currencies(
     monkeypatch,
 ) -> None:

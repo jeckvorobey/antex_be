@@ -90,6 +90,13 @@ async def notify_order_created(order, user, manager) -> None:
                 translate,
                 order_id=order.id,
                 chat_url=chat_url,
+                message_text=messages.manager_chat_open_text(
+                    order_id=order.publicNumber,
+                    amount_sell=getattr(order, "amountSell", 0) or 0,
+                    currency_sell=getattr(order, "currencySell", "—"),
+                    translator=None,
+                    locale="ru",
+                ),
             ),
         )
 
@@ -111,7 +118,15 @@ async def notify_order_status_changed(order, *, manager_chat_url: str | None = N
     translate = get_user_translator(user)
     reply_markup = None
     if order.status == 2 and manager_chat_url:
-        reply_markup = user_order_write_manager(translate, chat_url=manager_chat_url)
+        reply_markup = user_order_write_manager(
+            translate,
+            chat_url=manager_chat_url,
+            message_text=messages.user_chat_open_text(
+                order_id=order.publicNumber,
+                translator=None,
+                locale="ru",
+            ),
+        )
     if order.status == 3:
         reply_markup = review_link(translate, REVIEW_URL)
 

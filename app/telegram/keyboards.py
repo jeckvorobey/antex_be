@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from urllib.parse import quote
+
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup, WebAppInfo
 
 from app.core.config import settings
@@ -14,7 +16,18 @@ def _resolve_translator(translator=None):
     return translator or get_translator()
 
 
-def _chat_button(translate, chat_url: str) -> InlineKeyboardButton:
+def _chat_button(
+    translate, chat_url: str, *, message_text: str | None = None
+) -> InlineKeyboardButton:
+    if message_text:
+        share_url = (
+            f"https://t.me/share/url?url={quote(chat_url, safe='')}"
+            f"&text={quote(message_text, safe='')}"
+        )
+        return InlineKeyboardButton(
+            text=translate("btn-open-chat"),
+            url=share_url,
+        )
     return InlineKeyboardButton(
         text=translate("btn-open-chat"),
         url=chat_url,
@@ -369,6 +382,7 @@ def confirm_order(
     *,
     order_id: int | None = None,
     chat_url: str | None = None,
+    message_text: str | None = None,
     **kwargs,
 ) -> InlineKeyboardMarkup:
     """Клавиатура подтверждения заявки оператором."""
@@ -397,7 +411,7 @@ def confirm_order(
                 ),
             ],
             [
-                _chat_button(translate, chat_url),
+                _chat_button(translate, chat_url, message_text=message_text),
             ],
         ]
     )
@@ -408,10 +422,11 @@ def manager_order_open_chat(
     *,
     order_id: int | None = None,
     chat_url: str | None = None,
+    message_text: str | None = None,
     **kwargs,
 ) -> InlineKeyboardMarkup:
     del kwargs
-    return confirm_order(_, order_id=order_id, chat_url=chat_url)
+    return confirm_order(_, order_id=order_id, chat_url=chat_url, message_text=message_text)
 
 
 def manager_order_close(
@@ -519,6 +534,7 @@ def user_order_write_manager(
     _=None,
     *,
     chat_url: str | None = None,
+    message_text: str | None = None,
     **kwargs,
 ) -> InlineKeyboardMarkup:
     del kwargs
@@ -529,10 +545,7 @@ def user_order_write_manager(
     return InlineKeyboardMarkup(
         inline_keyboard=[
             [
-                InlineKeyboardButton(
-                    text=translate("btn-write-manager"),
-                    url=chat_url,
-                ),
+                _chat_button(translate, chat_url, message_text=message_text),
             ]
         ]
     )

@@ -257,6 +257,33 @@ def manager_order_summary(
     return "\n".join([summary, "", f"👤 {translate('manager-summary-user')}: {username}"])
 
 
+def manager_chat_open_text(
+    *,
+    order_id: int | str,
+    amount_sell: int | float,
+    currency_sell: str,
+    translator: Translate | None = None,
+    locale: str | None = None,
+) -> str:
+    translate = cast(Any, _resolve_translator(translator, locale))
+    return translate(
+        "manager-chat-open-text",
+        id=order_id,
+        amount=_format_number(amount_sell),
+        currency=currency_sell,
+    )
+
+
+def user_chat_open_text(
+    *,
+    order_id: int | str,
+    translator: Translate | None = None,
+    locale: str | None = None,
+) -> str:
+    translate = cast(Any, _resolve_translator(translator, locale))
+    return translate("user-chat-open-text", id=order_id)
+
+
 def exchange_rate(sell_rate: float, buy_rate: float) -> str:
     return f"{sell_rate:.2f} / {buy_rate:.2f}"
 

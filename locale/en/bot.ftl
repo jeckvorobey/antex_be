@@ -92,6 +92,16 @@ order-created = ✅ Order #{ $id } created. Please wait for confirmation.
 order-creation-failed = Could not create the order right now. Please try again in a minute.
 order-creation-limit-reached = You already have too many active orders. Please wait for the current ones to be processed.
 order-confirmed = ✅ Order #{ $id } is now being processed by the manager.
+order-completed = ✅ Order #{ $id } completed.
+
+    Direction: { $direction }
+    Amount: { $amount } { $currency }
+
+    { $city }
+
+    The exchange has been completed successfully.
 order-completed-top = 🎉 Order #{ $id } completed successfully.
 order-completed-bottom = Thanks for using our service! If you have a minute, we’d love your review.
 order-cancelled = ❌ Order #{ $id } cancelled.
+manager-chat-open-text = Hello! You had left order #{ $id } for exchanging { $amount } { $currency }. Are you ready to continue?
+user-chat-open-text = Hi! I left order #{ $id }. I’m ready to exchange.

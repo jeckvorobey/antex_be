@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 from types import SimpleNamespace
+from urllib.parse import parse_qs, urlparse
 
 from aiogram.types import User as TgUser
 
@@ -24,6 +25,7 @@ from app.telegram.keyboards import (
     obtaining,
     order_created_actions,
     review_link,
+    user_order_write_manager,
 )
 
 
@@ -412,3 +414,33 @@ async def test_manager_order_keyboards_use_new_callbacks() -> None:
     assert close_order.inline_keyboard[1][0].url == "https://t.me/customer"
     assert review.inline_keyboard[0][0].url == "https://example.com/review"
     assert review.inline_keyboard[0][0].style == "success"
+
+
+async def test_chat_buttons_share_prepared_text() -> None:
+    translator = get_translator("ru")
+
+    manager_btn = manager_order_open_chat(
+        translator,
+        order_id=17,
+        chat_url="https://t.me/customer",
+        message_text=(
+            "Здравствуйте! Вы оставляли заявку #2006877777 на обмен 10 000 USDT. "
+            "Готовы продолжить?"
+        ),
+    )
+    user_btn = user_order_write_manager(
+        translator,
+        chat_url="https://t.me/manager",
+        message_text="Привет! Я оставил заявку #367383776. Готов к обмену.",
+    )
+
+    manager_url = manager_btn.inline_keyboard[1][0].url
+    user_url = user_btn.inline_keyboard[0][0].url
+    assert manager_url is not None and user_url is not None
+
+    manager_qs = parse_qs(urlparse(manager_url).query)
+    user_qs = parse_qs(urlparse(user_url).query)
+    assert manager_qs["url"][0] == "https://t.me/customer"
+    assert manager_qs["text"][0].startswith("Здравствуйте! Вы оставляли заявку #2006877777")
+    assert user_qs["url"][0] == "https://t.me/manager"
+    assert user_qs["text"][0] == "Привет! Я оставил заявку #367383776. Готов к обмену."
