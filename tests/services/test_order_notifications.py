@@ -176,6 +176,48 @@ def test_build_manager_status_text_uses_new_middle_format_for_processing() -> No
 
 
 @pytest.mark.asyncio
+async def test_notify_order_status_changed_adds_summary_for_completed_order(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    bot = _FakeBot()
+    order = SimpleNamespace(
+        id=9,
+        publicNumber="2026050009",
+        status=3,
+        country=SimpleNamespace(value="thailand"),
+        city=SimpleNamespace(name="Бангкок"),
+        rate=31.5,
+        amountSell=1500,
+        currencySell="USDT",
+        amountBuy=47250,
+        currencyBuy="THB",
+        methodGet="cash",
+        user=SimpleNamespace(
+            telegram_id=700002,
+            username="customer",
+            phone=None,
+        ),
+        userNotificationMessageId=55,
+    )
+
+    monkeypatch.setattr(order_notifications, "_get_telegram_bot", lambda: bot)
+
+    await notify_order_status_changed(order, manager_chat_url="https://t.me/manager")
+
+    assert bot.edited[0]["chat_id"] == 700002
+    text = str(bot.edited[0]["text"])
+    assert "🎉 Заявка" in text and "успешно завершена." in text
+    assert "🌍 Страна: Таиланд" in text
+    assert "🏙️ Город: Бангкок" in text
+    assert "📈 Курс: 31.5" in text
+    assert "💸 Отдаёте: 1,500 ₮ USDT" in text
+    assert "💰 Получаете: 47,250 🇹🇭 THB" in text
+    assert "🧾 Способ получения: Наличные" in text
+    assert "Спасибо, что воспользовались нашим сервисом!" in text
+    assert bot.edited[0]["reply_markup"].inline_keyboard[0][0].text == "⭐ Оставить отзыв"
+
+
+@pytest.mark.asyncio
 async def test_notify_order_status_changed_adds_write_manager_button_for_processing(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

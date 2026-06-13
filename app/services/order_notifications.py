@@ -147,11 +147,35 @@ def _build_user_status_text(order, *, translate) -> str:
 
     status_map = {
         2: messages.order_confirmed,
-        3: messages.order_completed,
-        4: messages.order_cancelled,
     }
-    factory = status_map.get(order.status, messages.order_created)
-    return factory(order.publicNumber, translator=translate)
+    factory = status_map.get(order.status)
+    if factory is not None:
+        return factory(order.publicNumber, translator=translate)
+    if order.status == 3:
+        city_name = _format_city_name(order)
+        summary = messages.exchange_summary_middle(
+            country=_format_country_name(getattr(order, "country", None)),
+            rate=_format_rate(getattr(order, "rate", None)),
+            amount=getattr(order, "amountSell", 0) or 0,
+            from_currency=getattr(order, "currencySell", "—"),
+            result=getattr(order, "amountBuy", 0) or 0,
+            to_currency=getattr(order, "currencyBuy", "—"),
+            method=_format_method(getattr(order, "methodGet", None)),
+            city=city_name if city_name != "—" else None,
+            translator=translate,
+        )
+        return "\n".join(
+            [
+                messages.order_completed(order.publicNumber, translator=translate),
+                "",
+                summary,
+                "",
+                messages.order_completed_bottom(translator=translate),
+            ]
+        )
+    if order.status == 4:
+        return messages.order_cancelled(order.publicNumber, translator=translate)
+    return messages.order_created(order.publicNumber, translator=translate)
 
 
 def build_manager_status_text(order) -> str:

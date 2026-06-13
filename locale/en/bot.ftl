@@ -92,5 +92,6 @@ order-created = ✅ Order #{ $id } created. Please wait for confirmation.
 order-creation-failed = Could not create the order right now. Please try again in a minute.
 order-creation-limit-reached = You already have too many active orders. Please wait for the current ones to be processed.
 order-confirmed = ✅ Order #{ $id } is now being processed by the manager.
+order-completed-top = 🎉 Order #{ $id } completed successfully.
+order-completed-bottom = Thanks for using our service! If you have a minute, we’d love your review.
 order-cancelled = ❌ Order #{ $id } cancelled.
-order-completed = 🎉 Order #{ $id } completed. Thank you! You can leave a review if you want.

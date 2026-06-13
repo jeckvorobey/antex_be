@@ -164,6 +164,32 @@ def _format_number(value: int | float) -> str:
     return text.rstrip("0").rstrip(".")
 
 
+def exchange_summary_middle(
+    *,
+    country: str,
+    rate: str,
+    amount: int | float,
+    from_currency: str,
+    result: int | float,
+    to_currency: str,
+    method: str,
+    city: str | None = None,
+    translator: Translate | None = None,
+    locale: str | None = None,
+) -> str:
+    translate = cast(Any, _resolve_translator(translator, locale))
+    lines = [f"🌍 {translate('exchange-summary-country')}: {country}"]
+    if city:
+        lines.append(f"🏙️ {translate('exchange-summary-city')}: {city}")
+    lines.append(f"📈 {translate('exchange-summary-rate')}: {rate}")
+    sell_label = format_currency_label(from_currency)
+    buy_label = format_currency_label(to_currency)
+    lines.append(f"💸 {translate('exchange-summary-sell')}: {_format_number(amount)} {sell_label}")
+    lines.append(f"💰 {translate('exchange-summary-buy')}: {_format_number(result)} {buy_label}")
+    lines.append(f"🧾 {translate('exchange-summary-method')}: {method}")
+    return "\n".join(lines)
+
+
 def exchange_confirm_summary(
     *,
     country: str,
@@ -180,18 +206,26 @@ def exchange_confirm_summary(
     locale: str | None = None,
 ) -> str:
     translate = cast(Any, _resolve_translator(translator, locale))
-    lines = [translate("exchange-confirm-summary-top", current=current, total=total), ""]
-    lines.append(f"🌍 {translate('exchange-summary-country')}: {country}")
-    if city:
-        lines.append(f"🏙️ {translate('exchange-summary-city')}: {city}")
-    lines.append(f"📈 {translate('exchange-summary-rate')}: {rate}")
-    sell_label = format_currency_label(from_currency)
-    buy_label = format_currency_label(to_currency)
-    lines.append(f"💸 {translate('exchange-summary-sell')}: {_format_number(amount)} {sell_label}")
-    lines.append(f"💰 {translate('exchange-summary-buy')}: {_format_number(result)} {buy_label}")
-    lines.append(f"🧾 {translate('exchange-summary-method')}: {method}")
-    lines.extend(["", translate("exchange-confirm-summary-bottom")])
-    return "\n".join(lines)
+    summary = exchange_summary_middle(
+        country=country,
+        rate=rate,
+        amount=amount,
+        from_currency=from_currency,
+        result=result,
+        to_currency=to_currency,
+        method=method,
+        city=city,
+        translator=translate,
+    )
+    return "\n".join(
+        [
+            translate("exchange-confirm-summary-top", current=current, total=total),
+            "",
+            summary,
+            "",
+            translate("exchange-confirm-summary-bottom"),
+        ]
+    )
 
 
 def manager_order_summary(
@@ -209,22 +243,18 @@ def manager_order_summary(
     locale: str | None = None,
 ) -> str:
     translate = cast(Any, _resolve_translator(translator, locale))
-    lines = [f"🌍 {translate('exchange-summary-country')}: {country}"]
-    if city:
-        lines.append(f"🏙️ {translate('exchange-summary-city')}: {city}")
-    sell_label = format_currency_label(from_currency)
-    buy_label = format_currency_label(to_currency)
-    lines.extend(
-        [
-            f"📈 {translate('exchange-summary-rate')}: {rate}",
-            f"💸 {translate('exchange-summary-sell')}: {_format_number(amount_sell)} {sell_label}",
-            f"💰 {translate('exchange-summary-buy')}: {_format_number(amount_buy)} {buy_label}",
-            f"🧾 {translate('exchange-summary-method')}: {method}",
-            "",
-            f"👤 {translate('manager-summary-user')}: {username}",
-        ]
+    summary = exchange_summary_middle(
+        country=country,
+        rate=rate,
+        amount=amount_sell,
+        from_currency=from_currency,
+        result=amount_buy,
+        to_currency=to_currency,
+        method=method,
+        city=city,
+        translator=translate,
     )
-    return "\n".join(lines)
+    return "\n".join([summary, "", f"👤 {translate('manager-summary-user')}: {username}"])
 
 
 def exchange_rate(sell_rate: float, buy_rate: float) -> str:
@@ -287,7 +317,13 @@ def order_completed(
     translator: Translate | None = None,
     locale: str | None = None,
 ) -> str:
-    return _resolve_translator(translator, locale)("order-completed", id=order_id)
+    return _resolve_translator(translator, locale)("order-completed-top", id=order_id)
+
+
+def order_completed_bottom(
+    *, translator: Translate | None = None, locale: str | None = None
+) -> str:
+    return _resolve_translator(translator, locale)("order-completed-bottom")
 
 
 def order_cancelled(
