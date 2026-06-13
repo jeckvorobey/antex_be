@@ -4,10 +4,19 @@ welcome =
 
     Помогу быстро создать заявку на обмен без лишних шагов.
     Нажмите «Новый обмен», чтобы начать.
-menu-exchange = 💱 Новый обмен
+
+exchange-start-welcome =
+    👋 { $name }, привет!
+
+    Давайте быстро соберём заявку.
+    Сначала выберите страну.
+exchange-choose-country = Выберите страну
+exchange-choose-service = Выберите услугу
+exchange-choose-city = Выберите город
+
 menu-orders = 📋 Мои заявки
 menu-new-site-leads = 🆕 Новые заявки
-menu-rate-header = 💱 Текущий курс от:
+menu-rate-header = 💱 Курс сейчас:
 home-title =
     🏠 Главное меню
 

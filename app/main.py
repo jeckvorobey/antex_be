@@ -4,12 +4,13 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from collections.abc import AsyncGenerator
+from collections.abc import AsyncGenerator, Awaitable, Callable
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.routers import (
     admin,
@@ -29,12 +30,31 @@ logging.basicConfig(level=settings.log_level.upper())
 logger = logging.getLogger(__name__)
 
 
+async def _initialize_rates_if_needed(
+    db: AsyncSession,
+    *,
+    fetch_rates: Callable[[AsyncSession], Awaitable[dict[str, float]]] | None = None,
+) -> bool:
+    """Заполняет курсы на старте только если таблица rates пуста."""
+    from app.repositories.rate import RateRepository
+    from app.services.rate_fetcher import fetch_and_save_rates
+
+    if await RateRepository(db).has_any():
+        logger.info("Курсы уже есть в БД, стартовый парсинг пропущен")
+        return False
+
+    rates = await (fetch_rates or fetch_and_save_rates)(db)
+    logger.info("Стартовая инициализация курсов выполнена: %s", rates)
+    return True
+
+
 async def _rate_updater_loop() -> None:
     """Фоновая задача: периодически обновляет курсы из CurrencyBeacon."""
     from app.core.database import async_session
     from app.services.rate_fetcher import fetch_and_save_rates
 
     while True:
+        await asyncio.sleep(settings.rate_cache_ttl_seconds)
         try:
             async with async_session() as db:
                 rates = await fetch_and_save_rates(db)
@@ -42,7 +62,6 @@ async def _rate_updater_loop() -> None:
         except Exception:
             ttl = settings.rate_cache_ttl_seconds
             logger.exception("Ошибка обновления курсов, повтор через %ds", ttl)
-        await asyncio.sleep(settings.rate_cache_ttl_seconds)
 
 
 @asynccontextmanager
@@ -66,6 +85,14 @@ async def lifespan(app: FastAPI) -> AsyncGenerator:
     from app.modules.broadcasts.runner import recover_stale_broadcasts_on_startup
 
     await recover_stale_broadcasts_on_startup()
+
+    from app.core.database import async_session
+
+    try:
+        async with async_session() as db:
+            await _initialize_rates_if_needed(db)
+    except Exception:
+        logger.exception("Ошибка стартовой инициализации курсов")
 
     rate_task = asyncio.create_task(_rate_updater_loop())
 

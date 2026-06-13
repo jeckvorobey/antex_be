@@ -3,9 +3,8 @@
 from __future__ import annotations
 
 from collections.abc import Callable
-from datetime import datetime
 
-from app.services.exchange import ExchangePairSnapshot, format_rate_value
+from app.services.exchange import ExchangePairSnapshot
 from app.telegram.i18n import get_translator
 
 Translate = Callable[[str], str]
@@ -59,6 +58,41 @@ def home_title(*, translator: Translate | None = None, locale: str | None = None
     return _resolve_translator(translator, locale)("home-title")
 
 
+def exchange_start_welcome(
+    first_name: str,
+    *,
+    translator: Translate | None = None,
+    locale: str | None = None,
+) -> str:
+    return _resolve_translator(translator, locale)("exchange-start-welcome", name=first_name)
+
+
+def choose_country_prompt(
+    *,
+    translator: Translate | None = None,
+    locale: str | None = None,
+) -> str:
+    return _resolve_translator(translator, locale)("exchange-choose-country")
+
+
+def choose_service_prompt(
+    country: str,
+    *,
+    translator: Translate | None = None,
+    locale: str | None = None,
+) -> str:
+    return _resolve_translator(translator, locale)("exchange-choose-service", country=country)
+
+
+def choose_city_prompt(
+    service: str,
+    *,
+    translator: Translate | None = None,
+    locale: str | None = None,
+) -> str:
+    return _resolve_translator(translator, locale)("exchange-choose-city", service=service)
+
+
 def exchange_step(
     current: int,
     total: int,
@@ -75,18 +109,6 @@ def choose_currency_prompt(
     locale: str | None = None,
 ) -> str:
     return _resolve_translator(translator, locale)("exchange-choose-currency")
-
-
-def choose_buy_currency_prompt(
-    currency: str,
-    *,
-    translator: Translate | None = None,
-    locale: str | None = None,
-) -> str:
-    return _resolve_translator(translator, locale)(
-        "exchange-choose-buy-currency",
-        currency=currency,
-    )
 
 
 def enter_amount_prompt(
@@ -146,6 +168,10 @@ def exchange_confirm_summary(
     )
 
 
+def exchange_rate(sell_rate: float, buy_rate: float) -> str:
+    return f"{sell_rate:.2f} / {buy_rate:.2f}"
+
+
 def exchange_pair_rates(
     pairs: list[ExchangePairSnapshot],
     *,
@@ -158,14 +184,14 @@ def exchange_pair_rates(
 
     def _format_pair(pair: ExchangePairSnapshot) -> str:
         return (
-            f"{_format_currency_emoji(pair.currency_sell)} "
-            f"1 {pair.currency_sell} → <b>{pair.rate_display}</b>  {pair.currency_buy} "
+            f"👉 {_format_currency_emoji(pair.currency_sell)} "
+            f"1 {pair.currency_sell} → {pair.rate_display} {pair.currency_buy} "
             f"{_format_currency_emoji(pair.currency_buy)}"
         )
 
     return "\n".join(
         [
-            f"<b>{translate('menu-rate-header')}</b>\n",
+            f"{translate('menu-rate-header')}\n",
             *[_format_pair(pair) for pair in pairs],
         ]
     )

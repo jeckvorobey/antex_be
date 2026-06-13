@@ -20,21 +20,30 @@ def _chat_button(translate, chat_url: str) -> InlineKeyboardButton:
     )
 
 
-def home(_, **kwargs) -> InlineKeyboardMarkup:
-    """Главное меню пользователя: обмен + заявки."""
+COUNTRY_CITY_BUTTONS = {
+    "thailand": [("pattya", "Паттайя"), ("phuket", "Пхукет")],
+    "vietnam": [("danang", "Дананг"), ("nhatrang", "Нячанг"), ("phuquoc", "Фукуок")],
+    "georgia": [("batumi", "Батуми"), ("tbilisi", "Тбилиси")],
+}
+
+
+def choose_country(_, **kwargs) -> InlineKeyboardMarkup:
+    """FSM шаг выбора страны."""
     del kwargs
     translate = _resolve_translator(_)
     inline_keyboard = [
         [
-            InlineKeyboardButton(
-                text=translate("menu-exchange"),
-                callback_data="menu:exchange",
-            ),
+            InlineKeyboardButton(text="🇹🇭 Таиланд", callback_data="exchange:country:thailand"),
+            InlineKeyboardButton(text="🇻🇳 Вьетнам", callback_data="exchange:country:vietnam"),
+            InlineKeyboardButton(text="🇬🇪 Грузия", callback_data="exchange:country:georgia"),
+        ],
+        [
             InlineKeyboardButton(
                 text=translate("menu-orders"),
                 callback_data="menu:orders",
-            ),
-        ]
+                style="primary",
+            )
+        ],
     ]
 
     if settings.frontend_webapp_url:
@@ -43,11 +52,74 @@ def home(_, **kwargs) -> InlineKeyboardMarkup:
                 InlineKeyboardButton(
                     text=translate("menu-open-site"),
                     web_app=WebAppInfo(url=settings.frontend_webapp_url),
+                    style="success",
                 )
             ]
         )
 
     return InlineKeyboardMarkup(inline_keyboard=inline_keyboard)
+
+
+def choose_city(_, cities: list[object], **kwargs) -> InlineKeyboardMarkup:
+    """FSM шаг выбора города."""
+    del kwargs
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(
+                    text=getattr(city, "name", str(city)),
+                    callback_data=f"exchange:city:{city.id}",
+                )
+                for city in cities
+            ]
+        ]
+    )
+
+
+def back_to_main_menu(_, **kwargs) -> InlineKeyboardMarkup:
+    """Кнопка возврата в главное меню."""
+    del kwargs
+    translate = _resolve_translator(_)
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(
+                    text=translate("btn-home"),
+                    callback_data="fsm:cancel",
+                    style="primary",
+                )
+            ]
+        ]
+    )
+
+
+def choose_service(_, **kwargs) -> InlineKeyboardMarkup:
+    """FSM шаг выбора услуги."""
+    del kwargs
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(
+                    text="Доставка наличных",
+                    callback_data="exchange:service:cash_delivery",
+                ),
+                InlineKeyboardButton(
+                    text="Получение наличных через банкомат",
+                    callback_data="exchange:service:cash_atm",
+                ),
+            ],
+            [
+                InlineKeyboardButton(
+                    text="Получение на местный банковский счет",
+                    callback_data="exchange:service:bank_account",
+                ),
+                InlineKeyboardButton(
+                    text="Оплата сервисов",
+                    callback_data="exchange:service:pay_services",
+                ),
+            ],
+        ]
+    )
 
 
 def manager_home(_, **kwargs) -> InlineKeyboardMarkup:
@@ -143,33 +215,6 @@ def choose_currency(_, currencies: list[str], **kwargs) -> InlineKeyboardMarkup:
     )
 
 
-def choose_buy_currency(_, currencies: list[str], **kwargs) -> InlineKeyboardMarkup:
-    """FSM шаг выбора валюты получения."""
-    del kwargs
-    translate = _resolve_translator(_)
-    return InlineKeyboardMarkup(
-        inline_keyboard=[
-            [
-                InlineKeyboardButton(
-                    text=format_currency_label(currency),
-                    callback_data=f"exchange:buy:{currency}",
-                )
-                for currency in currencies
-            ],
-            [
-                InlineKeyboardButton(
-                    text=translate("btn-back"),
-                    callback_data="fsm:back",
-                ),
-                InlineKeyboardButton(
-                    text=translate("btn-cancel"),
-                    callback_data="fsm:cancel",
-                ),
-            ],
-        ]
-    )
-
-
 def obtaining(_, methods: list[str], **kwargs) -> InlineKeyboardMarkup:
     """FSM шаг выбора способа получения."""
     del kwargs
@@ -200,6 +245,26 @@ def obtaining(_, methods: list[str], **kwargs) -> InlineKeyboardMarkup:
                     callback_data="fsm:cancel",
                 ),
             ],
+        ]
+    )
+
+
+def amount_controls(_, **kwargs) -> InlineKeyboardMarkup:
+    """FSM управление на шаге ввода суммы."""
+    del kwargs
+    translate = _resolve_translator(_)
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(
+                    text=translate("btn-back"),
+                    callback_data="fsm:back",
+                ),
+                InlineKeyboardButton(
+                    text=translate("btn-cancel"),
+                    callback_data="fsm:cancel",
+                ),
+            ]
         ]
     )
 

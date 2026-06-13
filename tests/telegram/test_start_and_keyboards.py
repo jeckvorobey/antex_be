@@ -10,10 +10,12 @@ os.environ.setdefault("DATABASE_URL", "sqlite+aiosqlite:///:memory:")
 from app.telegram.handlers import start as start_handler
 from app.telegram.i18n import get_translator
 from app.telegram.keyboards import (
-    choose_buy_currency,
+    amount_controls,
+    back_to_main_menu,
+    choose_city,
+    choose_country,
     choose_currency,
     confirm_exchange,
-    home,
     manager_home,
     manager_order_close,
     manager_order_open_chat,
@@ -41,6 +43,18 @@ class _FakeConfigRepo:
         return SimpleNamespace(enabled=True)
 
 
+class _FakeState:
+    def __init__(self) -> None:
+        self.cleared = False
+        self.state = None
+
+    async def clear(self) -> None:
+        self.cleared = True
+
+    async def set_state(self, state) -> None:
+        self.state = getattr(state, "state", state)
+
+
 class _FakeMessage:
     def __init__(self, user: TgUser) -> None:
         self.from_user = user
@@ -65,29 +79,34 @@ class _FakeCallback:
         self.answers.append({"text": text, "show_alert": show_alert})
 
 
-async def test_home_keyboard_without_webapp_url(monkeypatch) -> None:
+async def test_country_keyboard_has_orders_under_countries(monkeypatch) -> None:
     monkeypatch.setattr("app.telegram.keyboards.settings.frontend_webapp_url", None)
 
-    kb = home(get_translator("ru"))
+    kb = choose_country(get_translator("ru"))
 
-    assert len(kb.inline_keyboard) == 1
-    assert len(kb.inline_keyboard[0]) == 2
-    assert kb.inline_keyboard[0][0].callback_data == "menu:exchange"
-    assert kb.inline_keyboard[0][1].callback_data == "menu:orders"
+    assert [button.callback_data for button in kb.inline_keyboard[0]] == [
+        "exchange:country:thailand",
+        "exchange:country:vietnam",
+        "exchange:country:georgia",
+    ]
+    assert len(kb.inline_keyboard) == 2
+    assert kb.inline_keyboard[1][0].text == "📋 Мои заявки"
+    assert kb.inline_keyboard[1][0].callback_data == "menu:orders"
 
 
-async def test_home_keyboard_with_webapp_url(monkeypatch) -> None:
+async def test_country_keyboard_keeps_open_app_button(monkeypatch) -> None:
     monkeypatch.setattr(
         "app.telegram.keyboards.settings.frontend_webapp_url",
-        "https://example.com/miniapp",
+        "https://example.com/app",
     )
 
-    kb = home(get_translator("ru"))
+    kb = choose_country(get_translator("ru"))
 
-    assert len(kb.inline_keyboard) == 2
-    assert len(kb.inline_keyboard[1]) == 1
-    assert kb.inline_keyboard[1][0].web_app is not None
-    assert kb.inline_keyboard[1][0].web_app.url == "https://example.com/miniapp"
+    assert len(kb.inline_keyboard) == 3
+    assert kb.inline_keyboard[1][0].callback_data == "menu:orders"
+    assert kb.inline_keyboard[2][0].text == "🚀 Открыть приложение"
+    assert kb.inline_keyboard[2][0].web_app is not None
+    assert kb.inline_keyboard[2][0].web_app.url == "https://example.com/app"
 
 
 async def test_manager_home_keyboard_has_new_requests_and_site(monkeypatch) -> None:
@@ -106,7 +125,7 @@ async def test_manager_home_keyboard_has_new_requests_and_site(monkeypatch) -> N
     assert kb.inline_keyboard[1][0].web_app.url == "https://example.com/miniapp"
 
 
-async def test_start_always_uses_home_keyboard(monkeypatch) -> None:
+async def test_start_shows_country_selection_for_customer(monkeypatch) -> None:
     user = TgUser(
         id=777,
         is_bot=False,
@@ -133,16 +152,54 @@ async def test_start_always_uses_home_keyboard(monkeypatch) -> None:
         "app.telegram.keyboards.settings.frontend_webapp_url", "https://example.com/app"
     )
 
-    await start_handler.cmd_start(message)
+    await start_handler.cmd_start(message, _FakeState())
 
     assert len(message.answers) == 1
     reply_markup = message.answers[0]["reply_markup"]
     assert reply_markup is not None
-    assert len(reply_markup.inline_keyboard) == 2
-    assert reply_markup.inline_keyboard[0][0].callback_data == "menu:exchange"
-    assert reply_markup.inline_keyboard[0][1].callback_data == "menu:orders"
-    assert reply_markup.inline_keyboard[1][0].web_app is not None
-    assert reply_markup.inline_keyboard[1][0].web_app.url == "https://example.com/app"
+    assert "Сначала выберите страну" in message.answers[0]["text"]
+    assert [button.callback_data for button in reply_markup.inline_keyboard[0]] == [
+        "exchange:country:thailand",
+        "exchange:country:vietnam",
+        "exchange:country:georgia",
+    ]
+    assert [button.callback_data for button in reply_markup.inline_keyboard[1]] == [
+        "menu:orders",
+    ]
+
+
+async def test_country_and_city_keyboards_are_country_specific() -> None:
+    country_kb = choose_country(get_translator("ru"))
+    thailand_cities = choose_city(
+        get_translator("ru"),
+        [SimpleNamespace(id=11, name="Bangkok"), SimpleNamespace(id=12, name="Phuket")],
+    )
+    vietnam_cities = choose_city(
+        get_translator("ru"),
+        [
+            SimpleNamespace(id=21, name="Danang"),
+            SimpleNamespace(id=22, name="Nha Trang"),
+            SimpleNamespace(id=23, name="Phu Quoc"),
+        ],
+    )
+
+    assert [button.text for button in country_kb.inline_keyboard[0]] == [
+        "🇹🇭 Таиланд",
+        "🇻🇳 Вьетнам",
+        "🇬🇪 Грузия",
+    ]
+    assert [button.callback_data for button in country_kb.inline_keyboard[1]] == [
+        "menu:orders",
+    ]
+    assert [button.callback_data for button in thailand_cities.inline_keyboard[0]] == [
+        "exchange:city:11",
+        "exchange:city:12",
+    ]
+    assert [button.callback_data for button in vietnam_cities.inline_keyboard[0]] == [
+        "exchange:city:21",
+        "exchange:city:22",
+        "exchange:city:23",
+    ]
 
 
 async def test_start_uses_manager_keyboard_for_manager(monkeypatch) -> None:
@@ -171,7 +228,7 @@ async def test_start_uses_manager_keyboard_for_manager(monkeypatch) -> None:
         "app.telegram.keyboards.settings.frontend_webapp_url", "https://example.com/app"
     )
 
-    await start_handler.cmd_start(message)
+    await start_handler.cmd_start(message, _FakeState())
 
     assert len(message.answers) == 1
     reply_markup = message.answers[0]["reply_markup"]
@@ -241,7 +298,8 @@ async def test_exchange_keyboards_are_backend_driven() -> None:
     translator = get_translator("ru")
 
     sell_kb = choose_currency(translator, ["RUB", "USDT", "THB"])
-    buy_kb = choose_buy_currency(translator, ["THB", "GEL"])
+    home_kb = back_to_main_menu(translator)
+    amount_kb = amount_controls(translator)
     methods_kb = obtaining(translator, ["cash", "card"])
     confirm_kb = confirm_exchange(translator)
 
@@ -250,9 +308,11 @@ async def test_exchange_keyboards_are_backend_driven() -> None:
         "₮ USDT",
         "🇹🇭 THB",
     ]
-    assert [button.callback_data for button in buy_kb.inline_keyboard[0]] == [
-        "exchange:buy:THB",
-        "exchange:buy:GEL",
+    assert home_kb.inline_keyboard[0][0].callback_data == "fsm:cancel"
+    assert home_kb.inline_keyboard[0][0].style == "primary"
+    assert [button.callback_data for button in amount_kb.inline_keyboard[0]] == [
+        "fsm:back",
+        "fsm:cancel",
     ]
     assert [button.callback_data for button in methods_kb.inline_keyboard[0]] == [
         "method:cash",
