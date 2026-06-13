@@ -190,6 +190,20 @@ async def _show_country_step(actor, state: FSMContext, *, edit: bool) -> None:
     )
 
 
+async def _show_start_welcome(actor, state: FSMContext, *, edit: bool) -> None:
+    translate = get_user_translator(actor.from_user)
+    await state.clear()
+    await state.set_state(ExchangeState.choosing_country)
+    text = messages.exchange_start_welcome(
+        actor.from_user.first_name,
+        locale=getattr(actor.from_user, "language_code", None),
+    )
+    if edit:
+        await _safe_edit_text(actor.message, text, reply_markup=choose_country(translate))
+    else:
+        await actor.answer(text, reply_markup=choose_country(translate))
+
+
 async def _show_country_fallback(
     actor,
     state: FSMContext,
@@ -539,7 +553,7 @@ async def fsm_back(callback: CallbackQuery, state: FSMContext) -> None:
     elif current_state == ExchangeState.entering_amount.state:
         await _show_currency_step(callback, state, edit=True)
     elif current_state == ExchangeState.choosing_service.state:
-        await _show_country_step(callback, state, edit=True)
+        await _show_start_welcome(callback, state, edit=True)
     elif current_state == ExchangeState.confirming.state:
         await _show_enter_amount_step(callback, state, edit=True)
     await callback.answer()

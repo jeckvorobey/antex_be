@@ -292,7 +292,8 @@ async def test_fsm_back_from_service_returns_to_country_step(monkeypatch) -> Non
     await exchange_handler.fsm_back(callback, state)
 
     assert state.state == exchange_handler.ExchangeState.choosing_country.state
-    assert "Выберите страну" in str(callback.message.edits[0]["text"])
+    assert "<b>AntEx</b>" in str(callback.message.edits[0]["text"])
+    assert "выберите страну в списке ниже" in str(callback.message.edits[0]["text"])
     assert callback.answers[-1] == {"text": None, "show_alert": False}
 
 

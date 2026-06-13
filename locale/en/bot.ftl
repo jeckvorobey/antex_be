@@ -15,12 +15,12 @@ exchange-start-welcome =
     ☝️ We’ll guide you at every step.
 exchange-choose-country = Choose a country
 exchange-choose-service =
-    💠 Choose the service you need
+    <b>💠 Choose the service you need</b>
 
-    🚕 Cash delivery — we’ll deliver cash to a place convenient for you.
-    🏧 Cash by QR — withdraw cash from an ATM using a QR code.
-    💳 Transfer — we’ll send funds to a local bank account.
-    🧰 Service payments — we’ll help pay for the services you need.
+    🚕 <i>Cash delivery</i> — we’ll deliver cash to a place convenient for you.
+    🏧 <i>Cash by QR</i> — withdraw cash from an ATM using a QR code.
+    💳 <i>Transfer</i> — we’ll send funds to a local bank account.
+    🧰 <i>Service payments</i> — we’ll help pay for the services you need.
 exchange-choose-city = Choose a city
 menu-orders = 📋 My orders
 menu-new-site-leads = 🆕 New requests
