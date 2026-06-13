@@ -361,6 +361,42 @@ async def _show_enter_amount_step(
         if getattr(pair, "currency_sell", None) == current_sell
         and getattr(pair, "currency_buy", None) == current_buy
     ]
+    if not featured_pairs and data.get("country"):
+        db = await _get_db()
+        service = ExchangeService()
+        async with db:
+            rates = await service.load_rates(db)
+        try:
+            selected_country = Country(str(data["country"]))
+            quote = service.build_quote(
+                rates,
+                ExchangeQuoteInput(
+                    currency_sell=str(current_sell),
+                    currency_buy=str(current_buy),
+                    amount_sell=1,
+                ),
+            )
+        except Exception:
+            featured_pairs = []
+        else:
+            featured_pairs = [
+                ExchangePairSnapshot(
+                    pair_id=f"{quote.currency_sell.lower()}-{quote.currency_buy.lower()}",
+                    label=f"{quote.currency_sell}/{quote.currency_buy}",
+                    currency_sell=quote.currency_sell,
+                    currency_buy=quote.currency_buy,
+                    country=selected_country,
+                    base_rate=quote.rate,
+                    client_rate=quote.rate,
+                    calculation_rate=quote.rate,
+                    rate_display=quote.rate_display,
+                    rate_text=quote.rate_text,
+                    amount_sell_example=quote.amount_sell,
+                    amount_buy_example=quote.amount_buy,
+                    updated_at=quote.updated_at,
+                    available_methods=quote.available_methods,
+                )
+            ]
     await _render_step(
         actor=actor,
         current=5,

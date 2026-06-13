@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+
 from datetime import UTC, datetime
 from types import SimpleNamespace
 
@@ -258,7 +259,7 @@ async def test_choose_exchange_currency_moves_directly_to_amount(monkeypatch) ->
 
     async def _fake_get_exchange_pairs(country: str | None = None):
         assert country == Country.THAILAND.value
-        return []
+        return [_pair_snapshot("rub-thb", "RUB", "THB", "1 RUB = 0.34 THB")]
 
     monkeypatch.setattr(exchange_handler, "_get_exchange_pairs", _fake_get_exchange_pairs)
 
@@ -267,6 +268,104 @@ async def test_choose_exchange_currency_moves_directly_to_amount(monkeypatch) ->
     assert state.state == exchange_handler.ExchangeState.entering_amount.state
     assert state._data["currency_sell"] == "RUB"
     assert "Введите сумму" in callback.message.edits[0]["text"]
+    assert callback.answers[-1] == {"text": None, "show_alert": False}
+
+
+async def test_choose_exchange_currency_falls_back_to_direct_pair_rate_for_reversed_display_pairs(
+    monkeypatch,
+) -> None:
+    callback = _FakeCallback(
+        TgUser(
+            id=777021,
+            is_bot=False,
+            first_name="Sell",
+            username="sell-fallback-user",
+            language_code="ru",
+        ),
+        data="exchange:currency:RUB",
+    )
+    state = _FakeState({"country": Country.THAILAND.value, "currency_buy": "THB"})
+    display_pairs = [_pair_snapshot("thb-rub", "THB", "RUB", "1 THB = 28.50 RUB")]
+    rates = [
+        SimpleNamespace(
+            currency="RUBTHB",
+            price=0.035,
+            margin=0.0,
+            country=Country.THAILAND,
+            updatedAt=datetime(2026, 6, 9, 12, 0, tzinfo=UTC),
+        )
+    ]
+
+    async def _fake_get_exchange_pairs(country: str | None = None):
+        assert country == Country.THAILAND.value
+        return display_pairs
+
+    async def _fake_get_db():
+        return _FakeDbSession()
+
+    async def _fake_load_rates(self, db):
+        return rates
+
+    monkeypatch.setattr(exchange_handler, "_get_exchange_pairs", _fake_get_exchange_pairs)
+    monkeypatch.setattr(exchange_handler, "_get_db", _fake_get_db)
+    monkeypatch.setattr(exchange_handler.ExchangeService, "load_rates", _fake_load_rates)
+
+    await exchange_handler.choose_exchange_currency(callback, state)
+
+    assert state.state == exchange_handler.ExchangeState.entering_amount.state
+    text = str(callback.message.edits[0]["text"])
+    assert "1 RUB" in text
+    assert "THB" in text
+    assert "1 THB = 28.50 RUB" not in text
+    assert callback.answers[-1] == {"text": None, "show_alert": False}
+
+
+async def test_choose_exchange_currency_falls_back_to_direct_pair_rate_for_georgia(
+    monkeypatch,
+) -> None:
+    callback = _FakeCallback(
+        TgUser(
+            id=777022,
+            is_bot=False,
+            first_name="Sell",
+            username="sell-fallback-georgia",
+            language_code="ru",
+        ),
+        data="exchange:currency:RUB",
+    )
+    state = _FakeState({"country": Country.GEORGIA.value, "currency_buy": "GEL"})
+    display_pairs = [_pair_snapshot("gel-rub", "GEL", "RUB", "1 GEL = 31.00 RUB")]
+    rates = [
+        SimpleNamespace(
+            currency="RUBGEL",
+            price=0.0325,
+            margin=0.0,
+            country=Country.GEORGIA,
+            updatedAt=datetime(2026, 6, 9, 12, 0, tzinfo=UTC),
+        )
+    ]
+
+    async def _fake_get_exchange_pairs(country: str | None = None):
+        assert country == Country.GEORGIA.value
+        return display_pairs
+
+    async def _fake_get_db():
+        return _FakeDbSession()
+
+    async def _fake_load_rates(self, db):
+        return rates
+
+    monkeypatch.setattr(exchange_handler, "_get_exchange_pairs", _fake_get_exchange_pairs)
+    monkeypatch.setattr(exchange_handler, "_get_db", _fake_get_db)
+    monkeypatch.setattr(exchange_handler.ExchangeService, "load_rates", _fake_load_rates)
+
+    await exchange_handler.choose_exchange_currency(callback, state)
+
+    assert state.state == exchange_handler.ExchangeState.entering_amount.state
+    text = str(callback.message.edits[0]["text"])
+    assert "1 RUB" in text
+    assert "GEL" in text
+    assert "1 GEL = 31.00 RUB" not in text
     assert callback.answers[-1] == {"text": None, "show_alert": False}
 
 
