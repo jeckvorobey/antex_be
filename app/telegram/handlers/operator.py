@@ -14,6 +14,7 @@ from app.enums.user import has_operator_access
 from app.repositories.order import OrderRepository
 from app.services.order_notifications import build_chat_url_for_user, build_manager_status_text
 from app.services.order_status import update_order_status
+from app.telegram import messages
 from app.telegram.keyboards import (
     manager_order_cancel_confirm,
     manager_order_chat_only,
@@ -51,7 +52,17 @@ async def operator_take(callback: CallbackQuery) -> None:
 
     await callback.message.edit_text(  # type: ignore[union-attr]
         build_manager_status_text(order),
-        reply_markup=manager_order_close(order_id=order.id, chat_url=chat_url),
+        reply_markup=manager_order_close(
+            order_id=order.id,
+            chat_url=chat_url,
+            message_text=messages.manager_chat_open_text(
+                order_id=order.publicNumber,
+                amount_sell=getattr(order, "amountSell", 0) or 0,
+                currency_sell=getattr(order, "currencySell", "—"),
+                translator=None,
+                locale="ru",
+            ),
+        ),
     )
     await callback.answer()
 

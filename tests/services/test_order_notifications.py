@@ -15,6 +15,7 @@ from app.services.order_notifications import (
     notify_order_status_changed,
     send_or_replace_user_status_message,
 )
+from app.telegram.i18n import get_translator
 
 
 class _FakeBot:
@@ -120,21 +121,6 @@ async def test_notify_order_created_sends_user_message_with_order_payload(
     )
 
     monkeypatch.setattr(order_notifications, "_get_telegram_bot", lambda: bot)
-    manager_button: dict[str, object] = {}
-
-    def _fake_manager_order_open_chat(*args, **kwargs):
-        manager_button.update(kwargs)
-        return SimpleNamespace(
-            inline_keyboard=[
-                [SimpleNamespace(text="💬 Написать в чат", url="https://t.me/share/url")]
-            ]
-        )
-
-    monkeypatch.setattr(
-        order_notifications,
-        "manager_order_open_chat",
-        _fake_manager_order_open_chat,
-    )
 
     await notify_order_created(order, user, manager)
 
@@ -143,9 +129,10 @@ async def test_notify_order_created_sends_user_message_with_order_payload(
     assert "Мы получили ваш запрос" in bot.sent[0]["text"]
     assert bot.sent[0]["reply_markup"].inline_keyboard[0][0].callback_data == "menu:orders"
     assert bot.sent[0]["reply_markup"].inline_keyboard[1][0].callback_data == "fsm:cancel"
-    manager_text = str(manager_button["message_text"]).replace("\u2068", "").replace("\u2069", "")
-    assert manager_text.startswith("Здравствуйте! Вы оставляли заявку #2026050008")
-    assert "100 USDT" in manager_text
+    manager_markup = cast(Any, bot.sent[1]["reply_markup"])
+    assert len(manager_markup.inline_keyboard) == 1
+    assert manager_markup.inline_keyboard[0][0].callback_data == "op:cancel:8"
+    assert manager_markup.inline_keyboard[0][1].callback_data == "op:take:8"
     text = str(bot.sent[1]["text"])
     assert "🌍 Страна: Таиланд" in text
     assert "📈 Курс: 30.96" in text
@@ -182,6 +169,35 @@ def test_build_manager_status_text_uses_new_middle_format_for_processing() -> No
     assert "🧾 Способ получения: QR-код" in text
     assert "👤 Пользователь: @sergeywebdev" in text
     assert "💬 Ожидает завершения обмена" in text
+
+
+def test_build_manager_status_text_uses_shared_middle_format_for_completed() -> None:
+    order = SimpleNamespace(
+        publicNumber="2026050026",
+        amountSell=10000,
+        currencySell="USDT",
+        amountBuy=27100,
+        currencyBuy="GEL",
+        methodGet="cash",
+        rate=2.71,
+        status=3,
+        city=SimpleNamespace(name="Батуми"),
+        country=SimpleNamespace(value="georgia"),
+        user=SimpleNamespace(username="sergeywebdev"),
+    )
+
+    text = build_manager_status_text(order)
+
+    assert "✅ Заявка #2026050026 завершена" in text
+    assert "🌍 Страна: Грузия" in text
+    assert "🏙️ Город: Батуми" in text
+    assert "📈 Курс: 2.71" in text
+    assert "💸 Отдаёте: 10,000 ₮ USDT" in text
+    assert "💰 Получаете: 27,100 🇬🇪 GEL" in text
+    assert "🧾 Способ получения: Наличные" in text
+    assert "🏁 Обмен успешно выполнен" in text
+    assert "💱 Направление:" not in text
+    assert "👤 Пользователь:" not in text
 
 
 @pytest.mark.asyncio
@@ -270,6 +286,17 @@ async def test_notify_order_status_changed_adds_write_manager_button_for_process
     assert user_text.startswith("Привет! Я оставил заявку #2026050008")
     assert reply_markup.inline_keyboard[0][0].text == "💬 Написать в чат"
     assert reply_markup.inline_keyboard[0][0].url == "https://t.me/share/url"
+
+
+def test_notify_order_created_manager_keyboard_has_no_chat_button() -> None:
+    markup = order_notifications.manager_order_open_chat(
+        get_translator("ru"),
+        order_id=8,
+    )
+
+    assert len(markup.inline_keyboard) == 1
+    assert markup.inline_keyboard[0][0].callback_data == "op:cancel:8"
+    assert markup.inline_keyboard[0][1].callback_data == "op:take:8"
 
 
 def test_build_manager_order_text_uses_new_created_format() -> None:

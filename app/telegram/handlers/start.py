@@ -16,7 +16,7 @@ from app.enums.order import OrderStatus
 from app.enums.user import has_admin_access, has_operator_access
 from app.repositories.config import ConfigRepository
 from app.repositories.order import OrderRepository
-from app.services.order_notifications import build_chat_url_for_user, build_manager_status_text
+from app.services.order_notifications import build_manager_status_text
 from app.telegram import messages
 from app.telegram.handlers.exchange import ExchangeState
 from app.telegram.i18n import get_user_translator
@@ -146,11 +146,10 @@ async def manager_order_detail(callback: CallbackQuery) -> None:
         await callback.answer(translate("manager-new-orders-empty"), show_alert=True)
         return
 
-    chat_url = build_chat_url_for_user(order.user)
     await _safe_edit_text(
         callback.message,
         build_manager_status_text(order),
-        reply_markup=manager_order_open_chat(order_id=order.id, chat_url=chat_url),
+        reply_markup=manager_order_open_chat(order_id=order.id),
     )
     await callback.answer()
 

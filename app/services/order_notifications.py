@@ -76,27 +76,12 @@ async def notify_order_created(order, user, manager) -> None:
 
     if manager is not None and getattr(manager, "telegram_id", None):
         translate = get_translator("ru")
-        chat_url = build_chat_url_for_user(user)
-        if not chat_url:
-            logger.warning(
-                "Manager notification skipped: user chat URL is unavailable for order %s",
-                order.id,
-            )
-            return
         await bot.send_message(
             chat_id=manager.telegram_id,
             text=_build_manager_order_text(order, user),
             reply_markup=manager_order_open_chat(
                 translate,
                 order_id=order.id,
-                chat_url=chat_url,
-                message_text=messages.manager_chat_open_text(
-                    order_id=order.publicNumber,
-                    amount_sell=getattr(order, "amountSell", 0) or 0,
-                    currency_sell=getattr(order, "currencySell", "—"),
-                    translator=None,
-                    locale="ru",
-                ),
             ),
         )
 
@@ -196,11 +181,6 @@ def _build_user_status_text(order, *, translate) -> str:
 def build_manager_status_text(order) -> str:
     username = _format_username(getattr(order, "user", None))
     city_name = _format_city_name(order)
-    direction = _format_direction(order)
-    amount = _format_amount(
-        getattr(order, "amountSell", None),
-        getattr(order, "currencySell", None),
-    )
 
     if int(order.status) == int(OrderStatus.PROCESSING):
         middle = messages.manager_order_summary(
@@ -229,14 +209,23 @@ def build_manager_status_text(order) -> str:
         )
 
     if int(order.status) == int(OrderStatus.COMPLETED):
+        middle = messages.exchange_summary_middle(
+            country=_format_country_name(getattr(order, "country", None)),
+            rate=_format_rate(getattr(order, "rate", None)),
+            amount=getattr(order, "amountSell", 0) or 0,
+            from_currency=getattr(order, "currencySell", "—"),
+            result=getattr(order, "amountBuy", 0) or 0,
+            to_currency=getattr(order, "currencyBuy", "—"),
+            method=_format_method(getattr(order, "methodGet", None)),
+            city=city_name if city_name != "—" else None,
+            translator=None,
+            locale="ru",
+        )
         return "\n".join(
             [
                 f"✅ Заявка #{order.publicNumber} завершена",
                 "",
-                f"💱 Направление: {direction}",
-                f"💸 Сумма: {amount}",
-                "",
-                f"📍 {city_name}",
+                middle,
                 "",
                 "🏁 Обмен успешно выполнен",
             ]

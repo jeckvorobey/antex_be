@@ -399,13 +399,11 @@ async def test_manager_order_keyboards_use_new_callbacks() -> None:
     )
     review = review_link(translator, "https://example.com/review")
 
-    assert len(open_chat.inline_keyboard) == 2
+    assert len(open_chat.inline_keyboard) == 1
     assert open_chat.inline_keyboard[0][0].callback_data == "op:cancel:17"
     assert open_chat.inline_keyboard[0][0].style == "danger"
     assert open_chat.inline_keyboard[0][1].callback_data == "op:take:17"
     assert open_chat.inline_keyboard[0][1].style == "success"
-    assert open_chat.inline_keyboard[1][0].url == "https://t.me/customer"
-    assert open_chat.inline_keyboard[1][0].text == "💬 Написать в чат"
 
     assert close_order.inline_keyboard[0][0].callback_data == "op:cancel:17"
     assert close_order.inline_keyboard[0][0].style == "danger"
@@ -416,10 +414,10 @@ async def test_manager_order_keyboards_use_new_callbacks() -> None:
     assert review.inline_keyboard[0][0].style == "success"
 
 
-async def test_chat_buttons_share_prepared_text() -> None:
+async def test_chat_buttons_open_direct_chat_with_prepared_text() -> None:
     translator = get_translator("ru")
 
-    manager_btn = manager_order_open_chat(
+    manager_btn = manager_order_close(
         translator,
         order_id=17,
         chat_url="https://t.me/customer",
@@ -438,9 +436,20 @@ async def test_chat_buttons_share_prepared_text() -> None:
     user_url = user_btn.inline_keyboard[0][0].url
     assert manager_url is not None and user_url is not None
 
+    assert urlparse(manager_url).path == "/customer"
     manager_qs = parse_qs(urlparse(manager_url).query)
     user_qs = parse_qs(urlparse(user_url).query)
-    assert manager_qs["url"][0] == "https://t.me/customer"
     assert manager_qs["text"][0].startswith("Здравствуйте! Вы оставляли заявку #2006877777")
-    assert user_qs["url"][0] == "https://t.me/manager"
     assert user_qs["text"][0] == "Привет! Я оставил заявку #367383776. Готов к обмену."
+
+
+def test_chat_button_keeps_plain_tg_user_link_without_username() -> None:
+    translator = get_translator("ru")
+
+    user_btn = user_order_write_manager(
+        translator,
+        chat_url="tg://user?id=700002",
+        message_text="Привет! Я оставил заявку #367383776. Готов к обмену.",
+    )
+
+    assert user_btn.inline_keyboard[0][0].url == "tg://user?id=700002"

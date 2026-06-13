@@ -97,7 +97,9 @@ async def test_operator_take_moves_order_to_processing(monkeypatch) -> None:
         callback.message.edits[0]["reply_markup"].inline_keyboard[0][1].callback_data
         == "op:close:5"
     )
-    assert callback.message.edits[0]["reply_markup"].inline_keyboard[1][0].url == "https://t.me/customer"
+    chat_url = callback.message.edits[0]["reply_markup"].inline_keyboard[1][0].url
+    assert chat_url is not None
+    assert chat_url.startswith("https://t.me/customer?text=")
     assert "🟢 Заявка #2026050001" in callback.message.edits[0]["text"]
     assert "⏳ Статус: В работе" in callback.message.edits[0]["text"]
     assert "💬 Ожидает завершения обмена" in callback.message.edits[0]["text"]
@@ -208,11 +210,14 @@ async def test_operator_close_marks_order_completed(monkeypatch) -> None:
         id=9,
         publicNumber="2026050002",
         status=int(OrderStatus.COMPLETED),
-        city=SimpleNamespace(name="Bangkok"),
+        country=SimpleNamespace(value="georgia"),
+        city=SimpleNamespace(name="Батуми"),
+        rate=2.71,
         user=SimpleNamespace(username="customer", telegram_id=700002),
-        currencySell="RUB",
-        currencyBuy="THB",
-        amountSell=25000,
+        currencySell="USDT",
+        currencyBuy="GEL",
+        amountSell=10000,
+        amountBuy=27100,
         methodGet="cash",
     )
 
@@ -235,5 +240,13 @@ async def test_operator_close_marks_order_completed(monkeypatch) -> None:
 
     assert callback.answers[-1] == {"text": None, "show_alert": False, "url": None}
     assert callback.message.edits[0]["reply_markup"].inline_keyboard[0][0].url == "https://t.me/customer"
-    assert "✅ Заявка #2026050002 завершена" in callback.message.edits[0]["text"]
-    assert "🏁 Обмен успешно выполнен" in callback.message.edits[0]["text"]
+    text = str(callback.message.edits[0]["text"])
+    assert "✅ Заявка #2026050002 завершена" in text
+    assert "🌍 Страна: Грузия" in text
+    assert "🏙️ Город: Батуми" in text
+    assert "📈 Курс:" in text
+    assert "💸 Отдаёте: 10,000 ₮ USDT" in text
+    assert "💰 Получаете:" in text
+    assert "🧾 Способ получения:" in text
+    assert "🏁 Обмен успешно выполнен" in text
+    assert "💱 Направление:" not in text
