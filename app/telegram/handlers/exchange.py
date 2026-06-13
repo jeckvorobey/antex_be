@@ -288,16 +288,25 @@ async def _show_currency_step(actor, state: FSMContext, *, edit: bool) -> None:
         )
         return
     await state.set_state(ExchangeState.choosing_currency)
-    await state.update_data(
-        supported_pairs=supported_pairs,
-        currency_buy=COUNTRY_CURRENCY.get(country, ""),
-        pair_snapshots=snapshots,
+    current_data = await state.get_data()
+    clean_data = {k: v for k, v in current_data.items() if k != "pair_snapshots"}
+    clean_data.update(
+        {
+            "supported_pairs": supported_pairs,
+            "currency_buy": COUNTRY_CURRENCY.get(country, ""),
+        }
     )
+    await state.clear()
+    await state.set_state(ExchangeState.choosing_currency)
+    await state.update_data(**clean_data)
+    canonical_sell_currencies = [
+        currency for currency in ("USDT", "RUB") if currency in CANONICAL_SELL_CURRENCIES
+    ]
     await _render_step(
         actor=actor,
         current=4,
         body=messages.choose_currency_prompt(translator=translate),
-        reply_markup=choose_currency(translate, list(CANONICAL_SELL_CURRENCIES)),
+        reply_markup=choose_currency(translate, canonical_sell_currencies),
         edit=edit,
         featured_pairs=snapshots,
     )
@@ -343,7 +352,7 @@ async def _show_enter_amount_step(
     translate = get_user_translator(actor.from_user)
     await state.set_state(ExchangeState.entering_amount)
     data = await state.get_data()
-    snapshots = data.get("pair_snapshots", [])
+    snapshots = await _get_exchange_pairs(str(data["country"])) if data.get("country") else []
     current_sell = data.get("currency_sell")
     current_buy = data.get("currency_buy")
     featured_pairs = [
@@ -358,7 +367,7 @@ async def _show_enter_amount_step(
         body=messages.enter_amount_prompt(data["currency_sell"], translator=translate),
         reply_markup=amount_controls(translate),
         edit=edit,
-        featured_pairs=featured_pairs or None,
+        featured_pairs=featured_pairs,
     )
 
 

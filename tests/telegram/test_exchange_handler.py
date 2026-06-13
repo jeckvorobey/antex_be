@@ -238,8 +238,8 @@ async def test_country_sets_buy_currency_and_shows_only_canonical_sell_currencie
     assert state._data["currency_buy"] == "THB"
     reply_markup = callback.message.edits[0]["reply_markup"]
     assert [button.callback_data for button in reply_markup.inline_keyboard[0]] == [
-        "exchange:currency:RUB",
         "exchange:currency:USDT",
+        "exchange:currency:RUB",
     ]
 
 
@@ -257,7 +257,7 @@ async def test_choose_exchange_currency_moves_directly_to_amount(monkeypatch) ->
     state = _FakeState({"country": Country.THAILAND.value, "currency_buy": "THB"})
 
     async def _fake_get_exchange_pairs(country: str | None = None):
-        assert country is None
+        assert country == Country.THAILAND.value
         return []
 
     monkeypatch.setattr(exchange_handler, "_get_exchange_pairs", _fake_get_exchange_pairs)
@@ -376,8 +376,8 @@ async def test_fsm_back_from_amount_returns_to_sell_currency_step(monkeypatch) -
     assert "Выберите валюту, которую хотите обменять" in str(callback.message.edits[0]["text"])
     reply_markup = callback.message.edits[0]["reply_markup"]
     assert [button.callback_data for button in reply_markup.inline_keyboard[0]] == [
-        "exchange:currency:RUB",
         "exchange:currency:USDT",
+        "exchange:currency:RUB",
     ]
     assert callback.answers[-1] == {"text": None, "show_alert": False}
 
