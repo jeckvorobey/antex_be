@@ -21,7 +21,7 @@ exchange-choose-service =
     🏧 <i>Cash by QR</i> — withdraw cash from an ATM using a QR code.
     💳 <i>Transfer</i> — we’ll send funds to a local bank account.
     🧰 <i>Service payments</i> — we’ll help pay for the services you need.
-exchange-choose-city = Choose a city
+exchange-choose-city = Choose a cash-delivery city
 menu-orders = 📋 My orders
 menu-new-site-leads = 🆕 New requests
 menu-rate-header = 🏦 Current rate:

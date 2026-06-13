@@ -156,7 +156,7 @@ async def test_render_step_shows_all_loaded_pairs(monkeypatch) -> None:
         assert pair.rate_text not in text
         assert f"({pair.label})" not in text
     assert "👉 🇹🇭 1 THB от 1.00 RUB 🇷🇺" in text
-    assert "👉 💰 1 USDT от 1.00 THB 🇹🇭" in text
+    assert "👉 ₮ 1 USDT от 1.00 THB 🇹🇭" in text
 
 
 async def test_enter_amount_moves_directly_to_confirmation(monkeypatch) -> None:
@@ -238,8 +238,8 @@ async def test_country_sets_buy_currency_and_shows_only_canonical_sell_currencie
     assert state._data["currency_buy"] == "THB"
     reply_markup = callback.message.edits[0]["reply_markup"]
     assert [button.callback_data for button in reply_markup.inline_keyboard[0]] == [
-        "exchange:currency:RUB",
         "exchange:currency:USDT",
+        "exchange:currency:RUB",
     ]
 
 
@@ -282,6 +282,26 @@ async def test_fsm_back_from_currency_returns_to_service_step() -> None:
     )
     state = _FakeState({"country": Country.THAILAND.value})
     state.state = exchange_handler.ExchangeState.choosing_currency.state
+
+    await exchange_handler.fsm_back(callback, state)
+
+    assert state.state == exchange_handler.ExchangeState.choosing_service.state
+    assert "<b>💠 Выберите подходящую услугу</b>" in str(callback.message.edits[0]["text"])
+    assert callback.answers[-1] == {"text": None, "show_alert": False}
+
+
+async def test_fsm_back_from_city_returns_to_service_step() -> None:
+    callback = _FakeCallback(
+        TgUser(
+            id=777020,
+            is_bot=False,
+            first_name="Back",
+            username="back-city-user",
+            language_code="ru",
+        )
+    )
+    state = _FakeState({"country": Country.THAILAND.value, "service_label": "cash_delivery"})
+    state.state = exchange_handler.ExchangeState.choosing_city.state
 
     await exchange_handler.fsm_back(callback, state)
 
@@ -352,8 +372,8 @@ async def test_fsm_back_from_amount_returns_to_sell_currency_step(monkeypatch) -
     assert "Выберите валюту, которую хотите обменять" in str(callback.message.edits[0]["text"])
     reply_markup = callback.message.edits[0]["reply_markup"]
     assert [button.callback_data for button in reply_markup.inline_keyboard[0]] == [
-        "exchange:currency:RUB",
         "exchange:currency:USDT",
+        "exchange:currency:RUB",
     ]
     assert callback.answers[-1] == {"text": None, "show_alert": False}
 

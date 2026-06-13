@@ -552,7 +552,10 @@ async def fsm_back(callback: CallbackQuery, state: FSMContext) -> None:
         await _show_enter_amount_step(callback, state, edit=True)
     elif current_state == ExchangeState.entering_amount.state:
         await _show_currency_step(callback, state, edit=True)
-    elif current_state == ExchangeState.choosing_currency.state:
+    elif current_state in {
+        ExchangeState.choosing_currency.state,
+        ExchangeState.choosing_city.state,
+    }:
         await _show_service_step(callback, state, edit=True)
     elif current_state == ExchangeState.choosing_service.state:
         await _show_start_welcome(callback, state, edit=True)

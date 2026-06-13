@@ -7,6 +7,7 @@ from aiogram.types import User as TgUser
 
 os.environ.setdefault("DATABASE_URL", "sqlite+aiosqlite:///:memory:")
 
+from app.enums.country import Country
 from app.telegram.handlers import start as start_handler
 from app.telegram.i18n import get_translator
 from app.telegram.keyboards import (
@@ -128,7 +129,7 @@ async def test_service_keyboard_has_short_labels_and_back_button() -> None:
 async def test_currency_keyboard_has_usdt_icon_back_and_cancel() -> None:
     kb = choose_currency(get_translator("ru"), ["USDT", "RUB"])
 
-    assert [button.text for button in kb.inline_keyboard[0]] == ["🐛 USDT", "🇷🇺 RUB"]
+    assert [button.text for button in kb.inline_keyboard[0]] == ["₮ USDT", "🇷🇺 RUB"]
     assert [button.callback_data for button in kb.inline_keyboard[1]] == [
         "fsm:back",
         "fsm:cancel",
@@ -197,18 +198,21 @@ async def test_start_shows_country_selection_for_customer(monkeypatch) -> None:
     ]
 
 
-async def test_country_and_city_keyboards_are_country_specific() -> None:
+async def test_country_and_city_keyboards_have_flags_and_actions() -> None:
     country_kb = choose_country(get_translator("ru"))
     thailand_cities = choose_city(
         get_translator("ru"),
-        [SimpleNamespace(id=11, name="Bangkok"), SimpleNamespace(id=12, name="Phuket")],
+        [
+            SimpleNamespace(id=11, name="Bangkok", country=Country.THAILAND),
+            SimpleNamespace(id=12, name="Phuket", country=Country.THAILAND),
+        ],
     )
     vietnam_cities = choose_city(
         get_translator("ru"),
         [
-            SimpleNamespace(id=21, name="Danang"),
-            SimpleNamespace(id=22, name="Nha Trang"),
-            SimpleNamespace(id=23, name="Phu Quoc"),
+            SimpleNamespace(id=21, name="Danang", country=Country.VIETNAM),
+            SimpleNamespace(id=22, name="Nha Trang", country=Country.VIETNAM),
+            SimpleNamespace(id=23, name="Phu Quoc", country=Country.VIETNAM),
         ],
     )
 
@@ -220,14 +224,26 @@ async def test_country_and_city_keyboards_are_country_specific() -> None:
     assert [button.callback_data for button in country_kb.inline_keyboard[1]] == [
         "menu:orders",
     ]
+    assert [button.text for button in thailand_cities.inline_keyboard[0]] == [
+        "🇹🇭 Bangkok",
+        "🇹🇭 Phuket",
+    ]
     assert [button.callback_data for button in thailand_cities.inline_keyboard[0]] == [
         "exchange:city:11",
         "exchange:city:12",
     ]
-    assert [button.callback_data for button in vietnam_cities.inline_keyboard[0]] == [
-        "exchange:city:21",
-        "exchange:city:22",
-        "exchange:city:23",
+    assert [button.text for button in thailand_cities.inline_keyboard[1]] == [
+        "◀ Назад",
+        "❌ Отменить",
+    ]
+    assert [button.callback_data for button in thailand_cities.inline_keyboard[1]] == [
+        "fsm:back",
+        "fsm:cancel",
+    ]
+    assert [button.text for button in vietnam_cities.inline_keyboard[0]] == [
+        "🇻🇳 Danang",
+        "🇻🇳 Nha Trang",
+        "🇻🇳 Phu Quoc",
     ]
 
 
@@ -334,7 +350,7 @@ async def test_exchange_keyboards_are_backend_driven() -> None:
 
     assert [button.text for button in sell_kb.inline_keyboard[0]] == [
         "🇷🇺 RUB",
-        "🐛 USDT",
+        "₮ USDT",
         "🇹🇭 THB",
     ]
     assert home_kb.inline_keyboard[0][0].callback_data == "fsm:cancel"

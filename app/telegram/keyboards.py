@@ -5,6 +5,7 @@ from __future__ import annotations
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup, WebAppInfo
 
 from app.core.config import settings
+from app.enums.country import Country
 from app.telegram.i18n import get_translator
 from app.telegram.messages import format_currency_button_label
 
@@ -18,6 +19,19 @@ def _chat_button(translate, chat_url: str) -> InlineKeyboardButton:
         text=translate("btn-open-chat"),
         url=chat_url,
     )
+
+
+def _city_label(city: object) -> str:
+    name = getattr(city, "name", str(city))
+    country = getattr(city, "country", None)
+    if isinstance(country, Country):
+        flag = country.flag
+    else:
+        try:
+            flag = Country(str(country)).flag if country is not None else ""
+        except ValueError:
+            flag = ""
+    return f"{flag} {name}".strip()
 
 
 COUNTRY_CITY_BUTTONS = {
@@ -63,15 +77,28 @@ def choose_country(_, **kwargs) -> InlineKeyboardMarkup:
 def choose_city(_, cities: list[object], **kwargs) -> InlineKeyboardMarkup:
     """FSM шаг выбора города."""
     del kwargs
+    translate = _resolve_translator(_)
     return InlineKeyboardMarkup(
         inline_keyboard=[
             [
                 InlineKeyboardButton(
-                    text=getattr(city, "name", str(city)),
+                    text=_city_label(city),
                     callback_data=f"exchange:city:{city.id}",
                 )
                 for city in cities
-            ]
+            ],
+            [
+                InlineKeyboardButton(
+                    text=translate("btn-back"),
+                    callback_data="fsm:back",
+                    style="primary",
+                ),
+                InlineKeyboardButton(
+                    text=translate("btn-cancel"),
+                    callback_data="fsm:cancel",
+                    style="danger",
+                ),
+            ],
         ]
     )
 

@@ -54,6 +54,12 @@ def test_choose_service_prompt_lists_service_options() -> None:
     assert "🧰 <i>Оплата сервисов</i>" in text
 
 
+def test_choose_city_prompt_mentions_cash_delivery() -> None:
+    text = messages.choose_city_prompt("cash_delivery", locale="ru")
+
+    assert "Выберите город доставки наличных" in text
+
+
 def test_exchange_pair_rates_match_miniapp_display_orientation() -> None:
     stamp = datetime(2026, 5, 29, 12, 0, tzinfo=UTC)
     pairs = [
@@ -115,11 +121,11 @@ def test_exchange_pair_rates_format_is_readable_with_currency_emoji() -> None:
 
     assert "🏦 \u0422\u0435\u043a\u0443\u0449\u0438\u0439 \u043a\u0443\u0440\u0441:" in text
     assert "👉 🇹🇭 1 THB от 2.51 RUB 🇷🇺" in text
-    assert "👉 💰 1 USDT от 35.11 THB 🇹🇭" in text
-    assert "👉 💰 1 USDT от 2.57 GEL 🇬🇪" in text
+    assert "👉 ₮ 1 USDT от 35.11 THB 🇹🇭" in text
+    assert "👉 ₮ 1 USDT от 2.57 GEL 🇬🇪" in text
     assert "👉 🇬🇪 1 GEL от 28.03 RUB 🇷🇺" in text
     assert "👉 🇷🇺 1 RUB от 354.16 VND 🇻🇳" in text
-    assert "👉 💰 1 USDT от 25511.92 VND 🇻🇳" in text
+    assert "👉 ₮ 1 USDT от 25511.92 VND 🇻🇳" in text
     for pair in pairs:
         assert pair.label not in text
         assert pair.rate_text not in text

@@ -16,10 +16,10 @@ _CURRENCY_LABELS = {
     "VND": "🇻🇳 VND",
 }
 _CURRENCY_RATE_EMOJIS = {
-    "USDT": "💰",
+    "USDT": "₮",
 }
 _CURRENCY_BUTTON_LABELS = {
-    "USDT": "🐛 USDT",
+    "USDT": "₮ USDT",
 }
 
 
