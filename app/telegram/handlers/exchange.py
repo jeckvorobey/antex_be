@@ -51,17 +51,17 @@ SERVICE_OPTIONS = {
     },
     "cash_atm": {
         "label_key": "btn-service-cash-atm",
-        "method": "cash",
+        "method": "qrcode",
         "needs_city": False,
     },
     "bank_account": {
         "label_key": "btn-service-bank-account",
-        "method": "qrcode",
+        "method": "bank_account",
         "needs_city": False,
     },
     "pay_services": {
         "label_key": "btn-service-pay-services",
-        "method": "qrcode",
+        "method": "pay_services",
         "needs_city": False,
     },
 }
@@ -153,7 +153,9 @@ def _format_method_label(method: str, translate) -> str:
         "qr": translate("btn-qr"),
         "qrcode": translate("btn-qr"),
         "rs": translate("btn-transfer"),
-        "cash": translate("btn-cash"),
+        "cash": translate("btn-service-cash-delivery"),
+        "bank_account": translate("btn-service-bank-account"),
+        "pay_services": translate("btn-service-pay-services"),
     }.get(method, method)
 
 

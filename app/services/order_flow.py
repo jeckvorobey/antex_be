@@ -100,8 +100,8 @@ async def _resolve_city(
     db: AsyncSession,
     payload: MiniappOrderCreate,
 ) -> object | None:
-    """Возвращает город заявки только для cash-потока."""
-    if payload.city_id is None:
+    """Возвращает город заявки только для доставки наличных."""
+    if payload.method_get != MethodGet.CASH or payload.city_id is None:
         return None
 
     city = await CityRepository(db).get_by_id(payload.city_id)
@@ -128,7 +128,11 @@ def _validate_country_and_method(payload: MiniappOrderCreate, city) -> None:
             )
         return
 
-    if payload.method_get == MethodGet.QRCODE:
+    if payload.method_get in {
+        MethodGet.QRCODE,
+        MethodGet.BANK_ACCOUNT,
+        MethodGet.PAY_SERVICES,
+    }:
         return
 
     raise AntExException(

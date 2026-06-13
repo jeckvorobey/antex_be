@@ -165,7 +165,7 @@ class MiniappOrderCreate(BaseModel):
     currency_buy: str = Field(alias="currencyBuy", min_length=3, max_length=20)
     amount_buy: float = Field(alias="amountBuy", gt=0)
     rate: float = Field(gt=0)
-    method_get: Literal["qrcode", "cash"] = Field(alias="methodGet")
+    method_get: Literal["qrcode", "cash", "bank_account", "pay_services"] = Field(alias="methodGet")
 
 
 class MiniappOrderItem(BaseModel):

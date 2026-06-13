@@ -23,7 +23,7 @@ class OrderCreate(BaseModel):
     currencyBuy: str = Field(min_length=3, max_length=20)
     amountBuy: float = Field(gt=0)
     rate: float = Field(gt=0)
-    methodGet: Literal["qrcode", "cash"]
+    methodGet: Literal["qrcode", "cash", "bank_account", "pay_services"]
 
 
 class OrderUpdate(BaseModel):

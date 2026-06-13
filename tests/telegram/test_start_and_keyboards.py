@@ -122,7 +122,7 @@ async def test_service_keyboard_has_short_labels_and_back_button() -> None:
         "🏧 Наличные по QR",
     ]
     assert [button.text for button in kb.inline_keyboard[1]] == [
-        "💳 Перевод",
+        "💳 Перевод на счёт в местном банке",
         "🧰 Оплата сервисов",
     ]
     assert kb.inline_keyboard[2][0].text == "◀ Назад"

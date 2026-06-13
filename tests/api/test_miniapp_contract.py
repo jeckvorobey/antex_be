@@ -131,8 +131,15 @@ async def test_miniapp_home_and_exchange_are_backend_driven(
     assert home["rates"]["featured"][0]["calculationRate"] == pytest.approx(0.4)
     assert home["rates"]["featured"][0]["rateDisplay"] == "2.51"
     assert home["rates"]["featured"][0]["amountSellExample"] == 5000
-    assert home["rates"]["featured"][0]["availableMethods"] == ["qrcode", "cash"]
-    assert home["rates"]["featured"][1]["availableMethods"] == ["qrcode", "cash"]
+    expected_methods = ["qrcode", "cash", "bank_account", "pay_services"]
+    assert home["rates"]["featured"][0]["availableMethods"] == expected_methods
+    assert home["rates"]["featured"][1]["availableMethods"] == expected_methods
+    assert [service["id"] for service in home["services"]] == [
+        "cash",
+        "qrcode",
+        "bank_account",
+        "pay_services",
+    ]
 
     assert exchange_response.status_code == 200
     exchange = exchange_response.json()
@@ -386,14 +393,15 @@ async def test_miniapp_quote_supports_gel_and_vnd_pairs(
     assert rub_gel_response.json()["rateDisplay"] == "0.03"
     assert rub_gel_response.json()["rateText"] == "1 RUB = 0.03 GEL"
     assert rub_gel_response.json()["amountBuy"] == pytest.approx(10000 * 0.03)
-    assert rub_gel_response.json()["availableMethods"] == ["qrcode", "cash"]
+    expected_methods = ["qrcode", "cash", "bank_account", "pay_services"]
+    assert rub_gel_response.json()["availableMethods"] == expected_methods
 
     assert usdt_vnd_response.status_code == 200
     assert usdt_vnd_response.json()["rate"] == 24735.0
     assert usdt_vnd_response.json()["rateDisplay"] == "24735.00"
     assert usdt_vnd_response.json()["rateText"] == "1 USDT = 24735.00 VND"
     assert usdt_vnd_response.json()["amountBuy"] == pytest.approx(2 * 24735.0)
-    assert usdt_vnd_response.json()["availableMethods"] == ["qrcode", "cash"]
+    assert usdt_vnd_response.json()["availableMethods"] == expected_methods
 
     assert reverse_response.status_code == 422
     assert reverse_response.json()["code"] == "UNSUPPORTED_PAIR"
@@ -525,6 +533,37 @@ async def test_miniapp_order_cash_requires_city_and_uses_same_backend_validation
     assert order["currencyBuy"] == "THB"
     assert order["methodGet"] == "cash"
     assert order["contactTelegram"] == "customer"
+
+
+@pytest.mark.asyncio
+async def test_miniapp_order_non_cash_services_do_not_save_city(
+    api_client: tuple[AsyncClient, AsyncSession],
+) -> None:
+    client, db_session = api_client
+    city, _, customer = await seed_exchange_data(db_session)
+    token = create_access_token({"sub": str(customer.id), "role": customer.role})
+
+    for method in ("bank_account", "pay_services"):
+        response = await client.post(
+            "/api/miniapp/orders",
+            headers={"Authorization": f"Bearer {token}"},
+            json={
+                "country": "thailand",
+                "cityId": city.id,
+                "currencySell": "rub",
+                "amountSell": 10000,
+                "currencyBuy": "thb",
+                "amountBuy": 4000,
+                "rate": 0.4,
+                "methodGet": method,
+            },
+        )
+
+        assert response.status_code == 201
+        order = response.json()
+        assert order["methodGet"] == method
+        assert order["cityId"] is None
+        assert order["city"] is None
 
 
 @pytest.mark.asyncio

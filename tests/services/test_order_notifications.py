@@ -138,7 +138,7 @@ async def test_notify_order_created_sends_user_message_with_order_payload(
     assert "📈 Курс: 30.96" in text
     assert "💸 Отдаёте: 100 ₮ USDT" in text
     assert "💰 Получаете: 3,096 🇹🇭 THB" in text
-    assert "🧾 Способ получения: QR-код" in text
+    assert "🧾 Способ получения: Наличные по QR" in text
     assert "👤 Пользователь: @customer" in text
 
 
@@ -166,7 +166,7 @@ def test_build_manager_status_text_uses_new_middle_format_for_processing() -> No
     assert "📈 Курс: 32.8723" in text
     assert "💸 Отдаёте: 2,350 ₮ USDT" in text
     assert "💰 Получаете: 77,250 🇹🇭 THB" in text
-    assert "🧾 Способ получения: QR-код" in text
+    assert "🧾 Способ получения: Наличные по QR" in text
     assert "👤 Пользователь: @sergeywebdev" in text
     assert "💬 Ожидает завершения обмена" in text
 
@@ -194,7 +194,7 @@ def test_build_manager_status_text_uses_shared_middle_format_for_completed() -> 
     assert "📈 Курс: 2.71" in text
     assert "💸 Отдаёте: 10,000 ₮ USDT" in text
     assert "💰 Получаете: 27,100 🇬🇪 GEL" in text
-    assert "🧾 Способ получения: Наличные" in text
+    assert "🧾 Способ получения: Доставка наличных" in text
     assert "🏁 Обмен успешно выполнен" in text
     assert "💱 Направление:" not in text
     assert "👤 Пользователь:" not in text
@@ -237,7 +237,7 @@ async def test_notify_order_status_changed_adds_summary_for_completed_order(
     assert "📈 Курс: 31.5" in text
     assert "💸 Отдаёте: 1,500 ₮ USDT" in text
     assert "💰 Получаете: 47,250 🇹🇭 THB" in text
-    assert "🧾 Способ получения: Наличные" in text
+    assert "🧾 Способ получения: Доставка наличных" in text
     assert "Спасибо, что воспользовались нашим сервисом!" in text
     reply_markup = cast(Any, bot.edited[0]["reply_markup"])
     assert reply_markup.inline_keyboard[0][0].text == "⭐ Оставить отзыв"
@@ -322,6 +322,6 @@ def test_build_manager_order_text_uses_new_created_format() -> None:
     assert "📈 Курс: 31.0" in text
     assert "💸 Отдаёте: 1,000 ₮ USDT" in text
     assert "💰 Получаете: 31,000 🇹🇭 THB" in text
-    assert "🧾 Способ получения: Наличные" in text
+    assert "🧾 Способ получения: Доставка наличных" in text
     assert "👤 Пользователь: @sergeywebdev" in text
     assert "⏳ Ожидает обработки менеджером" in text

@@ -15,6 +15,8 @@ class OrderStatus(IntEnum):
 class MethodGet(StrEnum):
     CASH = "cash"
     QRCODE = "qrcode"
+    BANK_ACCOUNT = "bank_account"
+    PAY_SERVICES = "pay_services"
 
 
 class CurrencyType(str):

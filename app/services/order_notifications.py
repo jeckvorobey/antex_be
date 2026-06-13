@@ -321,9 +321,13 @@ def _format_rate(rate: float | None) -> str:
 
 def _format_method(method: str | None) -> str:
     if method == MethodGet.CASH.value:
-        return "Наличные"
+        return "Доставка наличных"
     if method == MethodGet.QRCODE.value:
-        return "QR-код"
+        return "Наличные по QR"
+    if method == MethodGet.BANK_ACCOUNT.value:
+        return "Перевод на счёт в местном банке"
+    if method == MethodGet.PAY_SERVICES.value:
+        return "Оплата сервисов"
     return method or "—"
 
 

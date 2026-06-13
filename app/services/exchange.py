@@ -39,9 +39,9 @@ COUNTRY_PRIORITY = (
     Country.GEORGIA,
 )
 COUNTRY_METHODS = {
-    Country.THAILAND: ["qrcode", "cash"],
-    Country.VIETNAM: ["qrcode", "cash"],
-    Country.GEORGIA: ["qrcode", "cash"],
+    Country.THAILAND: ["qrcode", "cash", "bank_account", "pay_services"],
+    Country.VIETNAM: ["qrcode", "cash", "bank_account", "pay_services"],
+    Country.GEORGIA: ["qrcode", "cash", "bank_account", "pay_services"],
 }
 DEFAULT_METHODS_BY_BUY_CURRENCY = {
     "USDT": ["wallet"],

@@ -59,7 +59,7 @@ class TestExchangeService:
             amount_sell_example=5000,
             amount_buy_example=2000.0,
             updated_at=rates[0].updatedAt,
-            available_methods=["qrcode", "cash"],
+            available_methods=["qrcode", "cash", "bank_account", "pay_services"],
         )
         assert pairs[1] == ExchangePairSnapshot(
             pair_id="rub-gel",
@@ -75,7 +75,7 @@ class TestExchangeService:
             amount_sell_example=5000,
             amount_buy_example=150.0,
             updated_at=rates[1].updatedAt,
-            available_methods=["qrcode", "cash"],
+            available_methods=["qrcode", "cash", "bank_account", "pay_services"],
         )
         assert pairs[2] == ExchangePairSnapshot(
             pair_id="rub-vnd",
@@ -91,7 +91,7 @@ class TestExchangeService:
             amount_sell_example=5000,
             amount_buy_example=1358000.0,
             updated_at=rates[2].updatedAt,
-            available_methods=["qrcode", "cash"],
+            available_methods=["qrcode", "cash", "bank_account", "pay_services"],
         )
         assert pairs[3] == ExchangePairSnapshot(
             pair_id="usdt-thb",
@@ -107,7 +107,7 @@ class TestExchangeService:
             amount_sell_example=100,
             amount_buy_example=3511.0,
             updated_at=rates[3].updatedAt,
-            available_methods=["qrcode", "cash"],
+            available_methods=["qrcode", "cash", "bank_account", "pay_services"],
         )
 
     def test_quote_rejects_reverse_pair_outside_preliminary_contract(self) -> None:

@@ -148,15 +148,27 @@ async def get_miniapp_home(db, user) -> MiniappHomeResponse:
         services=[
             MiniappServiceItem(
                 id="cash",
-                title="Наличные",
+                title="Доставка наличных",
                 subtitle="Получение в городе",
                 icon="payments",
             ),
             MiniappServiceItem(
-                id="wallet",
-                title="USDT",
-                subtitle="Перевод на кошелёк",
-                icon="account_balance_wallet",
+                id="qrcode",
+                title="Наличные по QR",
+                subtitle="Выдача без выбора города",
+                icon="qr_code_2",
+            ),
+            MiniappServiceItem(
+                id="bank_account",
+                title="Перевод на счёт",
+                subtitle="В местном банке",
+                icon="account_balance",
+            ),
+            MiniappServiceItem(
+                id="pay_services",
+                title="Оплата сервисов",
+                subtitle="Платежи по реквизитам",
+                icon="receipt_long",
             ),
         ],
         locations=[
