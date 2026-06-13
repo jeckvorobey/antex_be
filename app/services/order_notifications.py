@@ -4,7 +4,6 @@
 from __future__ import annotations
 
 import logging
-from datetime import UTC, datetime
 
 from aiogram.exceptions import TelegramBadRequest, TelegramForbiddenError
 from aiogram.types import InlineKeyboardMarkup
@@ -182,68 +181,100 @@ def _build_user_status_text(order, *, translate) -> str:
 
 
 def build_manager_status_text(order) -> str:
-    return _build_compact_order_text(order)
+    username = _format_username(getattr(order, "user", None))
+    city_name = _format_city_name(order)
+
+    if int(order.status) == int(OrderStatus.PROCESSING):
+        middle = messages.manager_order_summary(
+            country=_format_country_name(getattr(order, "country", None)),
+            rate=_format_rate(getattr(order, "rate", None)),
+            amount_sell=getattr(order, "amountSell", 0) or 0,
+            from_currency=getattr(order, "currencySell", "—"),
+            amount_buy=getattr(order, "amountBuy", 0) or 0,
+            to_currency=getattr(order, "currencyBuy", "—"),
+            method=_format_method(getattr(order, "methodGet", None)),
+            username=username,
+            city=city_name if city_name != "—" else None,
+            translator=None,
+            locale="ru",
+        )
+        return "\n".join(
+            [
+                f"🟢 Заявка #{order.publicNumber}",
+                "",
+                "⏳ Статус: В работе",
+                "",
+                middle,
+                "",
+                "💬 Ожидает завершения обмена",
+            ]
+        )
+
+    if int(order.status) == int(OrderStatus.COMPLETED):
+        middle = messages.exchange_summary_middle(
+            country=_format_country_name(getattr(order, "country", None)),
+            rate=_format_rate(getattr(order, "rate", None)),
+            amount=getattr(order, "amountSell", 0) or 0,
+            from_currency=getattr(order, "currencySell", "—"),
+            result=getattr(order, "amountBuy", 0) or 0,
+            to_currency=getattr(order, "currencyBuy", "—"),
+            method=_format_method(getattr(order, "methodGet", None)),
+            city=city_name if city_name != "—" else None,
+            translator=None,
+            locale="ru",
+        )
+        return "\n".join(
+            [
+                f"✅ Заявка #{order.publicNumber} завершена",
+                "",
+                middle,
+                "",
+                "🏁 Обмен успешно выполнен",
+            ]
+        )
+
+    if int(order.status) == int(OrderStatus.CANCELLED):
+        return "\n".join(
+            [
+                f"Заявка #{order.publicNumber}",
+                "Статус: Отменена",
+                f"Город: {city_name}",
+                "Пара: "
+                f"{getattr(order, 'currencySell', '—')} -> {getattr(order, 'currencyBuy', '—')}",
+                f"Сумма: {getattr(order, 'amountSell', '—')} {getattr(order, 'currencySell', '—')}",
+            ]
+        )
+
+    return _build_manager_order_text(order, getattr(order, "user", None))
 
 
 def _build_manager_order_text(order, user) -> str:
-    return _build_compact_order_text(order)
-
-
-def _build_compact_order_text(order) -> str:
+    city_name = _format_city_name(order)
+    country_name = _format_country_name(getattr(order, "country", None))
+    username = _format_username(user)
+    method = _format_method(getattr(order, "methodGet", None))
+    middle = messages.manager_order_summary(
+        country=country_name,
+        rate=_format_rate(getattr(order, "rate", None)),
+        amount_sell=getattr(order, "amountSell", 0) or 0,
+        from_currency=getattr(order, "currencySell", "—"),
+        amount_buy=getattr(order, "amountBuy", 0) or 0,
+        to_currency=getattr(order, "currencyBuy", "—"),
+        method=method,
+        username=username,
+        city=city_name if city_name != "—" else None,
+        translator=None,
+        locale="ru",
+    )
     return "\n".join(
         [
-            f"#{getattr(order, 'publicNumber', '—')}: {_format_status_label(getattr(order, 'status', None))}",
-            _format_compact_direction(order),
-            f"Курс: {_format_rate(getattr(order, 'rate', None))}",
-            f"Способ получения: {_format_method(getattr(order, 'methodGet', None))}",
-            _format_order_date(order),
+            f"🆕 Новая заявка #{order.publicNumber}",
+            "",
+            middle,
+            "",
+            "⏳ Ожидает обработки менеджером",
         ]
     )
-
-
-def _format_compact_direction(order) -> str:
-    amount_sell = _format_amount_with_label(
-        getattr(order, "amountSell", None),
-        getattr(order, "currencySell", None),
-    )
-    amount_buy = _format_amount_with_label(
-        getattr(order, "amountBuy", None),
-        getattr(order, "currencyBuy", None),
-    )
-    return f"{amount_sell} → {amount_buy}"
-
-
-def _format_status_label(status: int | None) -> str:
-    if status == int(OrderStatus.CREATED):
-        return "Новая"
-    if status == int(OrderStatus.PROCESSING):
-        return "В работе"
-    if status == int(OrderStatus.COMPLETED):
-        return "Завершена"
-    if status == int(OrderStatus.CANCELLED):
-        return "Отменена"
-    return "—"
-
-
-def _format_order_date(order) -> str:
-    status = getattr(order, "status", None)
-    if status == int(OrderStatus.CREATED):
-        stamp = (
-            getattr(order, "createdAt", None)
-            or getattr(order, "updatedAt", None)
-            or getattr(order, "endTime", None)
-        )
-    else:
-        stamp = (
-            getattr(order, "endTime", None)
-            or getattr(order, "updatedAt", None)
-            or getattr(order, "createdAt", None)
-        )
-    if not isinstance(stamp, datetime):
-        return "—"
-    if stamp.tzinfo is None:
-        stamp = stamp.replace(tzinfo=UTC)
-    return stamp.astimezone(UTC).strftime("%d.%m.%Y %H:%M UTC")
 
 
 def _format_direction(order) -> str:
@@ -282,13 +313,6 @@ def _format_amount(amount: int | float | None, currency: str | None) -> str:
         amount = int(amount)
     amount_text = f"{amount:,}".replace(",", " ")
     return f"{amount_text} {currency or '—'}"
-
-
-def _format_amount_with_label(amount: int | float | None, currency: str | None) -> str:
-    label = messages.format_currency_label(currency) if currency is not None else "—"
-    if amount is None:
-        return f"— {label}"
-    return f"{amount:,} {label}"
 
 
 def _format_rate(rate: float | None) -> str:

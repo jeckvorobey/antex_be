@@ -1,7 +1,6 @@
 # ruff: noqa: RUF001
 from __future__ import annotations
 
-from datetime import UTC, datetime
 from types import SimpleNamespace
 from typing import Any, cast
 
@@ -111,7 +110,6 @@ async def test_notify_order_created_sends_user_message_with_order_payload(
         city=None,
         userNotificationMessageId=None,
         country=SimpleNamespace(value="thailand"),
-        createdAt=datetime(2026, 5, 8, 12, 30, tzinfo=UTC),
     )
     user = SimpleNamespace(
         telegram_id=700002,
@@ -136,11 +134,12 @@ async def test_notify_order_created_sends_user_message_with_order_payload(
     assert manager_markup.inline_keyboard[0][0].callback_data == "op:cancel:8"
     assert manager_markup.inline_keyboard[0][1].callback_data == "op:take:8"
     text = str(bot.sent[1]["text"])
-    assert "#2026050008: Новая" in text
-    assert "100 ₮ USDT → 3,096 🇹🇭 THB" in text
-    assert "Курс: 30.96" in text
-    assert "Способ получения: Наличные по QR" in text
-    assert "08.05.2026 12:30 UTC" in text
+    assert "🌍 Страна: Таиланд" in text
+    assert "📈 Курс: 30.96" in text
+    assert "💸 Отдаёте: 100 ₮ USDT" in text
+    assert "💰 Получаете: 3,096 🇹🇭 THB" in text
+    assert "🧾 Способ получения: Наличные по QR" in text
+    assert "👤 Пользователь: @customer" in text
 
 
 def test_build_manager_status_text_uses_new_middle_format_for_processing() -> None:
@@ -156,16 +155,20 @@ def test_build_manager_status_text_uses_new_middle_format_for_processing() -> No
         city=SimpleNamespace(name="Бангкок"),
         country=SimpleNamespace(value="thailand"),
         user=SimpleNamespace(username="sergeywebdev"),
-        createdAt=datetime(2026, 5, 20, 9, 15, tzinfo=UTC),
     )
 
     text = build_manager_status_text(order)
 
-    assert "#2026050020: В работе" in text
-    assert "2,350 ₮ USDT → 77,250 🇹🇭 THB" in text
-    assert "Курс: 32.8723" in text
-    assert "Способ получения: Наличные по QR" in text
-    assert "20.05.2026 09:15 UTC" in text
+    assert "🟢 Заявка #2026050020" in text
+    assert "⏳ Статус: В работе" in text
+    assert "🌍 Страна: Таиланд" in text
+    assert "🏙️ Город: Бангкок" in text
+    assert "📈 Курс: 32.8723" in text
+    assert "💸 Отдаёте: 2,350 ₮ USDT" in text
+    assert "💰 Получаете: 77,250 🇹🇭 THB" in text
+    assert "🧾 Способ получения: Наличные по QR" in text
+    assert "👤 Пользователь: @sergeywebdev" in text
+    assert "💬 Ожидает завершения обмена" in text
 
 
 def test_build_manager_status_text_uses_shared_middle_format_for_completed() -> None:
@@ -181,17 +184,19 @@ def test_build_manager_status_text_uses_shared_middle_format_for_completed() -> 
         city=SimpleNamespace(name="Батуми"),
         country=SimpleNamespace(value="georgia"),
         user=SimpleNamespace(username="sergeywebdev"),
-        createdAt=datetime(2026, 5, 26, 18, 45, tzinfo=UTC),
-        updatedAt=datetime(2026, 5, 27, 7, 10, tzinfo=UTC),
     )
 
     text = build_manager_status_text(order)
 
-    assert "#2026050026: Завершена" in text
-    assert "10,000 ₮ USDT → 27,100 🇬🇪 GEL" in text
-    assert "Курс: 2.71" in text
-    assert "Способ получения: Доставка наличных" in text
-    assert "27.05.2026 07:10 UTC" in text
+    assert "✅ Заявка #2026050026 завершена" in text
+    assert "🌍 Страна: Грузия" in text
+    assert "🏙️ Город: Батуми" in text
+    assert "📈 Курс: 2.71" in text
+    assert "💸 Отдаёте: 10,000 ₮ USDT" in text
+    assert "💰 Получаете: 27,100 🇬🇪 GEL" in text
+    assert "🧾 Способ получения: Доставка наличных" in text
+    assert "🏁 Обмен успешно выполнен" in text
+    assert "💱 Направление:" not in text
     assert "👤 Пользователь:" not in text
 
 
@@ -218,7 +223,6 @@ async def test_notify_order_status_changed_adds_summary_for_completed_order(
             phone=None,
         ),
         userNotificationMessageId=55,
-        createdAt=datetime(2026, 5, 9, 14, 0, tzinfo=UTC),
     )
 
     monkeypatch.setattr(order_notifications, "_get_telegram_bot", lambda: bot)
@@ -311,14 +315,17 @@ def test_build_manager_order_text_uses_new_created_format() -> None:
         status=1,
         city=SimpleNamespace(name="Паттайя"),
         country=SimpleNamespace(value="Таиланд"),
-        createdAt=datetime(2026, 5, 19, 8, 5, tzinfo=UTC),
     )
     user = SimpleNamespace(username="sergeywebdev")
 
     text = _build_manager_order_text(order, user)
 
-    assert "#2026050019: Новая" in text
-    assert "1,000 ₮ USDT → 31,000 🇹🇭 THB" in text
-    assert "Курс: 31.0" in text
-    assert "Способ получения: Доставка наличных" in text
-    assert "19.05.2026 08:05 UTC" in text
+    assert "🆕 Новая заявка #2026050019" in text
+    assert "🌍 Страна: Таиланд" in text
+    assert "🏙️ Город: Паттайя" in text
+    assert "📈 Курс: 31.0" in text
+    assert "💸 Отдаёте: 1,000 ₮ USDT" in text
+    assert "💰 Получаете: 31,000 🇹🇭 THB" in text
+    assert "🧾 Способ получения: Доставка наличных" in text
+    assert "👤 Пользователь: @sergeywebdev" in text
+    assert "⏳ Ожидает обработки менеджером" in text
