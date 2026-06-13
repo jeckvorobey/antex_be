@@ -59,8 +59,15 @@ class _FakeBot:
 
 
 class _FakeCallback:
-    def __init__(self, user: TgUser, *, fail_with_not_modified: bool = False) -> None:
+    def __init__(
+        self,
+        user: TgUser,
+        *,
+        data: str | None = None,
+        fail_with_not_modified: bool = False,
+    ) -> None:
         self.from_user = user
+        self.data = data
         self.message = _FakeMessage(fail_with_not_modified=fail_with_not_modified)
         self.bot = _FakeBot()
         self.answers: list[dict[str, object]] = []
@@ -198,6 +205,110 @@ async def test_enter_amount_moves_directly_to_confirmation(monkeypatch) -> None:
     assert state._data["quote"]["amountBuy"] == 5100.0
     assert len(message.answers) == 1
     assert "Проверьте заявку" in message.answers[0]["text"]
+
+
+async def test_country_sets_buy_currency_and_shows_only_canonical_sell_currencies(
+    monkeypatch,
+) -> None:
+    callback = _FakeCallback(
+        TgUser(
+            id=777006,
+            is_bot=False,
+            first_name="Currency",
+            username="currency-user",
+            language_code="ru",
+        )
+    )
+    state = _FakeState({"country": Country.THAILAND.value})
+    pairs = [
+        _pair_snapshot("rub-thb", "RUB", "THB", "1 RUB = 0.34 THB"),
+        _pair_snapshot("usdt-thb", "USDT", "THB", "1 USDT = 35.11 THB"),
+        _pair_snapshot("thb-rub", "THB", "RUB", "1 THB = 2.51 RUB"),
+    ]
+
+    async def _fake_get_exchange_pairs(country: str | None = None):
+        assert country == Country.THAILAND.value
+        return pairs
+
+    monkeypatch.setattr(exchange_handler, "_get_exchange_pairs", _fake_get_exchange_pairs)
+
+    await exchange_handler._show_currency_step(callback, state, edit=True)
+
+    assert state.state == exchange_handler.ExchangeState.choosing_currency.state
+    assert state._data["currency_buy"] == "THB"
+    reply_markup = callback.message.edits[0]["reply_markup"]
+    assert [button.callback_data for button in reply_markup.inline_keyboard[0]] == [
+        "exchange:currency:RUB",
+        "exchange:currency:USDT",
+    ]
+
+
+async def test_choose_exchange_currency_moves_directly_to_amount(monkeypatch) -> None:
+    callback = _FakeCallback(
+        TgUser(
+            id=777007,
+            is_bot=False,
+            first_name="Sell",
+            username="sell-user",
+            language_code="ru",
+        ),
+        data="exchange:currency:RUB",
+    )
+    state = _FakeState({"country": Country.THAILAND.value, "currency_buy": "THB"})
+
+    async def _fake_get_exchange_pairs(country: str | None = None):
+        assert country is None
+        return []
+
+    monkeypatch.setattr(exchange_handler, "_get_exchange_pairs", _fake_get_exchange_pairs)
+
+    await exchange_handler.choose_exchange_currency(callback, state)
+
+    assert state.state == exchange_handler.ExchangeState.entering_amount.state
+    assert state._data["currency_sell"] == "RUB"
+    assert "Введите сумму" in callback.message.edits[0]["text"]
+    assert callback.answers[-1] == {"text": None, "show_alert": False}
+
+
+async def test_fsm_back_from_amount_returns_to_sell_currency_step(monkeypatch) -> None:
+    callback = _FakeCallback(
+        TgUser(
+            id=777008,
+            is_bot=False,
+            first_name="Back",
+            username="back-user",
+            language_code="ru",
+        )
+    )
+    state = _FakeState(
+        {
+            "country": Country.THAILAND.value,
+            "currency_sell": "RUB",
+            "currency_buy": "THB",
+        }
+    )
+    state.state = exchange_handler.ExchangeState.entering_amount.state
+    pairs = [
+        _pair_snapshot("rub-thb", "RUB", "THB", "1 RUB = 0.34 THB"),
+        _pair_snapshot("usdt-thb", "USDT", "THB", "1 USDT = 35.11 THB"),
+    ]
+
+    async def _fake_get_exchange_pairs(country: str | None = None):
+        assert country == Country.THAILAND.value
+        return pairs
+
+    monkeypatch.setattr(exchange_handler, "_get_exchange_pairs", _fake_get_exchange_pairs)
+
+    await exchange_handler.fsm_back(callback, state)
+
+    assert state.state == exchange_handler.ExchangeState.choosing_currency.state
+    assert "Что отдаёте" in callback.message.edits[0]["text"]
+    reply_markup = callback.message.edits[0]["reply_markup"]
+    assert [button.callback_data for button in reply_markup.inline_keyboard[0]] == [
+        "exchange:currency:RUB",
+        "exchange:currency:USDT",
+    ]
+    assert callback.answers[-1] == {"text": None, "show_alert": False}
 
 
 async def test_confirm_exchange_creates_order_with_default_qrcode(monkeypatch) -> None:
@@ -374,7 +485,7 @@ async def test_menu_orders_commits_new_user_and_ignores_not_modified(monkeypatch
     assert fake_db.committed is True
     assert len(callback.message.edits) == 1
     reply_markup = callback.message.edits[0]["reply_markup"]
-    assert reply_markup.inline_keyboard[1][0].callback_data == "menu:orders"
+    assert reply_markup.inline_keyboard[0][0].callback_data == "fsm:cancel"
     assert callback.answers[-1] == {"text": None, "show_alert": False}
 
 

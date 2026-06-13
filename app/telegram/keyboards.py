@@ -41,6 +41,7 @@ def choose_country(_, **kwargs) -> InlineKeyboardMarkup:
             InlineKeyboardButton(
                 text=translate("menu-orders"),
                 callback_data="menu:orders",
+                style="primary",
             )
         ],
     ]
@@ -51,6 +52,7 @@ def choose_country(_, **kwargs) -> InlineKeyboardMarkup:
                 InlineKeyboardButton(
                     text=translate("menu-open-site"),
                     web_app=WebAppInfo(url=settings.frontend_webapp_url),
+                    style="success",
                 )
             ]
         )
@@ -69,6 +71,23 @@ def choose_city(_, cities: list[object], **kwargs) -> InlineKeyboardMarkup:
                     callback_data=f"exchange:city:{city.id}",
                 )
                 for city in cities
+            ]
+        ]
+    )
+
+
+def back_to_main_menu(_, **kwargs) -> InlineKeyboardMarkup:
+    """Кнопка возврата в главное меню."""
+    del kwargs
+    translate = _resolve_translator(_)
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(
+                    text=translate("btn-home"),
+                    callback_data="fsm:cancel",
+                    style="primary",
+                )
             ]
         ]
     )
@@ -191,33 +210,6 @@ def choose_currency(_, currencies: list[str], **kwargs) -> InlineKeyboardMarkup:
                     text=translate("btn-cancel"),
                     callback_data="fsm:cancel",
                 )
-            ],
-        ]
-    )
-
-
-def choose_buy_currency(_, currencies: list[str], **kwargs) -> InlineKeyboardMarkup:
-    """FSM шаг выбора валюты получения."""
-    del kwargs
-    translate = _resolve_translator(_)
-    return InlineKeyboardMarkup(
-        inline_keyboard=[
-            [
-                InlineKeyboardButton(
-                    text=format_currency_label(currency),
-                    callback_data=f"exchange:buy:{currency}",
-                )
-                for currency in currencies
-            ],
-            [
-                InlineKeyboardButton(
-                    text=translate("btn-back"),
-                    callback_data="fsm:back",
-                ),
-                InlineKeyboardButton(
-                    text=translate("btn-cancel"),
-                    callback_data="fsm:cancel",
-                ),
             ],
         ]
     )

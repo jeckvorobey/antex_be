@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import logging
-import time
 
 from aiogram import F, Router
 from aiogram.exceptions import TelegramBadRequest
@@ -48,63 +47,34 @@ async def _safe_edit_text(message, text: str, *, reply_markup) -> None:
 @router.message(CommandStart())
 async def cmd_start(message: Message, state: FSMContext) -> None:
     translate = get_user_translator(message.from_user)
-    started_at = time.perf_counter()
     logger.info(
-        "Handling /start: telegram_id=%s, username=%s",
+        "Запустили /start: telegram_id=%s, username=%s",
         message.from_user.id,
         message.from_user.username,
     )
     db = await _get_db()
     async with db:
         config_repo = ConfigRepository(db)
-        config_started_at = time.perf_counter()
         config = await config_repo.get_or_create()
-        config_duration_ms = (time.perf_counter() - config_started_at) * 1000
-
-        user_started_at = time.perf_counter()
         user, _ = await check_user(db, message.from_user)
-        user_duration_ms = (time.perf_counter() - user_started_at) * 1000
-
-        commit_started_at = time.perf_counter()
         await db.commit()
-        commit_duration_ms = (time.perf_counter() - commit_started_at) * 1000
-
     logger.info(
-        "Resolved /start user: telegram_id=%s, user_id=%s, role=%s, bot_enabled=%s",
+        "Авторизован /start user: telegram_id=%s, user_id=%s, role=%s, bot_enabled=%s",
         message.from_user.id,
         getattr(user, "id", None),
         user.role,
         config.enabled,
     )
-    logger.info(
-        "/start DB timings: telegram_id=%s, config_ms=%.2f, user_ms=%.2f, commit_ms=%.2f",
-        message.from_user.id,
-        config_duration_ms,
-        user_duration_ms,
-        commit_duration_ms,
-    )
     if not config.enabled:
-        answer_started_at = time.perf_counter()
         await message.answer(messages.bot_disabled(translator=translate))
-        answer_duration_ms = (time.perf_counter() - answer_started_at) * 1000
-        total_duration_ms = (time.perf_counter() - started_at) * 1000
         logger.info(
-            "Sent bot-disabled response for /start: telegram_id=%s, "
-            "answer_ms=%.2f, total_ms=%.2f",
+            "Отправлено bot-disabled сообщение для /start: telegram_id=%s",
             message.from_user.id,
-            answer_duration_ms,
-            total_duration_ms,
         )
         return
 
     menu_type = "manager" if has_operator_access(user.role) else "user"
-    logger.info(
-        "Sending /start response: telegram_id=%s, menu=%s",
-        message.from_user.id,
-        menu_type,
-    )
     try:
-        answer_started_at = time.perf_counter()
         if menu_type == "manager":
             await message.answer(
                 messages.welcome(message.from_user.first_name, translator=translate),
@@ -117,17 +87,16 @@ async def cmd_start(message: Message, state: FSMContext) -> None:
                 messages.exchange_start_welcome(message.from_user.first_name, translator=translate),
                 reply_markup=choose_country(translate),
             )
-        answer_duration_ms = (time.perf_counter() - answer_started_at) * 1000
     except Exception:
-        logger.exception("Failed to send /start response: telegram_id=%s", message.from_user.id)
+        logger.exception(
+            "Ошибка при отправке /start сообщения: telegram_id=%s",
+            message.from_user.id,
+        )
         raise
-    total_duration_ms = (time.perf_counter() - started_at) * 1000
     logger.info(
-        "Sent /start response: telegram_id=%s, menu=%s, answer_ms=%.2f, total_ms=%.2f",
+        "Отправлено /start сообщение: telegram_id=%s, menu=%s",
         message.from_user.id,
         menu_type,
-        answer_duration_ms,
-        total_duration_ms,
     )
 
 

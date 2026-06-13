@@ -11,7 +11,7 @@ from app.telegram.handlers import start as start_handler
 from app.telegram.i18n import get_translator
 from app.telegram.keyboards import (
     amount_controls,
-    choose_buy_currency,
+    back_to_main_menu,
     choose_city,
     choose_country,
     choose_currency,
@@ -298,7 +298,7 @@ async def test_exchange_keyboards_are_backend_driven() -> None:
     translator = get_translator("ru")
 
     sell_kb = choose_currency(translator, ["RUB", "USDT", "THB"])
-    buy_kb = choose_buy_currency(translator, ["THB", "GEL"])
+    home_kb = back_to_main_menu(translator)
     amount_kb = amount_controls(translator)
     methods_kb = obtaining(translator, ["cash", "card"])
     confirm_kb = confirm_exchange(translator)
@@ -308,10 +308,8 @@ async def test_exchange_keyboards_are_backend_driven() -> None:
         "₮ USDT",
         "🇹🇭 THB",
     ]
-    assert [button.callback_data for button in buy_kb.inline_keyboard[0]] == [
-        "exchange:buy:THB",
-        "exchange:buy:GEL",
-    ]
+    assert home_kb.inline_keyboard[0][0].callback_data == "fsm:cancel"
+    assert home_kb.inline_keyboard[0][0].style == "primary"
     assert [button.callback_data for button in amount_kb.inline_keyboard[0]] == [
         "fsm:back",
         "fsm:cancel",

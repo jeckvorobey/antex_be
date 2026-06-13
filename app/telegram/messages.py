@@ -111,18 +111,6 @@ def choose_currency_prompt(
     return _resolve_translator(translator, locale)("exchange-choose-currency")
 
 
-def choose_buy_currency_prompt(
-    currency: str,
-    *,
-    translator: Translate | None = None,
-    locale: str | None = None,
-) -> str:
-    return _resolve_translator(translator, locale)(
-        "exchange-choose-buy-currency",
-        currency=currency,
-    )
-
-
 def enter_amount_prompt(
     currency: str,
     *,

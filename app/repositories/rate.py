@@ -12,6 +12,11 @@ from app.repositories.base import BaseRepository
 class RateRepository(BaseRepository[Rate]):
     model = Rate
 
+    async def has_any(self) -> bool:
+        """Проверяет, есть ли в БД хотя бы один курс."""
+        result = await self.session.execute(select(Rate.id).limit(1))
+        return result.scalar_one_or_none() is not None
+
     async def find_by_currency(self, currency: str) -> Rate | None:
         """Ищет курс по коду валютной пары."""
         result = await self.session.execute(select(Rate).where(Rate.currency == currency.upper()))

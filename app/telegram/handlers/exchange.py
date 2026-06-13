@@ -17,13 +17,19 @@ from app.exceptions import AntExException
 from app.models.city import City
 from app.repositories.order import OrderRepository
 from app.schemas.miniapp import MiniappOrderCreate
-from app.services.exchange import ExchangePairSnapshot, ExchangeQuoteInput, ExchangeService
+from app.services.exchange import (
+    CANONICAL_SELL_CURRENCIES,
+    COUNTRY_CURRENCY,
+    ExchangePairSnapshot,
+    ExchangeQuoteInput,
+    ExchangeService,
+)
 from app.services.order_flow import create_order_for_user
 from app.telegram import messages
 from app.telegram.i18n import get_user_translator
 from app.telegram.keyboards import (
     amount_controls,
-    choose_buy_currency,
+    back_to_main_menu,
     choose_city,
     choose_country,
     choose_currency,
@@ -40,7 +46,7 @@ SERVICE_OPTIONS = {
     "cash_atm": {
         "label": "Получение наличных через банкомат",
         "method": "cash",
-        "needs_city": True,
+        "needs_city": False,
     },
     "bank_account": {
         "label": "Получение на местный банковский счет",
@@ -56,7 +62,6 @@ class ExchangeState(StatesGroup):
     choosing_service = State()
     choosing_city = State()
     choosing_currency = State()
-    choosing_buy_currency = State()
     entering_amount = State()
     choosing_method = State()
     confirming = State()
@@ -80,7 +85,7 @@ async def _get_exchange_pairs(country: str | None = None) -> list[ExchangePairSn
         async with db:
             snapshots = await ExchangeService().get_featured_pair_snapshots(db)
     except Exception:
-        logger.exception("Failed to load exchange rates for Telegram exchange flow")
+        logger.exception("Ошибка при получении курсов обмена для Telegram: country=%s", country)
         return []
 
     if country is None:
@@ -260,13 +265,25 @@ async def _show_currency_step(actor, state: FSMContext, *, edit: bool) -> None:
             edit=edit,
         )
         return
+    try:
+        selected_country = Country(str(country))
+    except ValueError:
+        selected_country = None
+    sell_currencies = [
+        currency
+        for currency in ("RUB", "USDT")
+        if currency in CANONICAL_SELL_CURRENCIES and currency in supported_pairs
+    ]
     await state.set_state(ExchangeState.choosing_currency)
-    await state.update_data(supported_pairs=supported_pairs)
+    await state.update_data(
+        supported_pairs=supported_pairs,
+        currency_buy=COUNTRY_CURRENCY.get(selected_country),
+    )
     await _render_step(
         actor=actor,
         current=4,
         body=messages.choose_currency_prompt(translator=translate),
-        reply_markup=choose_currency(translate, list(supported_pairs)),
+        reply_markup=choose_currency(translate, sell_currencies),
         edit=edit,
         featured_pairs=snapshots,
     )
@@ -298,9 +315,9 @@ async def _show_orders(actor, *, edit: bool) -> None:
         text = "\n\n".join([messages.orders_header(translator=translate), *items])
 
     if edit:
-        await _safe_edit_text(actor.message, text, reply_markup=choose_country(translate))
+        await _safe_edit_text(actor.message, text, reply_markup=back_to_main_menu(translate))
     else:
-        await actor.answer(text, reply_markup=choose_country(translate))
+        await actor.answer(text, reply_markup=back_to_main_menu(translate))
 
 
 async def _show_enter_amount_step(
@@ -370,26 +387,7 @@ async def choose_exchange_city(callback: CallbackQuery, state: FSMContext) -> No
 @router.callback_query(F.data.startswith("exchange:currency:"), ExchangeState.choosing_currency)
 async def choose_exchange_currency(callback: CallbackQuery, state: FSMContext) -> None:
     currency = callback.data.rsplit(":", 1)[-1]  # type: ignore[union-attr]
-    data = await state.get_data()
-    supported_pairs = data.get("supported_pairs", {})
-    buy_currencies = supported_pairs.get(currency, [])
-    translate = get_user_translator(callback.from_user)
     await state.update_data(currency_sell=currency)
-    await state.set_state(ExchangeState.choosing_buy_currency)
-    await _render_step(
-        actor=callback,
-        current=4,
-        body=messages.choose_buy_currency_prompt(currency, translator=translate),
-        reply_markup=choose_buy_currency(translate, buy_currencies),
-        edit=True,
-    )
-    await callback.answer()
-
-
-@router.callback_query(F.data.startswith("exchange:buy:"), ExchangeState.choosing_buy_currency)
-async def choose_exchange_buy_currency(callback: CallbackQuery, state: FSMContext) -> None:
-    currency = callback.data.rsplit(":", 1)[-1]  # type: ignore[union-attr]
-    await state.update_data(currency_buy=currency)
     await _show_enter_amount_step(callback, state, edit=True)
     await callback.answer()
 
@@ -536,50 +534,13 @@ async def confirm_exchange_callback(callback: CallbackQuery, state: FSMContext) 
 
 @router.callback_query(F.data == "fsm:back")
 async def fsm_back(callback: CallbackQuery, state: FSMContext) -> None:
-    translate = get_user_translator(callback.from_user)
     current_state = await state.get_state()
-    data = await state.get_data()
     if current_state == ExchangeState.choosing_method.state:
-        await state.set_state(ExchangeState.entering_amount)
-        await _render_step(
-            actor=callback,
-            current=3,
-            body=messages.enter_amount_prompt(
-                data.get("currency_sell", "RUB"),
-                translator=translate,
-            ),
-            reply_markup=amount_controls(translate),
-            edit=True,
-        )
+        await _show_enter_amount_step(callback, state, edit=True)
     elif current_state == ExchangeState.entering_amount.state:
-        await state.set_state(ExchangeState.choosing_buy_currency)
-        await _render_step(
-            actor=callback,
-            current=2,
-            body=messages.choose_buy_currency_prompt(
-                data.get("currency_sell", "RUB"),
-                translator=translate,
-            ),
-            reply_markup=choose_buy_currency(
-                translate,
-                data.get("supported_pairs", {}).get(data.get("currency_sell", "RUB"), []),
-            ),
-            edit=True,
-        )
-    elif current_state == ExchangeState.confirming.state:
-        await state.set_state(ExchangeState.entering_amount)
-        await _render_step(
-            actor=callback,
-            current=3,
-            body=messages.enter_amount_prompt(
-                data.get("currency_sell", "RUB"),
-                translator=translate,
-            ),
-            reply_markup=amount_controls(translate),
-            edit=True,
-        )
-    elif current_state == ExchangeState.choosing_buy_currency.state:
         await _show_currency_step(callback, state, edit=True)
+    elif current_state == ExchangeState.confirming.state:
+        await _show_enter_amount_step(callback, state, edit=True)
     await callback.answer()
 
 
