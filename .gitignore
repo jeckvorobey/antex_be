@@ -8,3 +8,4 @@ __pycache__/
 /logs/*
 .venv/
 env.prod
+.hermes/

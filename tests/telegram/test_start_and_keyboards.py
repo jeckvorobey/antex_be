@@ -157,7 +157,7 @@ async def test_start_shows_country_selection_for_customer(monkeypatch) -> None:
     assert len(message.answers) == 1
     reply_markup = message.answers[0]["reply_markup"]
     assert reply_markup is not None
-    assert "Сначала выберите страну" in message.answers[0]["text"]
+    assert "выберите страну в списке ниже" in str(message.answers[0]["text"])
     assert [button.callback_data for button in reply_markup.inline_keyboard[0]] == [
         "exchange:country:thailand",
         "exchange:country:vietnam",

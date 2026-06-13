@@ -6,10 +6,13 @@ welcome =
     Tap "New exchange" to start.
 
 exchange-start-welcome =
-    👋 { $name }, hello!
+    👋 Hello, { $name }!
 
-    Let's build your request quickly.
-    First, choose a country.
+    <b>Antex</b> is a service that helps you quickly exchange money and pay for the services you need without extra effort.
+
+    📝 To create a request, open the app or choose a country from the list below.
+
+    ☝️ We’ll guide you at every step.
 exchange-choose-country = Choose a country
 exchange-choose-service = Choose a service
 exchange-choose-city = Choose a city
