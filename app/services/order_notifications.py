@@ -164,17 +164,26 @@ def build_manager_status_text(order) -> str:
     )
 
     if int(order.status) == int(OrderStatus.PROCESSING):
+        middle = messages.manager_order_summary(
+            country=_format_country_name(getattr(order, "country", None)),
+            rate=_format_rate(getattr(order, "rate", None)),
+            amount_sell=getattr(order, "amountSell", 0) or 0,
+            from_currency=getattr(order, "currencySell", "—"),
+            amount_buy=getattr(order, "amountBuy", 0) or 0,
+            to_currency=getattr(order, "currencyBuy", "—"),
+            method=_format_method(getattr(order, "methodGet", None)),
+            username=username,
+            city=city_name if city_name != "—" else None,
+            translator=None,
+            locale="ru",
+        )
         return "\n".join(
             [
                 f"🟢 Заявка #{order.publicNumber}",
                 "",
                 "⏳ Статус: В работе",
                 "",
-                f"💱 Направление: {direction}",
-                f"💸 Сумма: {amount}",
-                "",
-                f"📍 Город: {city_name}",
-                f"👤 {username}",
+                middle,
                 "",
                 "💬 Ожидает завершения обмена",
             ]
@@ -214,21 +223,24 @@ def _build_manager_order_text(order, user) -> str:
     country_name = _format_country_name(getattr(order, "country", None))
     username = _format_username(user)
     method = _format_method(getattr(order, "methodGet", None))
+    middle = messages.manager_order_summary(
+        country=country_name,
+        rate=_format_rate(getattr(order, "rate", None)),
+        amount_sell=getattr(order, "amountSell", 0) or 0,
+        from_currency=getattr(order, "currencySell", "—"),
+        amount_buy=getattr(order, "amountBuy", 0) or 0,
+        to_currency=getattr(order, "currencyBuy", "—"),
+        method=method,
+        username=username,
+        city=city_name if city_name != "—" else None,
+        translator=None,
+        locale="ru",
+    )
     return "\n".join(
         [
             f"🆕 Новая заявка #{order.publicNumber}",
             "",
-            f"💱 Направление: {_format_direction(order)}",
-            "",
-            f"💸 Сумма к обмену: {_format_amount(order.amountSell, order.currencySell)}",
-            f"💰 К выдаче: {_format_amount(order.amountBuy, order.currencyBuy)}",
-            f"📊 Курс: {_format_rate(getattr(order, 'rate', None))}",
-            "",
-            f"📍 {city_name}, {country_name}",
-            "",
-            f"👤 Пользователь: {username}",
-            "",
-            f"💵 Получение: {method}",
+            middle,
             "",
             "⏳ Ожидает обработки менеджером",
         ]

@@ -194,6 +194,39 @@ def exchange_confirm_summary(
     return "\n".join(lines)
 
 
+def manager_order_summary(
+    *,
+    country: str,
+    rate: str,
+    amount_sell: int | float,
+    from_currency: str,
+    amount_buy: int | float,
+    to_currency: str,
+    method: str,
+    username: str,
+    city: str | None = None,
+    translator: Translate | None = None,
+    locale: str | None = None,
+) -> str:
+    translate = cast(Any, _resolve_translator(translator, locale))
+    lines = [f"🌍 {translate('exchange-summary-country')}: {country}"]
+    if city:
+        lines.append(f"🏙️ {translate('exchange-summary-city')}: {city}")
+    sell_label = format_currency_label(from_currency)
+    buy_label = format_currency_label(to_currency)
+    lines.extend(
+        [
+            f"📈 {translate('exchange-summary-rate')}: {rate}",
+            f"💸 {translate('exchange-summary-sell')}: {_format_number(amount_sell)} {sell_label}",
+            f"💰 {translate('exchange-summary-buy')}: {_format_number(amount_buy)} {buy_label}",
+            f"🧾 {translate('exchange-summary-method')}: {method}",
+            "",
+            f"👤 {translate('manager-summary-user')}: {username}",
+        ]
+    )
+    return "\n".join(lines)
+
+
 def exchange_rate(sell_rate: float, buy_rate: float) -> str:
     return f"{sell_rate:.2f} / {buy_rate:.2f}"
 

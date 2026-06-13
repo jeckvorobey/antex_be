@@ -49,6 +49,7 @@ exchange-summary-rate = Rate
 exchange-summary-sell = You send
 exchange-summary-buy = You receive
 exchange-summary-method = Receive method
+manager-summary-user = User
 
 ## Buttons
 btn-confirm = ✅ Confirm

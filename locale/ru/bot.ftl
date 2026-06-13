@@ -50,6 +50,7 @@ exchange-summary-rate = Курс
 exchange-summary-sell = Отдаёте
 exchange-summary-buy = Получаете
 exchange-summary-method = Способ получения
+manager-summary-user = Пользователь
 
 ## Buttons
 btn-confirm = ✅ Подтвердить
