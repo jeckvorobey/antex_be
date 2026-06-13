@@ -299,10 +299,12 @@ def amount_controls(_, **kwargs) -> InlineKeyboardMarkup:
                 InlineKeyboardButton(
                     text=translate("btn-back"),
                     callback_data="fsm:back",
+                    style="primary",
                 ),
                 InlineKeyboardButton(
                     text=translate("btn-cancel"),
                     callback_data="fsm:cancel",
+                    style="danger",
                 ),
             ]
         ]

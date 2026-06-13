@@ -359,6 +359,8 @@ async def test_exchange_keyboards_are_backend_driven() -> None:
         "fsm:back",
         "fsm:cancel",
     ]
+    assert amount_kb.inline_keyboard[0][0].style == "primary"
+    assert amount_kb.inline_keyboard[0][1].style == "danger"
     assert [button.callback_data for button in methods_kb.inline_keyboard[0]] == [
         "method:cash",
         "method:card",
