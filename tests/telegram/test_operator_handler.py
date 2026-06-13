@@ -2,6 +2,7 @@ from __future__ import annotations
 
 # ruff: noqa: RUF001
 import os
+from datetime import UTC, datetime
 from types import SimpleNamespace
 
 from aiogram.types import User as TgUser
@@ -65,6 +66,7 @@ async def test_operator_take_moves_order_to_processing(monkeypatch) -> None:
         currencySell="RUB",
         currencyBuy="THB",
         amountSell=10000,
+        createdAt=datetime(2026, 5, 1, 10, 0, tzinfo=UTC),
     )
 
     async def _fake_get_db():
@@ -100,9 +102,10 @@ async def test_operator_take_moves_order_to_processing(monkeypatch) -> None:
     chat_url = callback.message.edits[0]["reply_markup"].inline_keyboard[1][0].url
     assert chat_url is not None
     assert chat_url.startswith("https://t.me/customer?text=")
-    assert "🟢 Заявка #2026050001" in callback.message.edits[0]["text"]
-    assert "⏳ Статус: В работе" in callback.message.edits[0]["text"]
-    assert "💬 Ожидает завершения обмена" in callback.message.edits[0]["text"]
+    text = str(callback.message.edits[0]["text"])
+    assert "#2026050001: В работе" in text
+    assert "10,000 🇷🇺 RUB → — 🇹🇭 THB" in text
+    assert "01.05.2026 10:00 UTC" in text
 
 
 async def test_operator_open_chat_handler_is_no_longer_used(monkeypatch) -> None:
@@ -165,7 +168,9 @@ async def test_operator_cancel_confirm_marks_order_cancelled(monkeypatch) -> Non
         currencySell="RUB",
         currencyBuy="THB",
         amountSell=25000,
+        amountBuy=712500,
         methodGet="cash",
+        createdAt=datetime(2026, 5, 2, 11, 20, tzinfo=UTC),
     )
 
     async def _fake_get_db():
@@ -187,8 +192,10 @@ async def test_operator_cancel_confirm_marks_order_cancelled(monkeypatch) -> Non
 
     assert callback.answers[-1] == {"text": "Заявка отменена", "show_alert": True, "url": None}
     assert callback.message.edits[0]["reply_markup"].inline_keyboard[0][0].url == "https://t.me/customer"
-    assert "Заявка #2026050002" in callback.message.edits[0]["text"]
-    assert "Статус: Отменена" in callback.message.edits[0]["text"]
+    text = str(callback.message.edits[0]["text"])
+    assert "#2026050002: Отменена" in text
+    assert "25,000 🇷🇺 RUB → 712,500 🇹🇭 THB" in text
+    assert "02.05.2026 11:20 UTC" in text
 
 
 async def test_operator_cancel_keep_restores_processing_keyboard(monkeypatch) -> None:
@@ -201,6 +208,7 @@ async def test_operator_cancel_keep_restores_processing_keyboard(monkeypatch) ->
         user=SimpleNamespace(username="customer", telegram_id=700002),
         currencySell="USDT",
         amountSell=1500,
+        createdAt=datetime(2026, 5, 2, 13, 0, tzinfo=UTC),
     )
 
     async def _fake_get_db():
@@ -248,6 +256,7 @@ async def test_operator_close_marks_order_completed(monkeypatch) -> None:
         amountSell=10000,
         amountBuy=27100,
         methodGet="cash",
+        createdAt=datetime(2026, 5, 2, 19, 10, tzinfo=UTC),
     )
 
     async def _fake_get_db():
@@ -270,12 +279,8 @@ async def test_operator_close_marks_order_completed(monkeypatch) -> None:
     assert callback.answers[-1] == {"text": None, "show_alert": False, "url": None}
     assert callback.message.edits[0]["reply_markup"].inline_keyboard[0][0].url == "https://t.me/customer"
     text = str(callback.message.edits[0]["text"])
-    assert "✅ Заявка #2026050002 завершена" in text
-    assert "🌍 Страна: Грузия" in text
-    assert "🏙️ Город: Батуми" in text
-    assert "📈 Курс:" in text
-    assert "💸 Отдаёте: 10,000 ₮ USDT" in text
-    assert "💰 Получаете:" in text
-    assert "🧾 Способ получения:" in text
-    assert "🏁 Обмен успешно выполнен" in text
-    assert "💱 Направление:" not in text
+    assert "#2026050002: Завершена" in text
+    assert "10,000 ₮ USDT → 27,100 🇬🇪 GEL" in text
+    assert "Курс: 2.71" in text
+    assert "Способ получения: Доставка наличных" in text
+    assert "02.05.2026 19:10 UTC" in text
