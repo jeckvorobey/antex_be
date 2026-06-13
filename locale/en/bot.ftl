@@ -81,6 +81,16 @@ menu-open-site = 🚀 Open app
 orders-header = 📋 Your orders:
 orders-empty = 📭 You have no orders yet.
 orders-item = #{ $id }: { $amount_sell } { $currency_sell } → { $amount_buy } { $currency_buy }
+orders-item-rate-label = Rate
+orders-item-method-label = Payout method
+orders-item-status-created = New
+orders-item-status-processing = In progress
+orders-item-status-completed = Completed
+orders-item-status-cancelled = Cancelled
+orders-item-method-cash = Cash delivery
+orders-item-method-qrcode = Cash by QR
+orders-item-method-bank-account = Transfer to a local bank account
+orders-item-method-pay-services = Service payment
 
 ## Manager
 manager-new-orders-header = 🆕 New exchange requests:

@@ -683,6 +683,79 @@ async def test_confirm_exchange_shows_human_error_on_order_creation_failure(monk
     assert callback.answers[-1]["text"] is not None
 
 
+async def test_menu_orders_renders_compact_order_history(monkeypatch) -> None:
+    fake_db = _FakeDbSession()
+    callback = _FakeCallback(
+        TgUser(
+            id=777006,
+            is_bot=False,
+            first_name="Orders",
+            username="orders-user",
+            language_code="ru",
+        )
+    )
+    user = User(
+        id=24,
+        telegram_id=777006,
+        username="orders-user",
+        first_name="Orders",
+        role=3,
+    )
+    order = SimpleNamespace(
+        id=11,
+        publicNumber="2026060011",
+        status=int(OrderStatus.CREATED),
+        amountSell=1400,
+        currencySell="USDT",
+        amountBuy=35738752.0,
+        currencyBuy="VND",
+        rate=25527.68,
+        methodGet="cash",
+        createdAt=datetime(2026, 6, 13, 0, 45, tzinfo=UTC),
+        updatedAt=None,
+        endTime=None,
+    )
+
+    async def _fake_get_db():
+        return fake_db
+
+    async def _fake_check_user(db, tg_user):
+        assert db is fake_db
+        assert tg_user.id == 777006
+        return user, False
+
+    class _FakeOrderRepository:
+        def __init__(self, db) -> None:
+            self.db = db
+
+        async def count_user_orders(self, user_id: int):
+            assert self.db is fake_db
+            assert user_id == 24
+            return 1
+
+        async def get_user_orders(self, user_id: int, limit: int = 10, offset: int = 0):
+            assert self.db is fake_db
+            assert user_id == 24
+            assert limit == 10
+            assert offset == 0
+            return [order]
+
+    monkeypatch.setattr(exchange_handler, "_get_db", _fake_get_db)
+    monkeypatch.setattr(exchange_handler, "check_user", _fake_check_user)
+    monkeypatch.setattr(exchange_handler, "OrderRepository", _FakeOrderRepository)
+
+    await exchange_handler.menu_orders(callback)
+
+    text = str(callback.message.edits[0]["text"])
+    assert "Ваши заявки:" in text
+    assert "#2026060011: Новая" in text
+    assert "1,400 ₮ USDT → 35,738,752.0 🇻🇳 VND" in text
+    assert "Курс: 25527.68" in text
+    assert "Способ получения: Доставка наличных" in text
+    assert "13.06.2026 00:45 UTC" in text
+    assert callback.answers[-1] == {"text": None, "show_alert": False}
+
+
 async def test_menu_orders_commits_new_user_and_ignores_not_modified(monkeypatch) -> None:
     fake_db = _FakeDbSession()
     callback = _FakeCallback(

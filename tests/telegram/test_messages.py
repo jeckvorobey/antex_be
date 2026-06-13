@@ -67,6 +67,51 @@ def test_order_creation_failed_for_limit_is_human_readable() -> None:
     assert "слишком много активных заявок" in text
 
 
+def test_orders_item_uses_compact_multiline_format() -> None:
+    text = messages.orders_item(
+        order_id="2026060011",
+        status=1,
+        amount_sell=1400,
+        currency_sell="USDT",
+        amount_buy=35738752.0,
+        currency_buy="VND",
+        rate=25527.68,
+        method="cash",
+        created_at=datetime(2026, 6, 13, 0, 45, tzinfo=UTC),
+        updated_at=None,
+        end_time=None,
+        locale="ru",
+    )
+
+    assert "#2026060011: Новая" in text
+    assert "1,400 ₮ USDT → 35,738,752.0 🇻🇳 VND" in text
+    assert "Курс: 25527.68" in text
+    assert "Способ получения: Доставка наличных" in text
+    assert "13.06.2026 00:45 UTC" in text
+
+
+def test_orders_item_respects_english_locale() -> None:
+    text = messages.orders_item(
+        order_id="2026060011",
+        status=2,
+        amount_sell=1400,
+        currency_sell="USDT",
+        amount_buy=35738752.0,
+        currency_buy="VND",
+        rate=25527.68,
+        method="cash",
+        created_at=datetime(2026, 6, 13, 0, 45, tzinfo=UTC),
+        updated_at=None,
+        end_time=None,
+        locale="en",
+    )
+
+    assert "#2026060011: In progress" in text
+    assert "1,400 ₮ USDT → 35,738,752.0 🇻🇳 VND" in text
+    assert "Rate: 25527.68" in text
+    assert "Payout method: Cash delivery" in text
+
+
 def test_choose_service_prompt_lists_service_options() -> None:
     text = messages.choose_service_prompt("thailand", locale="ru")
 

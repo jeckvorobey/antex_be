@@ -374,10 +374,16 @@ async def _show_orders(actor, *, edit: bool, page: int = 1) -> None:
         items = [
             messages.orders_item(
                 order_id=getattr(order, "publicNumber", order.id),
+                status=getattr(order, "status", None),
                 amount_sell=order.amountSell,
                 currency_sell=order.currencySell,
                 amount_buy=order.amountBuy,
                 currency_buy=order.currencyBuy,
+                rate=getattr(order, "rate", None),
+                method=getattr(order, "methodGet", None),
+                created_at=getattr(order, "createdAt", None),
+                updated_at=getattr(order, "updatedAt", None),
+                end_time=getattr(order, "endTime", None),
                 translator=translate,
             )
             for order in orders

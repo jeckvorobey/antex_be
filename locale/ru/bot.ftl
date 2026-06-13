@@ -82,6 +82,16 @@ menu-open-site = 🚀 Открыть приложение
 orders-header = 📋 Ваши заявки:
 orders-empty = 📭 У вас пока нет заявок.
 orders-item = #{ $id }: { $amount_sell } { $currency_sell } → { $amount_buy } { $currency_buy }
+orders-item-rate-label = Курс
+orders-item-method-label = Способ получения
+orders-item-status-created = Новая
+orders-item-status-processing = В работе
+orders-item-status-completed = Завершена
+orders-item-status-cancelled = Отменена
+orders-item-method-cash = Доставка наличных
+orders-item-method-qrcode = Наличные по QR
+orders-item-method-bank-account = Перевод на счёт в местном банке
+orders-item-method-pay-services = Оплата сервисов
 
 ## Manager
 manager-new-orders-header = 🆕 Новые заявки на обмен:

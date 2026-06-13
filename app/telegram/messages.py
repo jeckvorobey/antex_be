@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 from collections.abc import Callable
+from datetime import UTC, datetime
 from typing import Any, cast
 
+from app.enums.order import MethodGet, OrderStatus
 from app.services.exchange import ExchangePairSnapshot
 from app.telegram.i18n import get_translator
 
@@ -380,21 +382,80 @@ def orders_header(*, translator: Translate | None = None, locale: str | None = N
 def orders_item(
     *,
     order_id: int | str,
-    amount_sell: int,
+    status: int | None,
+    amount_sell: int | float,
     currency_sell: str,
-    amount_buy: int,
+    amount_buy: int | float,
     currency_buy: str,
+    rate: int | float | str | None,
+    method: str | None,
+    created_at: datetime | None,
+    updated_at: datetime | None,
+    end_time: datetime | None,
     translator: Translate | None = None,
     locale: str | None = None,
 ) -> str:
-    return _resolve_translator(translator, locale)(
-        "orders-item",
-        id=order_id,
-        amount_sell=f"{amount_sell:,}",
-        currency_sell=format_currency_label(currency_sell),
-        amount_buy=f"{amount_buy:,}",
-        currency_buy=format_currency_label(currency_buy),
+    translate = cast(Any, _resolve_translator(translator, locale))
+    return "\n".join(
+        [
+            f"#{order_id}: {_format_order_status_label(status, translate=translate)}",
+            (
+                f"{_format_order_amount(amount_sell)} {format_currency_label(currency_sell)}"
+                f" → {_format_order_amount(amount_buy)} {format_currency_label(currency_buy)}"
+            ),
+            f"{translate('orders-item-rate-label')}: {_format_order_rate(rate)}",
+            f"{translate('orders-item-method-label')}: {_format_order_method(method, translate=translate)}",
+            _format_order_list_date(created_at=created_at, updated_at=updated_at, end_time=end_time),
+        ]
     )
+
+
+def _format_order_status_label(status: int | None, *, translate) -> str:
+    if status == int(OrderStatus.CREATED):
+        return translate("orders-item-status-created")
+    if status == int(OrderStatus.PROCESSING):
+        return translate("orders-item-status-processing")
+    if status == int(OrderStatus.COMPLETED):
+        return translate("orders-item-status-completed")
+    if status == int(OrderStatus.CANCELLED):
+        return translate("orders-item-status-cancelled")
+    return "—"
+
+
+def _format_order_rate(rate: int | float | str | None) -> str:
+    if rate is None:
+        return "—"
+    return str(rate)
+
+
+def _format_order_amount(amount: int | float) -> str:
+    return f"{amount:,}"
+
+
+def _format_order_method(method: str | None, *, translate) -> str:
+    if method == MethodGet.CASH.value:
+        return translate("orders-item-method-cash")
+    if method == MethodGet.QRCODE.value:
+        return translate("orders-item-method-qrcode")
+    if method == MethodGet.BANK_ACCOUNT.value:
+        return translate("orders-item-method-bank-account")
+    if method == MethodGet.PAY_SERVICES.value:
+        return translate("orders-item-method-pay-services")
+    return method or "—"
+
+
+def _format_order_list_date(
+    *,
+    created_at: datetime | None,
+    updated_at: datetime | None,
+    end_time: datetime | None,
+) -> str:
+    stamp = created_at or updated_at or end_time
+    if stamp is None:
+        return "—"
+    if stamp.tzinfo is None:
+        stamp = stamp.replace(tzinfo=UTC)
+    return stamp.astimezone(UTC).strftime("%d.%m.%Y %H:%M UTC")
 
 
 def new_order_operator(
