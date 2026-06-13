@@ -66,7 +66,7 @@ async def list_miniapp_rates(db) -> MiniappRatesResponse:
 async def list_miniapp_orders(
     db,
     user_id: int,
-    limit: int = 20,
+    limit: int = 10,
     offset: int = 0,
 ) -> MiniappOrdersResponse:
     """Возвращает историю заявок текущего пользователя miniapp."""

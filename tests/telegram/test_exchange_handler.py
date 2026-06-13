@@ -715,9 +715,16 @@ async def test_menu_orders_commits_new_user_and_ignores_not_modified(monkeypatch
         def __init__(self, db) -> None:
             self.db = db
 
-        async def get_user_orders(self, user_id: int):
+        async def count_user_orders(self, user_id: int):
             assert self.db is fake_db
             assert user_id == 23
+            return 0
+
+        async def get_user_orders(self, user_id: int, limit: int = 10, offset: int = 0):
+            assert self.db is fake_db
+            assert user_id == 23
+            assert limit == 10
+            assert offset == 0
             return []
 
     monkeypatch.setattr(exchange_handler, "_get_db", _fake_get_db)

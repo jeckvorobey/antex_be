@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, HTTPException, Query, status
 
 from app.api.deps import CurrentUser, DbDep
 from app.repositories.order import OrderRepository
@@ -14,9 +14,17 @@ router = APIRouter(prefix="/api/orders", tags=["orders"])
 
 
 @router.get("", response_model=list[OrderOut])
-async def list_my_orders(db: DbDep, user: CurrentUser) -> list[OrderOut]:
+async def list_my_orders(
+    db: DbDep,
+    user: CurrentUser,
+    limit: int = Query(default=10, ge=1, le=100),
+    offset: int = Query(default=0, ge=0),
+) -> list[OrderOut]:
     repo = OrderRepository(db)
-    return [build_order_out(order) for order in await repo.get_user_orders(user.id, limit=100)]
+    return [
+        build_order_out(order)
+        for order in await repo.get_user_orders(user.id, limit=limit, offset=offset)
+    ]
 
 
 @router.get("/{order_id}", response_model=OrderOut)

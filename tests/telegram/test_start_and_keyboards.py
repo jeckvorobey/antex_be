@@ -24,6 +24,7 @@ from app.telegram.keyboards import (
     manager_order_open_chat,
     obtaining,
     order_created_actions,
+    orders_pagination,
     review_link,
     user_order_write_manager,
 )
@@ -112,6 +113,23 @@ async def test_country_keyboard_keeps_open_app_button(monkeypatch) -> None:
     assert kb.inline_keyboard[2][0].text == "🚀 Открыть приложение"
     assert kb.inline_keyboard[2][0].web_app is not None
     assert kb.inline_keyboard[2][0].web_app.url == "https://example.com/app"
+
+
+def test_orders_pagination_keyboard_appears_only_after_ten_orders() -> None:
+    translate = get_translator("ru")
+
+    short_kb = orders_pagination(translate, page=1, total=10, page_size=10)
+    assert len(short_kb.inline_keyboard) == 1
+    assert short_kb.inline_keyboard[0][0].callback_data == "fsm:cancel"
+
+    paged_kb = orders_pagination(translate, page=2, total=21, page_size=10)
+    assert [button.callback_data for button in paged_kb.inline_keyboard[0]] == [
+        "menu:orders:page:1",
+        "menu:orders:noop",
+        "menu:orders:page:3",
+    ]
+    assert paged_kb.inline_keyboard[0][1].text == "2/3"
+    assert paged_kb.inline_keyboard[1][0].callback_data == "fsm:cancel"
 
 
 async def test_service_keyboard_has_short_labels_and_back_button() -> None:
@@ -424,14 +442,15 @@ async def test_chat_buttons_open_direct_chat_with_prepared_text() -> None:
         order_id=17,
         chat_url="https://t.me/customer",
         message_text=(
-            "Здравствуйте! Вы оставляли заявку #2006877777 на обмен 10 000 USDT. "
-            "Готовы продолжить?"
+            "Здравствуйте! Вы оставляли заявку #2006877777 на обмен 10 000 USDT. Готовы продолжить?"
         ),
     )
     user_btn = user_order_write_manager(
         translator,
         chat_url="https://t.me/manager",
-        message_text="Здравствуйте! По заявке #367383776 на сумму 5,000 RUB подтверждаю готовность к обмену.",
+        message_text=(
+            "Здравствуйте! По заявке #367383776 на сумму 5,000 RUB подтверждаю готовность к обмену."
+        ),
     )
 
     manager_url = manager_btn.inline_keyboard[1][0].url
@@ -454,7 +473,9 @@ def test_chat_button_keeps_plain_tg_user_link_without_username() -> None:
     user_btn = user_order_write_manager(
         translator,
         chat_url="tg://user?id=700002",
-        message_text="Здравствуйте! По заявке #367383776 на сумму 5,000 RUB подтверждаю готовность к обмену.",
+        message_text=(
+            "Здравствуйте! По заявке #367383776 на сумму 5,000 RUB подтверждаю готовность к обмену."
+        ),
     )
 
     assert user_btn.inline_keyboard[0][0].url == "tg://user?id=700002"

@@ -145,6 +145,52 @@ def back_to_main_menu(_, **kwargs) -> InlineKeyboardMarkup:
     )
 
 
+def orders_pagination(
+    _, *, page: int, total: int, page_size: int = 10, **kwargs
+) -> InlineKeyboardMarkup:
+    """Order history keyboard with pagination controls."""
+    del kwargs
+    translate = _resolve_translator(_)
+    inline_keyboard: list[list[InlineKeyboardButton]] = []
+
+    if total > page_size:
+        pages = max(1, (total + page_size - 1) // page_size)
+        current_page = min(max(1, page), pages)
+        row: list[InlineKeyboardButton] = []
+        if current_page > 1:
+            row.append(
+                InlineKeyboardButton(
+                    text="◀",
+                    callback_data=f"menu:orders:page:{current_page - 1}",
+                )
+            )
+        row.append(
+            InlineKeyboardButton(
+                text=f"{current_page}/{pages}",
+                callback_data="menu:orders:noop",
+            )
+        )
+        if current_page < pages:
+            row.append(
+                InlineKeyboardButton(
+                    text="▶",
+                    callback_data=f"menu:orders:page:{current_page + 1}",
+                )
+            )
+        inline_keyboard.append(row)
+
+    inline_keyboard.append(
+        [
+            InlineKeyboardButton(
+                text=translate("btn-home"),
+                callback_data="fsm:cancel",
+                style="primary",
+            )
+        ]
+    )
+    return InlineKeyboardMarkup(inline_keyboard=inline_keyboard)
+
+
 def order_created_actions(_, **kwargs) -> InlineKeyboardMarkup:
     """Кнопки после создания заявки."""
     del kwargs

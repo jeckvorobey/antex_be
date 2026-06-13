@@ -31,18 +31,19 @@ from app.telegram import messages
 from app.telegram.i18n import get_user_translator
 from app.telegram.keyboards import (
     amount_controls,
-    back_to_main_menu,
     choose_city,
     choose_country,
     choose_currency,
     choose_service,
     confirm_exchange,
+    orders_pagination,
 )
 from app.telegram.services.user_service import check_user
 
 logger = logging.getLogger(__name__)
 router = Router(name="exchange")
 TOTAL_STEPS = 5
+ORDERS_PAGE_SIZE = 10
 SERVICE_OPTIONS = {
     "cash_delivery": {
         "label_key": "btn-service-cash-delivery",
@@ -347,14 +348,25 @@ async def _show_currency_step(actor, state: FSMContext, *, edit: bool) -> None:
     )
 
 
-async def _show_orders(actor, *, edit: bool) -> None:
+async def _show_orders(actor, *, edit: bool, page: int = 1) -> None:
     translate = get_user_translator(actor.from_user)
+    safe_page = max(1, page)
+    offset = (safe_page - 1) * ORDERS_PAGE_SIZE
     db = await _get_db()
     async with db:
         user, created = await check_user(db, actor.from_user)
         if created:
             await db.commit()
-        orders = await OrderRepository(db).get_user_orders(user.id)
+        repository = OrderRepository(db)
+        total = await repository.count_user_orders(user.id)
+        orders = await repository.get_user_orders(
+            user.id,
+            limit=ORDERS_PAGE_SIZE,
+            offset=offset,
+        )
+
+    if total and not orders and safe_page > 1:
+        return await _show_orders(actor, edit=edit, page=1)
 
     if not orders:
         text = messages.orders_empty(translator=translate)
@@ -372,10 +384,16 @@ async def _show_orders(actor, *, edit: bool) -> None:
         ]
         text = "\n\n".join([messages.orders_header(translator=translate), *items])
 
+    reply_markup = orders_pagination(
+        translate,
+        page=safe_page,
+        total=total,
+        page_size=ORDERS_PAGE_SIZE,
+    )
     if edit:
-        await _safe_edit_text(actor.message, text, reply_markup=back_to_main_menu(translate))
+        await _safe_edit_text(actor.message, text, reply_markup=reply_markup)
     else:
-        await actor.answer(text, reply_markup=back_to_main_menu(translate))
+        await actor.answer(text, reply_markup=reply_markup)
 
 
 async def _show_enter_amount_step(
@@ -446,6 +464,18 @@ async def _show_enter_amount_step(
 @router.callback_query(F.data == "menu:orders", ExchangeState.choosing_country)
 async def menu_orders(callback: CallbackQuery) -> None:
     await _show_orders(callback, edit=True)
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("menu:orders:page:"), ExchangeState.choosing_country)
+async def menu_orders_page(callback: CallbackQuery) -> None:
+    page = int(str(callback.data).rsplit(":", 1)[-1])
+    await _show_orders(callback, edit=True, page=page)
+    await callback.answer()
+
+
+@router.callback_query(F.data == "menu:orders:noop", ExchangeState.choosing_country)
+async def menu_orders_noop(callback: CallbackQuery) -> None:
     await callback.answer()
 
 

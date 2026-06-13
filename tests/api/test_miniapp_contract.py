@@ -225,7 +225,7 @@ async def test_miniapp_stateful_request_without_token_uses_dev_user_from_db(
     response = await client.get("/api/miniapp/orders")
 
     assert response.status_code == 200
-    assert response.json() == {"items": [], "limit": 20, "offset": 0, "total": 0, "hasMore": False}
+    assert response.json() == {"items": [], "limit": 10, "offset": 0, "total": 0, "hasMore": False}
 
     users_count = await db_session.scalar(select(func.count(User.id)))
     assert users_count == 2

@@ -66,7 +66,7 @@ async def get_rates(db: DbDep, _: MiniappUser) -> MiniappRatesResponse:
 async def get_orders(
     db: DbDep,
     user: MiniappUser,
-    limit: int = Query(default=20, ge=1, le=100),
+    limit: int = Query(default=10, ge=1, le=100),
     offset: int = Query(default=0, ge=0),
 ) -> MiniappOrdersResponse:
     return await list_miniapp_orders(db, user.id, limit=limit, offset=offset)
