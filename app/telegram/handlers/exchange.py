@@ -265,25 +265,16 @@ async def _show_currency_step(actor, state: FSMContext, *, edit: bool) -> None:
             edit=edit,
         )
         return
-    try:
-        selected_country = Country(str(country))
-    except ValueError:
-        selected_country = None
-    sell_currencies = [
-        currency
-        for currency in ("RUB", "USDT")
-        if currency in CANONICAL_SELL_CURRENCIES and currency in supported_pairs
-    ]
     await state.set_state(ExchangeState.choosing_currency)
     await state.update_data(
         supported_pairs=supported_pairs,
-        currency_buy=COUNTRY_CURRENCY.get(selected_country),
+        currency_buy=COUNTRY_CURRENCY.get(country, ""),
     )
     await _render_step(
         actor=actor,
         current=4,
         body=messages.choose_currency_prompt(translator=translate),
-        reply_markup=choose_currency(translate, sell_currencies),
+        reply_markup=choose_currency(translate, list(CANONICAL_SELL_CURRENCIES)),
         edit=edit,
         featured_pairs=snapshots,
     )
