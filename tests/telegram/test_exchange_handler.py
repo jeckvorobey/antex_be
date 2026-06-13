@@ -151,12 +151,12 @@ async def test_render_step_shows_all_loaded_pairs(monkeypatch) -> None:
     assert "Шаг" in text
     assert "1" in text
     assert "5" in text
-    assert "💱 \u041a\u0443\u0440\u0441 \u0441\u0435\u0439\u0447\u0430\u0441:" in text
+    assert "🏦 \u0422\u0435\u043a\u0443\u0449\u0438\u0439 \u043a\u0443\u0440\u0441:" in text
     for pair in pairs:
         assert pair.rate_text not in text
         assert f"({pair.label})" not in text
-    assert "👉 🇹🇭 1 THB → 1.00 RUB 🇷🇺" in text
-    assert "👉 ₮ 1 USDT → 1.00 THB 🇹🇭" in text
+    assert "👉 🇹🇭 1 THB от 1.00 RUB 🇷🇺" in text
+    assert "👉 💰 1 USDT от 1.00 THB 🇹🇭" in text
 
 
 async def test_enter_amount_moves_directly_to_confirmation(monkeypatch) -> None:
@@ -270,6 +270,26 @@ async def test_choose_exchange_currency_moves_directly_to_amount(monkeypatch) ->
     assert callback.answers[-1] == {"text": None, "show_alert": False}
 
 
+async def test_fsm_back_from_currency_returns_to_service_step() -> None:
+    callback = _FakeCallback(
+        TgUser(
+            id=777019,
+            is_bot=False,
+            first_name="Back",
+            username="back-currency-user",
+            language_code="ru",
+        )
+    )
+    state = _FakeState({"country": Country.THAILAND.value})
+    state.state = exchange_handler.ExchangeState.choosing_currency.state
+
+    await exchange_handler.fsm_back(callback, state)
+
+    assert state.state == exchange_handler.ExchangeState.choosing_service.state
+    assert "<b>💠 Выберите подходящую услугу</b>" in str(callback.message.edits[0]["text"])
+    assert callback.answers[-1] == {"text": None, "show_alert": False}
+
+
 async def test_fsm_back_from_service_returns_to_country_step(monkeypatch) -> None:
     callback = _FakeCallback(
         TgUser(
@@ -329,7 +349,7 @@ async def test_fsm_back_from_amount_returns_to_sell_currency_step(monkeypatch) -
     await exchange_handler.fsm_back(callback, state)
 
     assert state.state == exchange_handler.ExchangeState.choosing_currency.state
-    assert "Что отдаёте" in callback.message.edits[0]["text"]
+    assert "Выберите валюту, которую хотите обменять" in str(callback.message.edits[0]["text"])
     reply_markup = callback.message.edits[0]["reply_markup"]
     assert [button.callback_data for button in reply_markup.inline_keyboard[0]] == [
         "exchange:currency:RUB",
@@ -535,8 +555,8 @@ async def test_fsm_cancel_returns_to_country_step() -> None:
     assert state.state == exchange_handler.ExchangeState.choosing_country.state
     assert len(callback.message.edits) == 1
     text = str(callback.message.edits[0]["text"])
-    assert "Выберите страну" in text
-    assert "Главное меню" not in text
+    assert "<b>AntEx</b>" in text
+    assert "выберите страну в списке ниже" in text
     reply_markup = callback.message.edits[0]["reply_markup"]
     assert [button.callback_data for button in reply_markup.inline_keyboard[0]] == [
         "exchange:country:thailand",

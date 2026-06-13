@@ -125,6 +125,19 @@ async def test_service_keyboard_has_short_labels_and_back_button() -> None:
     assert kb.inline_keyboard[2][0].callback_data == "fsm:back"
 
 
+async def test_currency_keyboard_has_usdt_icon_back_and_cancel() -> None:
+    kb = choose_currency(get_translator("ru"), ["USDT", "RUB"])
+
+    assert [button.text for button in kb.inline_keyboard[0]] == ["🐛 USDT", "🇷🇺 RUB"]
+    assert [button.callback_data for button in kb.inline_keyboard[1]] == [
+        "fsm:back",
+        "fsm:cancel",
+    ]
+    assert [button.text for button in kb.inline_keyboard[1]] == ["◀ Назад", "❌ Отменить"]
+    assert kb.inline_keyboard[1][0].style == "primary"
+    assert kb.inline_keyboard[1][1].style == "danger"
+
+
 async def test_manager_home_keyboard_has_new_requests_and_site(monkeypatch) -> None:
     monkeypatch.setattr(
         "app.telegram.keyboards.settings.frontend_webapp_url",
@@ -321,7 +334,7 @@ async def test_exchange_keyboards_are_backend_driven() -> None:
 
     assert [button.text for button in sell_kb.inline_keyboard[0]] == [
         "🇷🇺 RUB",
-        "₮ USDT",
+        "🐛 USDT",
         "🇹🇭 THB",
     ]
     assert home_kb.inline_keyboard[0][0].callback_data == "fsm:cancel"

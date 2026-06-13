@@ -15,6 +15,12 @@ _CURRENCY_LABELS = {
     "GEL": "🇬🇪 GEL",
     "VND": "🇻🇳 VND",
 }
+_CURRENCY_RATE_EMOJIS = {
+    "USDT": "💰",
+}
+_CURRENCY_BUTTON_LABELS = {
+    "USDT": "🐛 USDT",
+}
 
 
 def _resolve_translator(
@@ -28,7 +34,13 @@ def format_currency_label(currency: str) -> str:
     return _CURRENCY_LABELS.get(currency.upper(), currency.upper())
 
 
+def format_currency_button_label(currency: str) -> str:
+    return _CURRENCY_BUTTON_LABELS.get(currency.upper(), format_currency_label(currency))
+
+
 def _format_currency_emoji(currency: str) -> str:
+    if currency.upper() in _CURRENCY_RATE_EMOJIS:
+        return _CURRENCY_RATE_EMOJIS[currency.upper()]
     label = format_currency_label(currency)
     return label.split(maxsplit=1)[0]
 
@@ -185,7 +197,7 @@ def exchange_pair_rates(
     def _format_pair(pair: ExchangePairSnapshot) -> str:
         return (
             f"👉 {_format_currency_emoji(pair.currency_sell)} "
-            f"1 {pair.currency_sell} → {pair.rate_display} {pair.currency_buy} "
+            f"1 {pair.currency_sell} от {pair.rate_display} {pair.currency_buy} "
             f"{_format_currency_emoji(pair.currency_buy)}"
         )
 

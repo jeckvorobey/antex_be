@@ -25,7 +25,7 @@ exchange-choose-city = Выберите город
 
 menu-orders = 📋 Мои заявки
 menu-new-site-leads = 🆕 Новые заявки
-menu-rate-header = 💱 Курс сейчас:
+menu-rate-header = 🏦 Текущий курс:
 home-title =
     🏠 Главное меню
 
@@ -36,7 +36,7 @@ bot-turned-off = 🔴 Бот выключен.
 
 ## FSM — exchange flow
 exchange-step = Шаг { $current }/{ $total }
-exchange-choose-currency = <u>Что отдаёте?</u>
+exchange-choose-currency = Выберите валюту, которую хотите обменять.
 exchange-choose-buy-currency = Выберите, что хотите получить за { $currency }:
 exchange-enter-amount = Введите сумму, которую хотите обменять в { $currency }:
 exchange-amount-invalid = Укажите сумму числом, больше нуля.

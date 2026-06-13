@@ -552,6 +552,8 @@ async def fsm_back(callback: CallbackQuery, state: FSMContext) -> None:
         await _show_enter_amount_step(callback, state, edit=True)
     elif current_state == ExchangeState.entering_amount.state:
         await _show_currency_step(callback, state, edit=True)
+    elif current_state == ExchangeState.choosing_currency.state:
+        await _show_service_step(callback, state, edit=True)
     elif current_state == ExchangeState.choosing_service.state:
         await _show_start_welcome(callback, state, edit=True)
     elif current_state == ExchangeState.confirming.state:
@@ -561,7 +563,7 @@ async def fsm_back(callback: CallbackQuery, state: FSMContext) -> None:
 
 @router.callback_query(F.data == "fsm:cancel")
 async def fsm_cancel(callback: CallbackQuery, state: FSMContext) -> None:
-    await _show_country_step(callback, state, edit=True)
+    await _show_start_welcome(callback, state, edit=True)
     await callback.answer()
 
 

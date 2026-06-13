@@ -6,7 +6,7 @@ from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup, WebAppInfo
 
 from app.core.config import settings
 from app.telegram.i18n import get_translator
-from app.telegram.messages import format_currency_label
+from app.telegram.messages import format_currency_button_label
 
 
 def _resolve_translator(translator=None):
@@ -207,16 +207,22 @@ def choose_currency(_, currencies: list[str], **kwargs) -> InlineKeyboardMarkup:
         inline_keyboard=[
             [
                 InlineKeyboardButton(
-                    text=format_currency_label(currency),
+                    text=format_currency_button_label(currency),
                     callback_data=f"exchange:currency:{currency}",
                 )
                 for currency in currencies
             ],
             [
                 InlineKeyboardButton(
+                    text=translate("btn-back"),
+                    callback_data="fsm:back",
+                    style="primary",
+                ),
+                InlineKeyboardButton(
                     text=translate("btn-cancel"),
                     callback_data="fsm:cancel",
-                )
+                    style="danger",
+                ),
             ],
         ]
     )

@@ -24,7 +24,7 @@ exchange-choose-service =
 exchange-choose-city = Choose a city
 menu-orders = 📋 My orders
 menu-new-site-leads = 🆕 New requests
-menu-rate-header = 💱 Current rate from:
+menu-rate-header = 🏦 Current rate:
 home-title =
     🏠 Main menu
 
@@ -35,7 +35,7 @@ bot-turned-off = 🔴 Bot disabled.
 
 ## FSM — exchange flow
 exchange-step = Step { $current }/{ $total }
-exchange-choose-currency = What do you send?
+exchange-choose-currency = Choose the currency you want to exchange.
 exchange-choose-buy-currency = Choose what you want to receive for { $currency }:
 exchange-enter-amount = Enter the amount you want to exchange in { $currency }:
 exchange-amount-invalid = Enter an amount greater than zero.
