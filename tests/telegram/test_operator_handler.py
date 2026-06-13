@@ -128,9 +128,34 @@ async def test_operator_open_chat_handler_is_no_longer_used(monkeypatch) -> None
     assert callback.message.edits == []
 
 
-async def test_operator_cancel_marks_order_cancelled(monkeypatch) -> None:
+async def test_operator_cancel_requests_confirmation(monkeypatch) -> None:
     fake_db = _FakeDbSession()
     callback = _FakeCallback("op:cancel:9")
+
+    async def _fake_get_db():
+        return fake_db
+
+    async def _fake_check_user(db, tg_user):
+        return SimpleNamespace(role=2), False
+
+    monkeypatch.setattr(operator_handler, "_get_db", _fake_get_db)
+    monkeypatch.setattr(operator_handler, "check_user", _fake_check_user)
+
+    await operator_handler.operator_cancel(callback)
+
+    assert callback.answers[-1] == {
+        "text": None,
+        "show_alert": False,
+        "url": None,
+    }
+    markup = callback.message.edits[0]["reply_markup"]
+    assert markup.inline_keyboard[0][0].callback_data == "op:cancel_confirm:9"
+    assert markup.inline_keyboard[1][0].callback_data == "op:cancel_keep:9"
+
+
+async def test_operator_cancel_confirm_marks_order_cancelled(monkeypatch) -> None:
+    fake_db = _FakeDbSession()
+    callback = _FakeCallback("op:cancel_confirm:9")
     updated_order = SimpleNamespace(
         id=9,
         publicNumber="2026050002",
@@ -158,12 +183,53 @@ async def test_operator_cancel_marks_order_cancelled(monkeypatch) -> None:
     monkeypatch.setattr(operator_handler, "check_user", _fake_check_user)
     monkeypatch.setattr(operator_handler, "update_order_status", _fake_update_order_status)
 
-    await operator_handler.operator_cancel(callback)
+    await operator_handler.operator_cancel_confirm(callback)
 
     assert callback.answers[-1] == {"text": "Заявка отменена", "show_alert": True, "url": None}
     assert callback.message.edits[0]["reply_markup"].inline_keyboard[0][0].url == "https://t.me/customer"
     assert "Заявка #2026050002" in callback.message.edits[0]["text"]
     assert "Статус: Отменена" in callback.message.edits[0]["text"]
+
+
+async def test_operator_cancel_keep_restores_processing_keyboard(monkeypatch) -> None:
+    fake_db = _FakeDbSession()
+    callback = _FakeCallback("op:cancel_keep:9")
+    order = SimpleNamespace(
+        id=9,
+        publicNumber="2026050002",
+        status=int(OrderStatus.PROCESSING),
+        user=SimpleNamespace(username="customer", telegram_id=700002),
+        currencySell="USDT",
+        amountSell=1500,
+    )
+
+    async def _fake_get_db():
+        return fake_db
+
+    async def _fake_check_user(db, tg_user):
+        return SimpleNamespace(role=2), False
+
+    class _FakeOrderRepository:
+        def __init__(self, session) -> None:
+            self.session = session
+
+        async def get_one(self, order_id: int):
+            assert order_id == 9
+            return order
+
+    monkeypatch.setattr(operator_handler, "_get_db", _fake_get_db)
+    monkeypatch.setattr(operator_handler, "check_user", _fake_check_user)
+    monkeypatch.setattr(operator_handler, "OrderRepository", _FakeOrderRepository)
+
+    await operator_handler.operator_cancel_keep(callback)
+
+    assert callback.answers[-1] == {"text": None, "show_alert": False, "url": None}
+    markup = callback.message.edits[0]["reply_markup"]
+    assert markup.inline_keyboard[0][0].callback_data == "op:cancel:9"
+    assert markup.inline_keyboard[0][1].callback_data == "op:close:9"
+    chat_url = markup.inline_keyboard[1][0].url
+    assert chat_url is not None
+    assert chat_url.startswith("https://t.me/customer?text=")
 
 
 async def test_operator_close_marks_order_completed(monkeypatch) -> None:

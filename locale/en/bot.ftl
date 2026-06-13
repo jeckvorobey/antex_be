@@ -104,4 +104,4 @@ order-completed-top = 🎉 Order #{ $id } completed successfully.
 order-completed-bottom = Thanks for using our service! If you have a minute, we’d love your review.
 order-cancelled = ❌ Order #{ $id } cancelled.
 manager-chat-open-text = Hello! You had left order #{ $id } for exchanging { $amount } { $currency }. Are you ready to continue?
-user-chat-open-text = Hi! I left order #{ $id }. I’m ready to exchange.
+user-chat-open-text = Hello! For order #{ $id } in the amount of { $amount } { $currency }, I confirm I’m ready to exchange.

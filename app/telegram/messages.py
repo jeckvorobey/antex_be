@@ -277,11 +277,18 @@ def manager_chat_open_text(
 def user_chat_open_text(
     *,
     order_id: int | str,
+    amount_sell: int | float,
+    currency_sell: str,
     translator: Translate | None = None,
     locale: str | None = None,
 ) -> str:
     translate = cast(Any, _resolve_translator(translator, locale))
-    return translate("user-chat-open-text", id=order_id)
+    return translate(
+        "user-chat-open-text",
+        id=order_id,
+        amount=_format_number(amount_sell),
+        currency=currency_sell,
+    )
 
 
 def exchange_rate(sell_rate: float, buy_rate: float) -> str:

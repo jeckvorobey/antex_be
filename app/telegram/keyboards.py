@@ -475,6 +475,40 @@ def manager_order_close(
     )
 
 
+def manager_order_cancel_confirm(
+    _=None,
+    *,
+    order_id: int | None = None,
+    **kwargs,
+) -> InlineKeyboardMarkup:
+    del kwargs
+    if order_id is None and isinstance(_, int):
+        order_id = _
+        _ = None
+    if order_id is None:
+        raise ValueError("order_id is required")
+
+    translate = _resolve_translator(_)
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(
+                    text=translate("btn-confirm-cancel-order"),
+                    callback_data=f"op:cancel_confirm:{order_id}",
+                    style="danger",
+                ),
+            ],
+            [
+                InlineKeyboardButton(
+                    text=translate("btn-keep-order"),
+                    callback_data=f"op:cancel_keep:{order_id}",
+                    style="primary",
+                ),
+            ],
+        ]
+    )
+
+
 def manager_order_chat_only(
     _=None,
     *,
@@ -528,7 +562,14 @@ def review_link(_, url: str, **kwargs) -> InlineKeyboardMarkup:
                     url=url,
                     style="success",
                 )
-            ]
+            ],
+            [
+                InlineKeyboardButton(
+                    text=translate("btn-home"),
+                    callback_data="fsm:cancel",
+                    style="primary",
+                )
+            ],
         ]
     )
 

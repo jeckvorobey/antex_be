@@ -412,6 +412,8 @@ async def test_manager_order_keyboards_use_new_callbacks() -> None:
     assert close_order.inline_keyboard[1][0].url == "https://t.me/customer"
     assert review.inline_keyboard[0][0].url == "https://example.com/review"
     assert review.inline_keyboard[0][0].style == "success"
+    assert review.inline_keyboard[1][0].callback_data == "fsm:cancel"
+    assert review.inline_keyboard[1][0].style == "primary"
 
 
 async def test_chat_buttons_open_direct_chat_with_prepared_text() -> None:
@@ -429,7 +431,7 @@ async def test_chat_buttons_open_direct_chat_with_prepared_text() -> None:
     user_btn = user_order_write_manager(
         translator,
         chat_url="https://t.me/manager",
-        message_text="Привет! Я оставил заявку #367383776. Готов к обмену.",
+        message_text="Здравствуйте! По заявке #367383776 на сумму 5,000 RUB подтверждаю готовность к обмену.",
     )
 
     manager_url = manager_btn.inline_keyboard[1][0].url
@@ -440,7 +442,10 @@ async def test_chat_buttons_open_direct_chat_with_prepared_text() -> None:
     manager_qs = parse_qs(urlparse(manager_url).query)
     user_qs = parse_qs(urlparse(user_url).query)
     assert manager_qs["text"][0].startswith("Здравствуйте! Вы оставляли заявку #2006877777")
-    assert user_qs["text"][0] == "Привет! Я оставил заявку #367383776. Готов к обмену."
+    assert (
+        user_qs["text"][0]
+        == "Здравствуйте! По заявке #367383776 на сумму 5,000 RUB подтверждаю готовность к обмену."
+    )
 
 
 def test_chat_button_keeps_plain_tg_user_link_without_username() -> None:
@@ -449,7 +454,7 @@ def test_chat_button_keeps_plain_tg_user_link_without_username() -> None:
     user_btn = user_order_write_manager(
         translator,
         chat_url="tg://user?id=700002",
-        message_text="Привет! Я оставил заявку #367383776. Готов к обмену.",
+        message_text="Здравствуйте! По заявке #367383776 на сумму 5,000 RUB подтверждаю готовность к обмену.",
     )
 
     assert user_btn.inline_keyboard[0][0].url == "tg://user?id=700002"

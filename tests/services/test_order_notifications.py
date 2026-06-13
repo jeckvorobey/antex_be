@@ -241,6 +241,8 @@ async def test_notify_order_status_changed_adds_summary_for_completed_order(
     assert "Спасибо, что воспользовались нашим сервисом!" in text
     reply_markup = cast(Any, bot.edited[0]["reply_markup"])
     assert reply_markup.inline_keyboard[0][0].text == "⭐ Оставить отзыв"
+    assert reply_markup.inline_keyboard[1][0].text == "🏠 Главное меню"
+    assert reply_markup.inline_keyboard[1][0].callback_data == "fsm:cancel"
 
 
 @pytest.mark.asyncio
@@ -252,6 +254,8 @@ async def test_notify_order_status_changed_adds_write_manager_button_for_process
         id=8,
         publicNumber="2026050008",
         status=2,
+        amountSell=5000,
+        currencySell="RUB",
         user=SimpleNamespace(
             telegram_id=700002,
             username="customer",
@@ -283,7 +287,7 @@ async def test_notify_order_status_changed_adds_write_manager_button_for_process
     assert "принята в работу" in bot.edited[0]["text"]
     reply_markup = cast(Any, bot.edited[0]["reply_markup"])
     user_text = str(user_button["message_text"]).replace("\u2068", "").replace("\u2069", "")
-    assert user_text.startswith("Привет! Я оставил заявку #2026050008")
+    assert user_text == "Здравствуйте! По заявке #2026050008 на сумму 5,000 RUB подтверждаю готовность к обмену."
     assert reply_markup.inline_keyboard[0][0].text == "💬 Написать в чат"
     assert reply_markup.inline_keyboard[0][0].url == "https://t.me/share/url"
 

@@ -108,6 +108,8 @@ async def notify_order_status_changed(order, *, manager_chat_url: str | None = N
             chat_url=manager_chat_url,
             message_text=messages.user_chat_open_text(
                 order_id=order.publicNumber,
+                amount_sell=getattr(order, "amountSell", 0) or 0,
+                currency_sell=getattr(order, "currencySell", "—"),
                 translator=None,
                 locale="ru",
             ),
