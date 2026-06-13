@@ -604,7 +604,7 @@ async def confirm_exchange_callback(callback: CallbackQuery, state: FSMContext) 
             city_id = data.get("city_id")
             if city_id is None and data["method"] == "cash":
                 city_id = getattr(user, "city_id", None)
-            order = await create_order_for_user(
+            await create_order_for_user(
                 db,
                 user,
                 MiniappOrderCreate(
@@ -637,14 +637,7 @@ async def confirm_exchange_callback(callback: CallbackQuery, state: FSMContext) 
 
     await state.clear()
     await state.set_state(ExchangeState.choosing_country)
-    await _safe_edit_text(
-        callback.message,
-        messages.order_created(
-            getattr(order, "publicNumber", order.id),
-            translator=translate,
-        ),
-        reply_markup=choose_country(translate),
-    )
+    await _safe_delete_message(callback.message)
     await callback.answer()
 
 

@@ -120,6 +120,30 @@ def back_to_main_menu(_, **kwargs) -> InlineKeyboardMarkup:
     )
 
 
+def order_created_actions(_, **kwargs) -> InlineKeyboardMarkup:
+    """Кнопки после создания заявки."""
+    del kwargs
+    translate = _resolve_translator(_)
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(
+                    text=translate("menu-orders"),
+                    callback_data="menu:orders",
+                    style="primary",
+                )
+            ],
+            [
+                InlineKeyboardButton(
+                    text=translate("btn-home"),
+                    callback_data="fsm:cancel",
+                    style="primary",
+                )
+            ],
+        ]
+    )
+
+
 def choose_service(_, **kwargs) -> InlineKeyboardMarkup:
     """FSM шаг выбора услуги."""
     del kwargs

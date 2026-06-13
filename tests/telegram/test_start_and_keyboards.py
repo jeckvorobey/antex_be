@@ -22,6 +22,7 @@ from app.telegram.keyboards import (
     manager_order_close,
     manager_order_open_chat,
     obtaining,
+    order_created_actions,
     review_link,
 )
 
@@ -373,6 +374,12 @@ async def test_exchange_keyboards_are_backend_driven() -> None:
     assert confirm_kb.inline_keyboard[0][1].style == "primary"
     assert confirm_kb.inline_keyboard[1][0].style == "danger"
     assert confirm_kb.inline_keyboard[1][0].callback_data == "fsm:cancel"
+
+    created_kb = order_created_actions(translator)
+    assert [button.callback_data for button in created_kb.inline_keyboard[0]] == ["menu:orders"]
+    assert created_kb.inline_keyboard[0][0].style == "primary"
+    assert created_kb.inline_keyboard[1][0].callback_data == "fsm:cancel"
+    assert created_kb.inline_keyboard[1][0].style == "primary"
 
 
 async def test_manager_order_keyboards_use_new_callbacks() -> None:

@@ -568,7 +568,8 @@ async def test_confirm_exchange_creates_order_with_default_qrcode(monkeypatch) -
 
     assert state.cleared is True
     assert fake_db.committed is False
-    assert len(callback.message.edits) == 1
+    assert len(callback.message.edits) == 0
+    assert callback.message.deletes == [{"message_id": callback.message.message_id}]
     assert callback.answers[-1] == {"text": None, "show_alert": False}
 
 

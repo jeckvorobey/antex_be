@@ -121,7 +121,7 @@ async def test_notify_order_created_sends_user_message_with_order_payload(
     monkeypatch.setattr(
         order_notifications,
         "get_translator",
-        lambda _: (lambda key, **kwargs: key),
+        lambda _: lambda key, **kwargs: key,
     )
     monkeypatch.setattr(
         order_notifications,
@@ -134,6 +134,8 @@ async def test_notify_order_created_sends_user_message_with_order_payload(
     assert len(bot.sent) == 2
     assert bot.sent[0]["chat_id"] == 700002
     assert "Мы получили ваш запрос" in bot.sent[0]["text"]
+    assert bot.sent[0]["reply_markup"].inline_keyboard[0][0].callback_data == "menu:orders"
+    assert bot.sent[0]["reply_markup"].inline_keyboard[1][0].callback_data == "fsm:cancel"
     assert "💱 Направление: USDT → THB" in bot.sent[1]["text"]
     assert "💸 Сумма к обмену: 100 USDT" in bot.sent[1]["text"]
 

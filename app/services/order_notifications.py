@@ -14,6 +14,7 @@ from app.telegram import messages
 from app.telegram.i18n import get_translator, get_user_translator
 from app.telegram.keyboards import (
     manager_order_open_chat,
+    order_created_actions,
     review_link,
     user_order_write_manager,
 )
@@ -21,6 +22,7 @@ from app.telegram.keyboards import (
 logger = logging.getLogger(__name__)
 
 REVIEW_URL = "https://t.me/+Rw2BRymXRnk1ZGUy"
+
 
 async def send_or_replace_user_status_message(
     *,
@@ -69,7 +71,7 @@ async def notify_order_created(order, user, manager) -> None:
             chat_id=user.telegram_id,
             order=order,
             text=messages.order_created(order.publicNumber, translator=translate),
-            reply_markup=None,
+            reply_markup=order_created_actions(translate),
         )
 
     if manager is not None and getattr(manager, "telegram_id", None):
