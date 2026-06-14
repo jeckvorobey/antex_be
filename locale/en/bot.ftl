@@ -17,10 +17,10 @@ exchange-choose-country = Choose a country
 exchange-choose-service =
     <b>💠 Choose the service you need</b>
 
-    🚕 <i>Cash delivery</i> — we’ll deliver cash to a place convenient for you.
-    🏧 <i>Cash by QR</i> — withdraw cash from an ATM using a QR code.
-    💳 <i>Transfer</i> — we’ll send funds to a local bank account.
-    🧰 <i>Service payments</i> — we’ll help pay for the services you need.
+    🚕 <u><i>Cash delivery</i></u> — we’ll deliver cash to a place convenient for you.
+    🏧 <u><i>Cash by QR</i></u> — withdraw cash from an ATM using a QR code.
+    💳 <u><i>Transfer</i></u> — we’ll send funds to a local bank account.
+    🧰 <u><i>Service payments</i></u> — we’ll help pay for the services you need.
 exchange-choose-city = Choose a cash-delivery city
 menu-orders = 📋 My orders
 menu-new-site-leads = 🆕 New requests
@@ -57,7 +57,7 @@ btn-cancel = ❌ Cancel
 btn-back = ◀ Back
 btn-service-cash-delivery = 🚕 Cash delivery
 btn-service-cash-atm = 🏧 Cash by QR
-btn-service-bank-account = 💳 Local bank account transfer
+btn-service-bank-account = 💳 Transfer
 btn-service-pay-services = 🧰 Service payments
 btn-edit = ✏️ Edit
 btn-home-red = 🔴 Back to start

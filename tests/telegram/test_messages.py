@@ -116,10 +116,10 @@ def test_choose_service_prompt_lists_service_options() -> None:
     text = messages.choose_service_prompt("thailand", locale="ru")
 
     assert "<b>💠 Выберите подходящую услугу</b>" in text
-    assert "🚕 <i>Доставка наличных</i>" in text
-    assert "🏧 <i>Наличные по QR</i>" in text
-    assert "💳 <i>Перевод</i>" in text
-    assert "🧰 <i>Оплата сервисов</i>" in text
+    assert "🚕 <u><i>Доставка наличных</i></u>" in text
+    assert "🏧 <u><i>Наличные по QR</i></u>" in text
+    assert "💳 <u><i>Перевод</i></u>" in text
+    assert "🧰 <u><i>Оплата сервисов</i></u>" in text
 
 
 def test_choose_city_prompt_mentions_cash_delivery() -> None:
