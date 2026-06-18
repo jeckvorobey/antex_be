@@ -11,6 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.config import settings
 from app.core.database import get_db_session
 from app.core.security import decode_access_token
+from app.models.admin import Admin
 from app.models.user import User
 from app.repositories.admin import AdminRepository
 from app.repositories.user import UserRepository
@@ -60,7 +61,7 @@ async def get_miniapp_user(
 async def get_admin(
     db: DbDep,
     authorization: Annotated[str | None, Header()] = None,
-) -> object:
+) -> Admin:
     if not authorization or not authorization.startswith("Bearer "):
         raise HTTPException(status_code=401, detail="Not authenticated")
     token = authorization.removeprefix("Bearer ")
@@ -82,4 +83,4 @@ async def get_admin(
 
 CurrentUser = Annotated[User, Depends(get_current_user)]
 MiniappUser = Annotated[User, Depends(get_miniapp_user)]
-AdminUser = Annotated[object, Depends(get_admin)]
+AdminUser = Annotated[Admin, Depends(get_admin)]

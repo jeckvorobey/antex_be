@@ -22,5 +22,9 @@ async def seed_admin(db: AsyncSession) -> None:
         return
 
     password_hash = hashlib.sha256(DEFAULT_PASSWORD.encode()).hexdigest()
-    await repo.create(username=DEFAULT_USERNAME, password_hash=password_hash)
+    await repo.create(
+        username=DEFAULT_USERNAME,
+        email="admin@example.com",
+        password_hash=password_hash,
+    )
     logger.info("Created default admin")

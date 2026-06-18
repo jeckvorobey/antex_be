@@ -7,6 +7,17 @@ from datetime import datetime
 from pydantic import BaseModel, ConfigDict, Field
 
 
+class AdminCreate(BaseModel):
+    username: str = Field(min_length=3, max_length=255)
+    email: str = Field(min_length=3, max_length=255)
+    password: str = Field(min_length=8, max_length=255)
+
+
+class AdminPasswordUpdate(BaseModel):
+    admin_id: int = Field(alias="admin_id")
+    password: str = Field(min_length=8, max_length=255)
+
+
 class AdminLogin(BaseModel):
     username: str
     password: str
@@ -17,6 +28,7 @@ class AdminOut(BaseModel):
 
     id: int
     username: str
+    email: str | None
     created_at: datetime = Field(alias="createdAt")
     updated_at: datetime = Field(alias="updatedAt")
 
