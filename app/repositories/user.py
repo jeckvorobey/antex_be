@@ -8,7 +8,7 @@ from typing import ClassVar
 from sqlalchemy import select
 from sqlalchemy.orm import selectinload
 
-from app.enums.user import UserRole
+from app.enums.user import LEGACY_ADMIN_ROLE, UserRole
 from app.models.user import User
 from app.repositories.base import BaseRepository
 
@@ -71,13 +71,16 @@ class UserRepository(BaseRepository[User]):
 
     async def get_manager_by_city(self, city_id: int) -> User | None:
         result = await self.session.execute(
-            select(User).where(User.city_id == city_id, User.role == int(UserRole.MANAGER))
+            select(User).where(User.city_id == city_id, User.role.in_([int(UserRole.MANAGER), LEGACY_ADMIN_ROLE]))
         )
         return result.scalar_one_or_none()
 
     async def get_manager(self) -> User | None:
         result = await self.session.execute(
-            select(User).where(User.role == int(UserRole.MANAGER)).order_by(User.id.asc()).limit(1)
+            select(User)
+            .where(User.role.in_([int(UserRole.MANAGER), LEGACY_ADMIN_ROLE]))
+            .order_by(User.id.asc())
+            .limit(1)
         )
         return result.scalar_one_or_none()
 

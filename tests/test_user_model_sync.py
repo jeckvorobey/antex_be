@@ -239,14 +239,14 @@ def test_user_role_helpers_and_serializer() -> None:
     assert UserRole.USER == 9
     assert get_role_title(UserRole.USER) == "Пользователь"
     assert get_role_title(UserRole.MANAGER) == "Менеджер"
-    assert get_role_title(UserRole.ADMIN) == "Администратор"
+    assert get_role_title(1) == "Менеджер"
     assert get_role_title(8) == "Роль 8"
     assert has_operator_access(UserRole.USER) is False
     assert has_operator_access(8) is False
     assert has_operator_access(UserRole.MANAGER) is True
-    assert has_operator_access(UserRole.ADMIN) is True
-    assert has_admin_access(UserRole.MANAGER) is False
-    assert has_admin_access(UserRole.ADMIN) is True
+    assert has_operator_access(1) is True
+    assert has_admin_access(UserRole.MANAGER) is True
+    assert has_admin_access(1) is True
 
     fake_user = type("FakeUser", (), {})()
     fake_user.id = 1
@@ -270,6 +270,11 @@ def test_user_role_helpers_and_serializer() -> None:
     assert user_out.role == 9
     assert user_out.role_name == "Пользователь"
     assert user_out.language_code_app == "ru"
+
+    setattr(fake_user, "role", 1)
+    legacy_manager_out = build_user_out(fake_user)
+    assert legacy_manager_out.role == 2
+    assert legacy_manager_out.role_name == "Менеджер"
     assert user_out.photo_url == "https://t.me/i/userpic/320/user.jpg"
     assert user_out.phone == "+79991234567"
     assert user_out.trusted_contact == "user"
