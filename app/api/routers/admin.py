@@ -23,7 +23,10 @@ from app.repositories.rate import RateRepository
 from app.repositories.site_lead import SiteLeadRepository
 from app.repositories.user import UserRepository
 from app.schemas.admin import (
+    AdminCreate,
     AdminLogin,
+    AdminOut,
+    AdminPasswordUpdate,
     AdminSummaryOut,
     AdminSummaryRateOut,
     AdminTokenResponse,
@@ -38,6 +41,10 @@ from app.services.exchange import ExchangeService
 from app.services.order_status import update_order_status as apply_order_status
 
 router = APIRouter(prefix="/api/admin", tags=["admin"])
+
+
+def build_password_hash(password: str) -> str:
+    return hashlib.sha256(password.encode()).hexdigest()
 
 
 def get_today_start_for_timezone(
@@ -61,7 +68,7 @@ def get_today_start_for_timezone(
 async def admin_login(body: AdminLogin, db: DbDep) -> AdminTokenResponse:
     repo = AdminRepository(db)
     admin = await repo.get_by_username(body.username)
-    password_hash = hashlib.sha256(body.password.encode()).hexdigest()
+    password_hash = build_password_hash(body.password)
     if not admin or admin.password_hash != password_hash:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid credentials")
 
@@ -91,6 +98,61 @@ async def admin_refresh(_: DbDep, admin: AdminUser) -> AdminTokenResponse:
 
 @router.post("/logout")
 async def admin_logout(_: AdminUser) -> dict[str, bool]:
+    return {"ok": True}
+
+
+@router.get("/list", response_model=list[AdminOut])
+async def list_admins(db: DbDep, _: AdminUser) -> list[AdminOut]:
+    return [AdminOut.model_validate(admin) for admin in await AdminRepository(db).get_all()]
+
+
+@router.post("/add", response_model=AdminOut, status_code=status.HTTP_201_CREATED)
+async def create_admin(body: AdminCreate, db: DbDep, _: AdminUser) -> AdminOut:
+    repo = AdminRepository(db)
+    if await repo.get_by_username(body.username):
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Username already exists")
+    if await repo.get_by_email(body.email):
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Email already exists")
+
+    admin = await repo.create(
+        username=body.username,
+        email=body.email,
+        password_hash=build_password_hash(body.password),
+    )
+    await db.commit()
+    return AdminOut.model_validate(admin)
+
+
+@router.put("/password")
+async def update_admin_password(
+    body: AdminPasswordUpdate,
+    db: DbDep,
+    _: AdminUser,
+) -> dict[str, bool]:
+    repo = AdminRepository(db)
+    admin = await repo.get_by_id(body.admin_id)
+    if not admin:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Admin not found")
+
+    await repo.update(admin, password_hash=build_password_hash(body.password))
+    await db.commit()
+    return {"ok": True}
+
+
+@router.delete("/delete/{admin_id}")
+async def delete_admin(admin_id: int, db: DbDep, current_admin: AdminUser) -> dict[str, bool]:
+    repo = AdminRepository(db)
+    admin = await repo.get_by_id(admin_id)
+    if not admin:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Admin not found")
+    if current_admin.id == admin_id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="You cannot delete yourself",
+        )
+
+    await repo.delete(admin)
+    await db.commit()
     return {"ok": True}
 
 
