@@ -5,9 +5,9 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
 
-from app.enums.user import get_role_title
+from app.enums.user import get_role_title, is_assignable_user_role, normalize_user_role
 from app.schemas.auth import build_trusted_contact
 from app.schemas.city import CityOut
 
@@ -39,6 +39,15 @@ class UserUpdate(BaseModel):
     role: int | None = None
     city_id: int | None = None
 
+    @field_validator("role")
+    @classmethod
+    def validate_role(cls, value: int | None) -> int | None:
+        if value is None:
+            return None
+        if not is_assignable_user_role(value):
+            raise ValueError("Only user and manager roles are allowed")
+        return normalize_user_role(value)
+
 
 def build_user_out(user) -> UserOut:
     from app.schemas.city import build_city_out
@@ -55,7 +64,7 @@ def build_user_out(user) -> UserOut:
         language_code_app=user.language_code_app or "ru",
         photo_url=user.photo_url,
         is_bot=user.is_bot,
-        role=user.role,
+        role=normalize_user_role(user.role),
         role_name=get_role_title(user.role),
         is_premium=user.is_premium,
         city_id=user.city_id,

@@ -94,3 +94,29 @@ async def test_admin_cannot_assign_second_global_manager(
 
     assert response.status_code == 409
     assert response.json()["detail"] == "Manager is already assigned"
+
+
+@pytest.mark.asyncio
+async def test_admin_cannot_assign_removed_admin_role(
+    admin_users_api_client: tuple[AsyncClient, AsyncSession],
+) -> None:
+    client, db_session = admin_users_api_client
+    admin = Admin(username="admin", password_hash="unused")
+    user = User(
+        telegram_id=700003,
+        username="legacyadmin",
+        first_name="Legacy",
+        role=int(UserRole.USER),
+    )
+    db_session.add_all([admin, user])
+    await db_session.flush()
+    token = create_access_token({"sub": str(admin.id), "type": "admin"})
+
+    response = await client.patch(
+        f"/api/admin/users/{user.id}",
+        headers={"Authorization": f"Bearer {token}"},
+        json={"role": 1},
+    )
+
+    assert response.status_code == 422
+    assert response.json()["detail"][0]["msg"] == "Value error, Only user and manager roles are allowed"
