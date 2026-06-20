@@ -16,11 +16,7 @@ Translator = Callable[[str], str]
 
 
 def normalize_locale(locale: str | None) -> str:
-    supported = {
-        item.strip()
-        for item in settings.app_locale_supported.split(",")
-        if item.strip()
-    }
+    supported = {item.strip() for item in settings.app_locale_supported.split(",") if item.strip()}
     if not locale:
         return settings.app_locale_default
 

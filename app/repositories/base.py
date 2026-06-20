@@ -1,4 +1,5 @@
 """Базовый репозиторий."""
+# ruff: noqa: UP046
 
 from __future__ import annotations
 
@@ -13,16 +14,18 @@ ModelT = TypeVar("ModelT", bound=Base)
 
 
 class BaseRepository(Generic[ModelT]):
+    """Общий CRUD-репозиторий."""
+
     model: type[ModelT]
 
     def __init__(self, session: AsyncSession) -> None:
         self.session = session
 
-    async def get_by_id(self, pk: Any) -> ModelT | None:
-        return await self.session.get(self.model, pk)
+    async def get_by_id(self, obj_id: Any) -> ModelT | None:
+        return await self.session.get(self.model, obj_id)
 
     async def get_all(self) -> list[ModelT]:
-        result = await self.session.execute(select(self.model))
+        result = await self.session.execute(select(self.model).order_by(self.model.id))
         return list(result.scalars().all())
 
     async def create(self, **kwargs: Any) -> ModelT:

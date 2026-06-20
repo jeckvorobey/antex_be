@@ -2,24 +2,66 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
-from collections.abc import AsyncGenerator
+from collections.abc import AsyncGenerator, Awaitable, Callable
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
-from slowapi import _rate_limit_exceeded_handler
-from slowapi.errors import RateLimitExceeded
+from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.routers import admin, auth, banks, cards, exchange, miniapp, public, telegram, users
+from app.api.routers import (
+    admin,
+    auth,
+    broadcasts,
+    miniapp,
+    orders,
+    public,
+    telegram,
+    users,
+)
 from app.core.config import settings
-from app.core.rate_limit import limiter
 from app.core.security_headers import SecurityHeadersMiddleware
 from app.exceptions import AntExException
 
 logging.basicConfig(level=settings.log_level.upper())
 logger = logging.getLogger(__name__)
+
+
+async def _initialize_rates_if_needed(
+    db: AsyncSession,
+    *,
+    fetch_rates: Callable[[AsyncSession], Awaitable[dict[str, float]]] | None = None,
+) -> bool:
+    """Заполняет курсы на старте только если таблица rates пуста."""
+    from app.repositories.rate import RateRepository
+    from app.services.rate_fetcher import fetch_and_save_rates
+
+    if await RateRepository(db).has_any():
+        logger.info("Курсы уже есть в БД, стартовый парсинг пропущен")
+        return False
+
+    rates = await (fetch_rates or fetch_and_save_rates)(db)
+    logger.info("Стартовая инициализация курсов выполнена: %s", rates)
+    return True
+
+
+async def _rate_updater_loop() -> None:
+    """Фоновая задача: периодически обновляет курсы из CurrencyBeacon."""
+    from app.core.database import async_session
+    from app.services.rate_fetcher import fetch_and_save_rates
+
+    while True:
+        await asyncio.sleep(settings.rate_cache_ttl_seconds)
+        try:
+            async with async_session() as db:
+                rates = await fetch_and_save_rates(db)
+            logger.info("Курсы обновлены: %s", rates)
+        except Exception:
+            ttl = settings.rate_cache_ttl_seconds
+            logger.exception("Ошибка обновления курсов, повтор через %ds", ttl)
 
 
 @asynccontextmanager
@@ -30,6 +72,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator:
     if settings.telegram_bot_token:
         from app.telegram import bot as telegram_bot
 
+        logger.info("Starting Telegram bot in %s mode", settings.telegram_mode)
         await telegram_bot.init_bot()
         if settings.telegram_mode == "polling":
             await telegram_bot.start_polling()
@@ -39,9 +82,24 @@ async def lifespan(app: FastAPI) -> AsyncGenerator:
     else:
         logger.warning("TELEGRAM_BOT_TOKEN is not configured, Telegram bot startup skipped")
 
+    from app.modules.broadcasts.runner import recover_stale_broadcasts_on_startup
+
+    await recover_stale_broadcasts_on_startup()
+
+    from app.core.database import async_session
+
+    try:
+        async with async_session() as db:
+            await _initialize_rates_if_needed(db)
+    except Exception:
+        logger.exception("Ошибка стартовой инициализации курсов")
+
+    rate_task = asyncio.create_task(_rate_updater_loop())
+
     try:
         yield
     finally:
+        rate_task.cancel()
         logger.info("Shutting down AntEx...")
         if bot_started:
             from app.telegram import bot as telegram_bot
@@ -59,10 +117,6 @@ app = FastAPI(
     docs_url="/docs" if settings.app_env != "production" else None,
     redoc_url="/redoc" if settings.app_env != "production" else None,
 )
-
-# Rate limiting
-app.state.limiter = limiter
-app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
 # Security headers
 app.add_middleware(
@@ -92,11 +146,10 @@ async def antex_exception_handler(request: Request, exc: AntExException) -> JSON
 # Routers
 app.include_router(auth.router)
 app.include_router(users.router)
-app.include_router(exchange.router)
+app.include_router(orders.router)
 app.include_router(miniapp.router)
-app.include_router(cards.router)
-app.include_router(banks.router)
 app.include_router(admin.router)
+app.include_router(broadcasts.router)
 app.include_router(public.router)
 app.include_router(telegram.router)
 

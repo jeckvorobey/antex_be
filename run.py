@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# ruff: noqa: RUF001,RUF002
 """
 Точка входа для запуска AntEx backend.
 
@@ -14,6 +15,7 @@ import os
 import signal
 import subprocess
 import sys
+from contextlib import suppress
 from pathlib import Path
 from typing import Any
 
@@ -31,11 +33,16 @@ except ImportError:
 
 def _build_uvicorn_command(config: dict[str, Any]) -> list[str]:
     cmd = [
-        sys.executable, "-m", "uvicorn",
+        sys.executable,
+        "-m",
+        "uvicorn",
         config["app"],
-        "--host", config["host"],
-        "--port", str(config["port"]),
-        "--log-level", config["log_level"],
+        "--host",
+        config["host"],
+        "--port",
+        str(config["port"]),
+        "--log-level",
+        config["log_level"],
     ]
     if config["reload"]:
         cmd.append("--reload")
@@ -86,10 +93,8 @@ def _terminate_process_tree(proc: subprocess.Popen[str], timeout: float = 10.0) 
         if os.name == "nt":
             proc.kill()
         else:
-            try:
+            with suppress(ProcessLookupError):
                 os.killpg(proc.pid, signal.SIGKILL)
-            except ProcessLookupError:
-                pass
 
 
 def main() -> None:

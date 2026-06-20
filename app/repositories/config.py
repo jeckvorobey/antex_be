@@ -24,3 +24,9 @@ class ConfigRepository(BaseRepository[Config]):
         config.enabled = not config.enabled
         await self.session.flush()
         return config
+
+    async def set_enabled(self, enabled: bool) -> Config:
+        config = await self.get_or_create()
+        config.enabled = enabled
+        await self.session.flush()
+        return config

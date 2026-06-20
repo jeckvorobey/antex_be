@@ -1,4 +1,5 @@
-"""Обработчики оператора."""
+"""Обработчики менеджера для жизненного цикла заявки."""
+# ruff: noqa: RUF001
 
 from __future__ import annotations
 
@@ -7,64 +8,165 @@ import logging
 from aiogram import F, Router
 from aiogram.types import CallbackQuery
 
-from app.core.database import get_db_session
-from app.enums.user import UserRole
+from app.core.database import create_db_session
+from app.enums.order import OrderStatus
+from app.enums.user import has_operator_access
 from app.repositories.order import OrderRepository
+from app.services.order_notifications import build_chat_url_for_user, build_manager_status_text
+from app.services.order_status import update_order_status
 from app.telegram import messages
-from app.telegram.services.notification_service import notify_user
+from app.telegram.keyboards import (
+    manager_order_cancel_confirm,
+    manager_order_chat_only,
+    manager_order_close,
+    manager_order_open_chat,
+)
 from app.telegram.services.user_service import check_user
 
 logger = logging.getLogger(__name__)
 router = Router(name="operator")
 
 
-@router.callback_query(F.data.startswith("op:confirm:"))
-async def operator_confirm(callback: CallbackQuery) -> None:
+async def _get_db():
+    return create_db_session()
+
+
+def _manager_chat_draft_text(order) -> str:
+    return messages.manager_chat_open_text(
+        order_id=order.publicNumber,
+        amount_sell=getattr(order, "amountSell", 0) or 0,
+        currency_sell=getattr(order, "currencySell", "—"),
+        translator=None,
+        locale="ru",
+    )
+
+
+def _build_active_order_markup(order):
+    if int(getattr(order, "status", 0)) == int(OrderStatus.PROCESSING):
+        chat_url = build_chat_url_for_user(getattr(order, "user", None))
+        if not chat_url:
+            return manager_order_open_chat(order_id=order.id)
+        return manager_order_close(
+            order_id=order.id,
+            chat_url=chat_url,
+            message_text=_manager_chat_draft_text(order),
+        )
+
+    return manager_order_open_chat(order_id=order.id)
+
+
+@router.callback_query(F.data.startswith("op:take:"))
+async def operator_take(callback: CallbackQuery) -> None:
     order_id = int(callback.data.split(":")[2])  # type: ignore[union-attr]
-    db_gen = get_db_session()
-    db = await db_gen.__anext__()
+    db = await _get_db()
     async with db:
         user, _ = await check_user(db, callback.from_user)
-        if user.role < UserRole.OPERATOR:
+        if not has_operator_access(user.role):
             await callback.answer("Нет прав", show_alert=True)
             return
 
-        repo = OrderRepository(db)
-        order = await repo.get_one(order_id)
-        if not order:
-            await callback.answer("Заявка не найдена", show_alert=True)
+        order = await update_order_status(db, order_id=order_id, status=OrderStatus.PROCESSING)
+        chat_url = build_chat_url_for_user(getattr(order, "user", None))
+        if not chat_url:
+            await callback.answer("У пользователя нет Telegram-ссылки", show_alert=True)
             return
-        await repo.update_status(order_id, 2)
-        await db.commit()
 
-    await notify_user(callback.bot, order.UserId, messages.order_confirmed(order_id))
-    await callback.answer("✅ Подтверждено")
     await callback.message.edit_text(  # type: ignore[union-attr]
-        callback.message.text + "\n\n✅ <b>Подтверждено</b>"  # type: ignore[operator]
+        build_manager_status_text(order),
+        reply_markup=manager_order_close(
+            order_id=order.id,
+            chat_url=chat_url,
+            message_text=_manager_chat_draft_text(order),
+        ),
     )
+    await callback.answer()
 
 
 @router.callback_query(F.data.startswith("op:cancel:"))
 async def operator_cancel(callback: CallbackQuery) -> None:
     order_id = int(callback.data.split(":")[2])  # type: ignore[union-attr]
-    db_gen = get_db_session()
-    db = await db_gen.__anext__()
+    db = await _get_db()
     async with db:
         user, _ = await check_user(db, callback.from_user)
-        if user.role < UserRole.OPERATOR:
+        if not has_operator_access(user.role):
             await callback.answer("Нет прав", show_alert=True)
             return
 
-        repo = OrderRepository(db)
-        order = await repo.get_one(order_id)
-        if not order:
+    await callback.message.edit_reply_markup(  # type: ignore[union-attr]
+        reply_markup=manager_order_cancel_confirm(order_id=order_id)
+    )
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("op:cancel_confirm:"))
+async def operator_cancel_confirm(callback: CallbackQuery) -> None:
+    order_id = int(callback.data.split(":")[2])  # type: ignore[union-attr]
+    db = await _get_db()
+    async with db:
+        user, _ = await check_user(db, callback.from_user)
+        if not has_operator_access(user.role):
+            await callback.answer("Нет прав", show_alert=True)
+            return
+
+        order = await update_order_status(db, order_id=order_id, status=OrderStatus.CANCELLED)
+        chat_url = build_chat_url_for_user(getattr(order, "user", None))
+
+    reply_markup = None
+    if chat_url:
+        reply_markup = manager_order_chat_only(chat_url=chat_url)
+
+    await callback.message.edit_text(  # type: ignore[union-attr]
+        build_manager_status_text(order),
+        reply_markup=reply_markup,
+    )
+    await callback.answer("Заявка отменена", show_alert=True)
+
+
+@router.callback_query(F.data.startswith("op:cancel_keep:"))
+async def operator_cancel_keep(callback: CallbackQuery) -> None:
+    order_id = int(callback.data.split(":")[2])  # type: ignore[union-attr]
+    db = await _get_db()
+    async with db:
+        user, _ = await check_user(db, callback.from_user)
+        if not has_operator_access(user.role):
+            await callback.answer("Нет прав", show_alert=True)
+            return
+
+        order = await OrderRepository(db).get_one(order_id)
+        if order is None:
             await callback.answer("Заявка не найдена", show_alert=True)
             return
-        await repo.cancel(order_id)
-        await db.commit()
 
-    await notify_user(callback.bot, order.UserId, messages.order_cancelled(order_id))
-    await callback.answer("❌ Отменено")
-    await callback.message.edit_text(  # type: ignore[union-attr]
-        callback.message.text + "\n\n❌ <b>Отменено</b>"  # type: ignore[operator]
+    await callback.message.edit_reply_markup(  # type: ignore[union-attr]
+        reply_markup=_build_active_order_markup(order)
     )
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("op:open_chat:"))
+async def operator_open_chat(callback: CallbackQuery) -> None:
+    await callback.answer("Кнопка чата устарела", show_alert=True)
+
+
+@router.callback_query(F.data.startswith("op:close:"))
+async def operator_close(callback: CallbackQuery) -> None:
+    order_id = int(callback.data.split(":")[2])  # type: ignore[union-attr]
+    db = await _get_db()
+    async with db:
+        user, _ = await check_user(db, callback.from_user)
+        if not has_operator_access(user.role):
+            await callback.answer("Нет прав", show_alert=True)
+            return
+
+        order = await update_order_status(db, order_id=order_id, status=OrderStatus.COMPLETED)
+        chat_url = build_chat_url_for_user(getattr(order, "user", None))
+
+    reply_markup = None
+    if chat_url:
+        reply_markup = manager_order_chat_only(chat_url=chat_url)
+
+    await callback.message.edit_text(  # type: ignore[union-attr]
+        build_manager_status_text(order),
+        reply_markup=reply_markup,
+    )
+    await callback.answer()

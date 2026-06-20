@@ -13,13 +13,23 @@ import jwt
 from app.core.config import settings
 
 
+def _get_jwt_secret() -> str:
+    if not settings.jwt_secret:
+        raise RuntimeError("JWT_SECRET is not configured")
+    return settings.jwt_secret
+
+
 def create_access_token(data: dict[str, Any], ttl: int | None = None) -> str:
     expire = time.time() + (ttl or settings.jwt_ttl_seconds)
-    return jwt.encode({**data, "exp": expire}, settings.jwt_secret, algorithm=settings.jwt_algorithm)
+    return jwt.encode(
+        {**data, "exp": expire},
+        _get_jwt_secret(),
+        algorithm=settings.jwt_algorithm,
+    )
 
 
 def decode_access_token(token: str) -> dict[str, Any]:
-    return jwt.decode(token, settings.jwt_secret, algorithms=[settings.jwt_algorithm])
+    return jwt.decode(token, _get_jwt_secret(), algorithms=[settings.jwt_algorithm])
 
 
 def validate_telegram_init_data(init_data: str) -> dict[str, Any] | None:
@@ -41,9 +51,7 @@ def validate_telegram_init_data(init_data: str) -> dict[str, Any] | None:
     secret_key = hmac.new(
         b"WebAppData", settings.telegram_bot_token.encode(), hashlib.sha256
     ).digest()
-    computed_hash = hmac.new(
-        secret_key, data_check_string.encode(), hashlib.sha256
-    ).hexdigest()
+    computed_hash = hmac.new(secret_key, data_check_string.encode(), hashlib.sha256).hexdigest()
 
     if not hmac.compare_digest(computed_hash, received_hash):
         return None

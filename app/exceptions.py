@@ -5,7 +5,7 @@ from __future__ import annotations
 from typing import Any
 
 
-class AntExException(Exception):
+class AntExError(Exception):
     def __init__(
         self,
         message: str,
@@ -18,3 +18,6 @@ class AntExException(Exception):
         self.status_code = status_code
         self.params = params or {}
         super().__init__(message)
+
+
+AntExException = AntExError

@@ -93,6 +93,7 @@ async def init_bot() -> tuple[Bot, Dispatcher]:
     global bot, dp
 
     if bot is not None and dp is not None:
+        logger.info("Telegram bot is already initialized")
         return bot, dp
 
     if not settings.telegram_bot_token:
@@ -100,6 +101,11 @@ async def init_bot() -> tuple[Bot, Dispatcher]:
 
     bot = _create_bot()
     dp = _create_dispatcher()
+    logger.info(
+        "Telegram bot initialized: mode=%s, proxy=%s",
+        settings.telegram_mode,
+        bool(settings.proxy),
+    )
     return bot, dp
 
 
@@ -109,14 +115,17 @@ async def start_polling() -> None:
     if bot is None or dp is None:
         raise RuntimeError("Telegram bot is not initialized")
     if polling_task is not None and not polling_task.done():
+        logger.info("Telegram polling already running")
         return
 
+    logger.info("Deleting Telegram webhook before polling start")
     await bot.delete_webhook(drop_pending_updates=False)
     polling_task = asyncio.create_task(
         _run_polling_with_retry(),
         name="telegram-polling",
     )
     polling_task.add_done_callback(_log_polling_task_result)
+    logger.info("Telegram polling task created")
 
 
 async def _run_polling_with_retry() -> None:
@@ -127,14 +136,18 @@ async def _run_polling_with_retry() -> None:
 
     while True:
         try:
+            allowed_updates = dp.resolve_used_update_types()
+            logger.info("Telegram polling loop started: allowed_updates=%s", allowed_updates)
             await dp.start_polling(
                 bot,
-                allowed_updates=dp.resolve_used_update_types(),
+                allowed_updates=allowed_updates,
                 handle_signals=False,
                 close_bot_session=False,
             )
+            logger.info("Telegram polling loop stopped")
             return
         except asyncio.CancelledError:
+            logger.info("Telegram polling loop cancelled")
             raise
         except (TelegramNetworkError, ClientError, OSError) as exc:
             logger.warning("Telegram polling connection failed: %s", exc)
@@ -149,10 +162,12 @@ async def start_webhook() -> None:
     if not settings.telegram_webhook_url:
         raise ValueError("TELEGRAM_WEBHOOK_URL is not configured")
 
+    logger.info("Setting Telegram webhook: url=%s", settings.telegram_webhook_url)
     await bot.set_webhook(
         url=settings.telegram_webhook_url,
         secret_token=settings.telegram_webhook_secret,
     )
+    logger.info("Telegram webhook set")
 
 
 async def stop_bot() -> None:
@@ -176,9 +191,6 @@ async def stop_bot() -> None:
             pass
         except Exception:
             logger.warning("Telegram polling task had already failed before shutdown")
-
-    if settings.telegram_mode == "webhook" and bot is not None:
-        await bot.delete_webhook()
 
     if bot is not None and bot.session is not None:
         await bot.session.close()

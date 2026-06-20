@@ -1,49 +1,133 @@
 ## Main menu
-welcome = 👋 Привет, { $name }!
-menu-exchange = 💱 Новый обмен
+welcome =
+    👋 { $name }, привет!
+
+    Помогу быстро создать заявку на обмен без лишних шагов.
+    Нажмите «Новый обмен», чтобы начать.
+
+exchange-start-welcome =
+    👋 Привет, { $name }!
+
+    <b>AntEx</b> — это сервис, который помогает <u>быстро обменять деньги</u> и оплатить необходимые услуги без лишних усилий.
+
+    📝 Чтобы оставить заявку, откройте приложение или выберите страну в списке ниже.
+
+    ☝️ Мы будем сопровождать вас на каждом этапе.
+exchange-choose-country = Выберите страну
+exchange-choose-service =
+    <b>💠 Выберите подходящую услугу</b>
+
+    🚕 <u><i>Доставка наличных</i></u> — доставим денежные средства в удобное для вас место.
+    🏧 <u><i>Наличные по QR</i></u> — получите наличные через банкомат.
+    💳 <u><i>Перевод</i></u> — переведём средства на местный банковский счёт.
+    🧰 <u><i>Оплата сервисов</i></u> — поможем оплатить необходимые услуги.
+exchange-choose-city = Выберите город доставки наличных
+
 menu-orders = 📋 Мои заявки
-menu-rate-info =
-    📊 Текущий курс:
-    • 1 RUB = { $rub_rate } THB
-    • 1 USDT = { $usdt_rate } THB
-    🕐 Обновлено: { $updated_at }
-home-title = 🏠 Главное меню
+menu-new-site-leads = 🆕 Новые заявки
+menu-rate-header = 🏦 Текущий курс:
+home-title =
+    🏠 Главное меню
+
+    Выберите, что хотите сделать:
 bot-disabled = ⚠️ Бот временно недоступен. Попробуйте позже.
 bot-turned-on = ✅ Бот включён.
 bot-turned-off = 🔴 Бот выключен.
 
 ## FSM — exchange flow
-exchange-step = Шаг { $current } из { $total }
-exchange-choose-currency = Выберите валюту для обмена:
-exchange-enter-amount = Введите сумму в { $currency }:
-exchange-amount-invalid = ❌ Неверная сумма. Введите число больше 0.
-exchange-choose-method = Как вы хотите получить { $currency }?
+exchange-step = Шаг { $current }/{ $total }
+exchange-choose-currency = Выберите валюту, которую хотите обменять.
+exchange-choose-buy-currency = Выберите, что хотите получить за { $currency }:
+exchange-enter-amount = <b>Введите сумму, которую хотите обменять в { $currency }:</b>
+exchange-amount-invalid = Укажите сумму числом, больше нуля.
+exchange-choose-method = Выберите способ получения { $currency }:
 exchange-rate-unavailable = ⚠️ Курс временно недоступен. Попробуйте позже.
-exchange-confirm-summary =
-    📋 Подтверждение заявки — шаг { $current }/{ $total }
-
-    Вы отправляете: { $amount } { $from_currency }
-    Вы получаете:   { $result } { $to_currency }
-    Способ:         { $method }
+exchange-confirm-summary-top = 📋 Проверьте заявку — шаг { $current }/{ $total }
+exchange-confirm-summary-bottom = Если всё верно, нажмите «Подтвердить».
+exchange-summary-country = Страна
+exchange-summary-city = Город
+exchange-summary-rate = Курс
+exchange-summary-sell = Отдаёте
+exchange-summary-buy = Получаете
+exchange-summary-method = Способ получения
+manager-summary-user = Пользователь
 
 ## Buttons
 btn-confirm = ✅ Подтвердить
 btn-cancel = ❌ Отменить
 btn-back = ◀ Назад
+btn-service-cash-delivery = 🚕 Доставка наличных
+btn-service-cash-atm = 🏧 Наличные по QR
+btn-service-bank-account = 💳 Перевод
+btn-service-pay-services = 🧰 Оплата сервисов
+btn-edit = ✏️ Редактировать
+btn-home-red = 🔴 Вернуться в начало
 btn-home = 🏠 Главное меню
-btn-qr = 📱 QR-код
+btn-qr = 📱 По QR-коду
 btn-transfer = 🏦 Перевод
 btn-cash = 💵 Наличные
-btn-rub-thb = 🇷🇺 RUB → THB
-btn-usdt-thb = 💎 USDT → THB
+btn-wallet = 👛 Кошелёк
+btn-card = 💳 Карта
+btn-cancel-order = ❌ Отменить
+btn-confirm-cancel-order = ❌ Подтвердить отмену
+btn-keep-order = ✅ Оставить
+btn-take-order = ✅ В работу
+btn-open-chat = 💬 Написать в чат
+btn-write-manager = 💬 Написать менеджеру
+btn-close-order = ✅ Закрыть заявку
+btn-leave-review = ⭐ Оставить отзыв
+menu-open-site = 🚀 Открыть приложение
 
 ## Orders
 orders-header = 📋 Ваши заявки:
 orders-empty = 📭 У вас пока нет заявок.
 orders-item = #{ $id }: { $amount_sell } { $currency_sell } → { $amount_buy } { $currency_buy }
+orders-item-rate-label = Курс
+orders-item-method-label = Способ получения
+orders-item-status-created = Новая
+orders-item-status-processing = В работе
+orders-item-status-completed = Завершена
+orders-item-status-cancelled = Отменена
+orders-item-method-cash = Доставка наличных
+orders-item-method-qrcode = Наличные по QR
+orders-item-method-bank-account = Перевод на счёт в местном банке
+orders-item-method-pay-services = Оплата сервисов
+
+## Manager
+manager-new-orders-header = 🆕 Новые заявки на обмен:
+manager-new-orders-empty = 📭 Новых заявок на обмен нет.
+manager-access-denied = Недостаточно прав.
 
 ## Order statuses
-order-created = ✅ Заявка #{ $id } создана! Ожидайте подтверждения.
-order-confirmed = ✅ Заявка #{ $id } подтверждена оператором.
+order-created =
+    ✅ Заявка №{ $id } создана.
+
+    ⏳ Мы получили ваш запрос и уже начали обработку.
+
+    Пожалуйста, ожидайте подтверждения. Статус заявки будет обновлён автоматически.
+order-creation-failed = Не удалось создать заявку. Попробуйте ещё раз через минуту.
+order-creation-limit-reached = У вас уже слишком много активных заявок. Дождитесь обработки текущих или завершите их.
+order-confirmed =
+    ✅ Заявка #{ $id } принята в работу.
+
+    👨‍💼 Менеджер уже занимается вашим обменом.
+
+    💬 Для связи используйте кнопку «Написать в чат».
+order-completed =
+    ✅ Заявка #{ $id } завершена.
+
+    💱 Направление: { $direction }
+    💸 Сумма: { $amount } { $currency }
+
+    📍 { $city }
+
+    🏁 Обмен успешно выполнен
+order-completed-top =
+    🎉 Заявка #{ $id } успешно завершена.
+order-completed-bottom =
+    Спасибо, что воспользовались нашим сервисом!
+
+    ⭐ Если у вас есть пара минут, будем рады вашему отзыву. Это помогает нам становиться лучше.
 order-cancelled = ❌ Заявка #{ $id } отменена.
-order-completed = 🎉 Заявка #{ $id } завершена. Спасибо!
+manager-chat-open-text = Здравствуйте! Вы оставляли заявку #{ $id } на обмен { $amount } { $currency }. Готовы продолжить?
+user-chat-open-text = Здравствуйте! По заявке #{ $id } на сумму { $amount } { $currency } подтверждаю готовность к обмену.

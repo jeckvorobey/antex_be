@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from typing import Literal
 
+from pydantic import model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -43,12 +44,40 @@ class Settings(BaseSettings):
     telegram_webhook_secret: str | None = None
     telegram_init_data_ttl_seconds: int = 86400
     admin_id: int | None = None
+    dev_user_id: int | None = None
 
     @property
     def telegram_webhook_url(self) -> str | None:
         if self.telegram_webhook_host:
             return f"{self.telegram_webhook_host}{self.telegram_webhook_path}"
         return None
+
+    @model_validator(mode="after")
+    def validate_runtime_config(self) -> Settings:
+        if self.app_env == "production" and not self._has_value(self.jwt_secret):
+            raise ValueError("JWT_SECRET is required when APP_ENV=production")
+
+        if self.telegram_mode == "webhook":
+            if not self._has_value(self.telegram_bot_token):
+                raise ValueError("TELEGRAM_BOT_TOKEN is required when TELEGRAM_MODE=webhook")
+            if not self._has_value(self.telegram_webhook_host):
+                raise ValueError("TELEGRAM_WEBHOOK_HOST is required when TELEGRAM_MODE=webhook")
+
+        if (
+            self.app_env == "production"
+            and self.telegram_mode == "webhook"
+            and not self._has_value(self.telegram_webhook_secret)
+        ):
+            raise ValueError(
+                "TELEGRAM_WEBHOOK_SECRET is required when APP_ENV=production "
+                "and TELEGRAM_MODE=webhook"
+            )
+
+        return self
+
+    @staticmethod
+    def _has_value(value: str | None) -> bool:
+        return value is not None and value.strip() != ""
 
     # Mini App
     frontend_webapp_url: str | None = None
@@ -64,18 +93,14 @@ class Settings(BaseSettings):
     operator_chat_id: int | None = None
 
     # Exchange / Rate
-    reducing_factor: float = 0.6
-    default_allowance: float = 0.02
-    rate_cache_ttl_seconds: int = 1800
-
-    # CoinGecko
-    coingecko_api_key: str | None = None
+    rate_cache_ttl_seconds: int = 86400
+    currencybeacon_api_key: str | None = None
 
     # Review channel
     review_channel_id: int | None = None
 
     # Timezone
-    timezone: str = "Asia/Bangkok"
+    timezone: str = "UTC"
 
     # i18n
     app_locale_default: str = "ru"

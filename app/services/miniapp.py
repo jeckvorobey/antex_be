@@ -1,374 +1,318 @@
+# ruff: noqa: RUF001, RUF002
 """Сервисы miniapp API."""
 
 from __future__ import annotations
 
-from datetime import UTC, datetime
-
-from sqlalchemy.ext.asyncio import AsyncSession
-
-from app.enums.order import MethodGet, OrderStatus
-from app.exceptions import AntExException
-from app.models.user import User
-from app.repositories.bank import BankRepository
+from app.repositories.city import CityRepository
 from app.repositories.order import OrderRepository
+from app.repositories.user import UserRepository
+from app.schemas.city import build_city_out
 from app.schemas.miniapp import (
-    MiniappBankSummary,
     MiniappBanner,
     MiniappCalculatorState,
+    MiniappCitiesResponse,
+    MiniappCountryFilterItem,
     MiniappExchangeScreenResponse,
     MiniappHomeResponse,
     MiniappLocationItem,
     MiniappMenuItem,
-    MiniappOrderCreate,
-    MiniappOrderItem,
     MiniappOrdersResponse,
-    MiniappProfileResponse,
-    MiniappProfileSummary,
+    MiniappProfileScreenResponse,
     MiniappQuickAction,
     MiniappQuoteResponse,
     MiniappRateCard,
+    MiniappRatesResponse,
     MiniappRatesSection,
     MiniappServiceItem,
+    build_miniapp_order_item,
+    build_miniapp_profile_summary,
+)
+from app.schemas.rate import build_rate_out
+from app.services.exchange import (
+    COUNTRY_CURRENCY,
+    COUNTRY_PRIORITY,
+    HOME_RATE_PREVIEW_LIMIT,
+    ExchangePairSnapshot,
+    ExchangeQuote,
+    ExchangeQuoteInput,
+    ExchangeService,
+)
+from app.services.order_notifications import build_chat_url_for_user
+
+DEFAULT_AMOUNT_SELL = 5000
+DEFAULT_PAIR = ("RUB", "THB")
+HOME_RATE_PRIORITY = (
+    "rub-thb",
+    "usdt-thb",
+    "rub-vnd",
+    "usdt-vnd",
+    "rub-gel",
+    "usdt-gel",
 )
 
-QUOTE_METHODS = [MethodGet.CASH, MethodGet.QR, MethodGet.RS]
-HOME_SERVICE_ITEMS = [
-    MiniappServiceItem(
-        id="exchange",
-        title="Обмен валют",
-        subtitle="RUB / USDT — местная валюта",
-        icon="mdi-swap-horizontal",
-    ),
-    MiniappServiceItem(
-        id="payments",
-        title="Оплата сервисов",
-        subtitle="Airbnb, аренда, счета",
-        icon="mdi-wallet-outline",
-    ),
-    MiniappServiceItem(
-        id="cash",
-        title="Наличные THB",
-        subtitle="Выдача в удобной точке",
-        icon="mdi-cash",
-    ),
-    MiniappServiceItem(
-        id="support",
-        title="Поддержка 24/7",
-        subtitle="Отвечаем прямо в Telegram",
-        icon="mdi-message-text-outline",
-    ),
-]
-HOME_LOCATIONS = [
-    MiniappLocationItem(
-        id="bang-tao",
-        city="Bang Tao",
-        hours="13:00 - 23:30",
-        accent="ocean",
-    ),
-    MiniappLocationItem(
-        id="rawai",
-        city="Rawai",
-        hours="12:00 - 17:00",
-        accent="gold",
-    ),
-]
+
+async def list_miniapp_cities(db) -> MiniappCitiesResponse:
+    """Возвращает список городов для miniapp."""
+    cities = await CityRepository(db).get_all()
+    return MiniappCitiesResponse(items=[build_city_out(city) for city in cities])
 
 
-def build_profile_summary(user: User) -> MiniappProfileSummary:
-    """Строит компактное представление пользователя для miniapp."""
-    full_name = " ".join(part for part in [user.first_name, user.last_name] if part).strip()
-    return MiniappProfileSummary(
-        id=user.id,
-        displayName=full_name or user.username or f"User {user.id}",
-        username=user.username,
-        isPremium=user.is_premium,
-        languageCode=(user.language_code or "ru").split("-", 1)[0],
+async def list_miniapp_rates(db) -> MiniappRatesResponse:
+    """Возвращает пользовательские итоговые курсы для обратной совместимости miniapp."""
+    rates = await ExchangeService().load_rates(db)
+    return MiniappRatesResponse(items=[build_rate_out(rate) for rate in rates])
+
+
+async def list_miniapp_orders(
+    db,
+    user_id: int,
+    limit: int = 10,
+    offset: int = 0,
+) -> MiniappOrdersResponse:
+    """Возвращает историю заявок текущего пользователя miniapp."""
+    repository = OrderRepository(db)
+    total = await repository.count_user_orders(user_id)
+    orders = await repository.get_user_orders(user_id, limit=limit, offset=offset)
+    return MiniappOrdersResponse(
+        items=[build_miniapp_order_item(order) for order in orders],
+        limit=limit,
+        offset=offset,
+        total=total,
+        hasMore=offset + len(orders) < total,
     )
 
 
-def _now() -> datetime:
-    return datetime.now(UTC)
+async def get_miniapp_home(db, user) -> MiniappHomeResponse:
+    """Собирает backend-driven данные главного экрана miniapp."""
+    exchange_service = ExchangeService()
+    rates = await exchange_service.load_rates(db)
+    cities = await CityRepository(db).get_all()
+    snapshots = exchange_service.build_pair_snapshots(rates)
+    featured = _build_home_rate_cards(snapshots)
 
-
-def _format_rate_text(rate: float, sell: str, buy: str) -> str:
-    if sell == "RUB" and buy == "THB":
-        return f"{rate:.1f} ฿ за 1 ₽"
-    if sell == "USDT" and buy == "THB":
-        return f"{rate:.1f} ฿ за 1 USDT"
-    if sell == "RUB" and buy == "USDT":
-        return f"{rate:.4f} USDT за 1 ₽"
-    return f"{rate:.4f} {buy} за 1 {sell}"
-
-
-def resolve_pair_rate(snapshot: dict[str, float], currency_sell: str, currency_buy: str) -> float:
-    """Возвращает курс для поддерживаемой валютной пары miniapp."""
-    currency_sell = currency_sell.upper()
-    currency_buy = currency_buy.upper()
-
-    if currency_sell == "RUB" and currency_buy == "THB":
-        return snapshot["RUBTHB"]
-    if currency_sell == "USDT" and currency_buy == "THB":
-        return snapshot["USDTTHB"]
-    if currency_sell == "RUB" and currency_buy == "USDT":
-        usdtrub = snapshot["USDTRUB"]
-        if usdtrub <= 0:
-            return 0.0
-        return 1 / usdtrub
-
-    raise AntExException(
-        "Unsupported currency pair",
-        code="UNSUPPORTED_PAIR",
-        status_code=400,
-        params={"currencySell": currency_sell, "currencyBuy": currency_buy},
-    )
-
-
-def calculate_quote(
-    snapshot: dict[str, float],
-    currency_sell: str,
-    currency_buy: str,
-    amount_sell: int,
-) -> MiniappQuoteResponse:
-    """Рассчитывает quote для miniapp и нормализует округление по парам."""
-    rate = resolve_pair_rate(snapshot, currency_sell, currency_buy)
-    if rate <= 0:
-        raise AntExException("Exchange rate unavailable", code="RATE_UNAVAILABLE", status_code=503)
-
-    if currency_sell == "RUB" and currency_buy == "USDT":
-        amount_buy: float = round(amount_sell * rate, 2)
-    else:
-        amount_buy = float(round(amount_sell * rate))
-
-    return MiniappQuoteResponse(
-        currencySell=currency_sell,
-        currencyBuy=currency_buy,
-        amountSell=amount_sell,
-        amountBuy=amount_buy,
-        rate=rate,
-        rateText=_format_rate_text(rate, currency_sell, currency_buy),
-        updatedAt=_now(),
-        availableMethods=QUOTE_METHODS,
-    )
-
-
-def build_rate_card(
-    *,
-    card_id: str,
-    currency_sell: str,
-    currency_buy: str,
-    amount_sell_example: int,
-    snapshot: dict[str, float],
-) -> MiniappRateCard:
-    """Готовит карточку курса из snapshot и примерной суммы продажи."""
-    quote = calculate_quote(snapshot, currency_sell, currency_buy, amount_sell_example)
-    return MiniappRateCard(
-        id=card_id,
-        label=f"{currency_sell} -> {currency_buy}",
-        fromCurrency=currency_sell,
-        toCurrency=currency_buy,
-        rate=quote.rate,
-        rateText=quote.rateText,
-        amountSellExample=amount_sell_example,
-        amountBuyExample=quote.amountBuy,
-        updatedAt=quote.updatedAt,
-    )
-
-
-def build_pairs(snapshot: dict[str, float]) -> list[MiniappRateCard]:
-    """Возвращает фиксированный список отображаемых валютных пар miniapp."""
-    return [
-        build_rate_card(
-            card_id="rub-thb",
-            currency_sell="RUB",
-            currency_buy="THB",
-            amount_sell_example=5000,
-            snapshot=snapshot,
-        ),
-        build_rate_card(
-            card_id="rub-usdt",
-            currency_sell="RUB",
-            currency_buy="USDT",
-            amount_sell_example=5000,
-            snapshot=snapshot,
-        ),
-        build_rate_card(
-            card_id="usdt-thb",
-            currency_sell="USDT",
-            currency_buy="THB",
-            amount_sell_example=150,
-            snapshot=snapshot,
-        ),
-    ]
-
-
-def build_home_response(user: User, snapshot: dict[str, float]) -> MiniappHomeResponse:
-    """Собирает backend-driven payload для главного экрана miniapp."""
-    updated_at = _now()
     return MiniappHomeResponse(
-        profile=build_profile_summary(user),
+        profile=build_miniapp_profile_summary(user),
         quickActions=[
             MiniappQuickAction(
                 id="exchange",
                 title="Обмен",
-                subtitle="Быстрый расчёт",
-                icon="mdi-swap-horizontal",
+                subtitle="Рассчитать заявку",
+                icon="currency_exchange",
                 route="/exchange",
-                tone="gold",
+                tone="primary",
             ),
             MiniappQuickAction(
                 id="history",
                 title="История",
-                subtitle="Мои заявки",
-                icon="mdi-history",
+                subtitle="Ваши заявки",
+                icon="history",
                 route="/history",
+                tone="neutral",
             ),
             MiniappQuickAction(
                 id="profile",
                 title="Профиль",
-                subtitle="Настройки",
-                icon="mdi-account-outline",
+                subtitle="Данные клиента",
+                icon="person_outline",
                 route="/profile",
+                tone="neutral",
             ),
             MiniappQuickAction(
                 id="support",
                 title="Поддержка",
-                subtitle="Поможем в чате",
-                icon="mdi-message-text-outline",
-                tone="muted",
+                subtitle="Связаться с нами",
+                icon="support_agent",
+                tone="neutral",
             ),
         ],
+        countries=[
+            MiniappCountryFilterItem(
+                id=country.value,
+                label=country.ru_name,
+                currency=COUNTRY_CURRENCY[country],
+                code=country.code,
+                flag=country.flag,
+            )
+            for country in COUNTRY_PRIORITY
+        ],
         rates=MiniappRatesSection(
-            featured=build_pairs(snapshot),
-            chips=["Все", "Текущие", "Точки"],
-            updatedAt=updated_at,
-            allowance=snapshot["allowance"],
+            featured=featured,
+            chips=exchange_service.build_home_chips(snapshots),
+            previewLimit=HOME_RATE_PREVIEW_LIMIT,
+            updatedAt=max((rate.updatedAt for rate in rates), default=None),
         ),
         banner=MiniappBanner(
             title="Приведи друга и получи бонус",
             actionLabel="Подробнее",
         ),
-        services=HOME_SERVICE_ITEMS,
-        locations=HOME_LOCATIONS,
+        services=[
+            MiniappServiceItem(
+                id="cash",
+                title="Доставка наличных",
+                subtitle="Получение в городе",
+                icon="payments",
+            ),
+            MiniappServiceItem(
+                id="qrcode",
+                title="Наличные по QR",
+                subtitle="Выдача без выбора города",
+                icon="qr_code_2",
+            ),
+            MiniappServiceItem(
+                id="bank_account",
+                title="Перевод на счёт",
+                subtitle="В местном банке",
+                icon="account_balance",
+            ),
+            MiniappServiceItem(
+                id="pay_services",
+                title="Оплата сервисов",
+                subtitle="Платежи по реквизитам",
+                icon="receipt_long",
+            ),
+        ],
+        locations=[
+            MiniappLocationItem(
+                id=str(city.id),
+                city=city.name,
+                country=city.country.value,
+                countryLabel=city.country.ru_name,
+                countryFlag=city.country.flag,
+                hours="Ежедневно",
+                accent="ocean" if index % 2 == 0 else "gold",
+            )
+            for index, city in enumerate(cities)
+        ],
     )
 
 
-def build_exchange_screen(snapshot: dict[str, float]) -> MiniappExchangeScreenResponse:
-    """Собирает экран обмена со стартовым калькулятором и доступными парами."""
-    default_quote = calculate_quote(snapshot, "RUB", "THB", 5000)
+async def get_miniapp_exchange(db) -> MiniappExchangeScreenResponse:
+    """Собирает начальное состояние экрана обмена miniapp."""
+    exchange_service = ExchangeService()
+    snapshots = await exchange_service.list_pair_snapshots(db)
+    featured = _build_rate_cards(snapshots)
+    quote = await calculate_miniapp_quote(
+        db,
+        DEFAULT_PAIR[0],
+        DEFAULT_PAIR[1],
+        DEFAULT_AMOUNT_SELL,
+    )
+
     return MiniappExchangeScreenResponse(
         calculator=MiniappCalculatorState(
-            fromCurrency="RUB",
-            toCurrency="THB",
-            amountSell=5000,
+            fromCurrency=DEFAULT_PAIR[0],
+            toCurrency=DEFAULT_PAIR[1],
+            amountSell=DEFAULT_AMOUNT_SELL,
         ),
-        chips=["RUB", "USDT"],
-        pairs=build_pairs(snapshot),
-        quote=default_quote,
+        chips=_build_currency_chips(featured),
+        pairs=featured,
+        quote=quote,
     )
 
 
-def build_order_item(order) -> MiniappOrderItem:
-    """Преобразует доменную заявку в DTO miniapp."""
-    bank = order.bank
-    if bank is None:
-        raise AntExException("Order bank is missing", code="BANK_NOT_FOUND", status_code=500)
-
-    return MiniappOrderItem(
-        id=order.id,
-        currencySell=order.currencySell,
-        amountSell=order.amountSell,
-        currencyBuy=order.currencyBuy,
-        amountBuy=order.amountBuy,
-        rate=order.rate,
-        status=order.status,
-        methodGet=order.methodGet,
-        contactTelegram=order.contactTelegram,
-        createdAt=order.createdAt,
-        bank=MiniappBankSummary(
-            id=bank.id,
-            code=bank.code,
-            name=bank.name,
+async def calculate_miniapp_quote(
+    db,
+    currency_sell: str,
+    currency_buy: str,
+    amount_sell: int,
+) -> MiniappQuoteResponse:
+    """Рассчитывает quote через единый exchange-domain."""
+    quote = await ExchangeService().get_quote(
+        db,
+        ExchangeQuoteInput(
+            currency_sell=currency_sell,
+            currency_buy=currency_buy,
+            amount_sell=amount_sell,
         ),
     )
+    return _build_quote_response(quote)
 
 
-def build_orders_response(orders: list) -> MiniappOrdersResponse:
-    """Собирает ответ истории заявок miniapp."""
-    return MiniappOrdersResponse(items=[build_order_item(order) for order in orders])
+async def get_miniapp_profile_screen(db, user) -> MiniappProfileScreenResponse:
+    """Возвращает профиль в формате, который ожидает текущий экран miniapp."""
+    manager = await UserRepository(db).get_manager()
+    manager_chat_url = build_chat_url_for_user(manager) if manager is not None else None
 
-
-def build_profile_response(user: User) -> MiniappProfileResponse:
-    """Возвращает профиль пользователя и меню вторичных действий."""
-    return MiniappProfileResponse(
-        user=build_profile_summary(user),
+    return MiniappProfileScreenResponse(
+        user=build_miniapp_profile_summary(user),
         menu=[
             MiniappMenuItem(
-                id="orders",
-                title="Мои заявки",
-                icon="mdi-file-document-outline",
+                id="history",
+                title="История операций",
+                icon="history",
                 action="route",
                 route="/history",
             ),
             MiniappMenuItem(
-                id="notifications",
-                title="Уведомления",
-                icon="mdi-bell-outline",
-                action="sheet",
-            ),
-            MiniappMenuItem(
-                id="about",
-                title="О сервисе",
-                icon="mdi-information-outline",
-                action="sheet",
-            ),
-            MiniappMenuItem(
                 id="support",
                 title="Поддержка",
-                icon="mdi-message-text-outline",
-                action="link",
-                href="https://t.me/antex_support",
+                icon="support_agent",
+                action="link" if manager_chat_url else "sheet",
+                href=manager_chat_url,
             ),
         ],
         version="1.0.0",
     )
 
 
-async def create_miniapp_order(
-    db: AsyncSession,
-    user: User,
-    body: MiniappOrderCreate,
-    snapshot: dict[str, float],
-) -> MiniappOrderItem:
-    """Создает miniapp-заявку с серверной валидацией и расчетом quote."""
-    order_repo = OrderRepository(db)
-    currency_sell = body.currencySell.upper()
-    currency_buy = body.currencyBuy.upper()
-
-    existing = await order_repo.check_open(user.id)
-    if existing:
-        raise AntExException(
-            "User already has an open order",
-            code="ORDER_ALREADY_EXISTS",
-            status_code=409,
+def _build_rate_cards(snapshots: list[ExchangePairSnapshot]) -> list[MiniappRateCard]:
+    """Преобразует доменные пары в карточки miniapp."""
+    return [
+        MiniappRateCard(
+            id=snapshot.pair_id,
+            label=snapshot.label,
+            country=snapshot.country.value,
+            countryLabel=snapshot.country.ru_name,
+            countryFlag=snapshot.country.flag,
+            fromCurrency=snapshot.currency_sell,
+            toCurrency=snapshot.currency_buy,
+            rate=snapshot.client_rate,
+            calculationRate=snapshot.calculation_rate,
+            rateDisplay=snapshot.rate_display,
+            rateText=snapshot.rate_text,
+            amountSellExample=snapshot.amount_sell_example,
+            amountBuyExample=snapshot.amount_buy_example,
+            updatedAt=snapshot.updated_at,
+            availableMethods=snapshot.available_methods,
         )
+        for snapshot in snapshots
+    ]
 
-    quote = calculate_quote(snapshot, currency_sell, currency_buy, body.amountSell)
 
-    bank = next(iter(await BankRepository(db).get_all()), None)
-    if bank is None:
-        raise AntExException("No bank available", code="BANK_NOT_FOUND", status_code=404)
-
-    created = await order_repo.create(
-        UserId=user.id,
-        BankId=bank.id,
-        currencySell=currency_sell,
-        amountSell=body.amountSell,
-        currencyBuy=currency_buy,
-        amountBuy=quote.amountBuy,
-        rate=quote.rate,
-        methodGet=body.methodGet or MethodGet.CASH,
-        status=OrderStatus.NEW,
-        contactTelegram=body.contactTelegram,
+def _build_home_rate_cards(snapshots: list[ExchangePairSnapshot]) -> list[MiniappRateCard]:
+    """Строит карточки курсов для главной с фиксированным порядком превью."""
+    cards = _build_rate_cards(snapshots)
+    priority = {pair_id: index for index, pair_id in enumerate(HOME_RATE_PRIORITY)}
+    return sorted(
+        cards,
+        key=lambda card: (
+            priority.get(card.id, len(priority)),
+            card.id,
+        ),
     )
-    await db.refresh(created, attribute_names=["bank"])
-    return build_order_item(created)
+
+
+def _build_currency_chips(cards: list[MiniappRateCard]) -> list[str]:
+    """Возвращает валюты, которые встречаются в карточках курсов."""
+    currencies: list[str] = []
+    seen: set[str] = set()
+    for card in cards:
+        for currency in (card.fromCurrency, card.toCurrency):
+            if currency not in seen:
+                seen.add(currency)
+                currencies.append(currency)
+    return currencies
+
+
+def _build_quote_response(quote: ExchangeQuote) -> MiniappQuoteResponse:
+    return MiniappQuoteResponse(
+        currencySell=quote.currency_sell,
+        currencyBuy=quote.currency_buy,
+        amountSell=quote.amount_sell,
+        amountBuy=quote.amount_buy,
+        rate=quote.rate,
+        rateDisplay=quote.rate_display,
+        rateText=quote.rate_text,
+        updatedAt=quote.updated_at,
+        availableMethods=quote.available_methods,
+    )

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from sqlalchemy import desc, select
+from sqlalchemy import desc, func, select
 from sqlalchemy.orm import selectinload
 
 from app.models.order import Order
@@ -20,10 +20,7 @@ class OrderRepository(BaseRepository[Order]):
             .where(Order.id == order_id, Order.destroyTime.is_(None))
             .options(
                 selectinload(Order.user),
-                selectinload(Order.bank),
-                selectinload(Order.card),
-                selectinload(Order.bank_account),
-                selectinload(Order.review),
+                selectinload(Order.city),
             )
         )
         return result.scalar_one_or_none()
@@ -37,6 +34,7 @@ class OrderRepository(BaseRepository[Order]):
 
     async def cancel(self, order_id: int) -> Order | None:
         from app.enums.order import OrderStatus
+
         return await self.update_status(order_id, OrderStatus.CANCELLED)
 
     async def soft_delete(self, order_id: int) -> Order | None:
@@ -56,26 +54,73 @@ class OrderRepository(BaseRepository[Order]):
         )
         return list(result.scalars().all())
 
-    async def check_open(self, user_id: int) -> Order | None:
+    async def list_for_admin(
+        self,
+        *,
+        date_from: datetime | None = None,
+        date_to: datetime | None = None,
+    ) -> list[Order]:
+        statement = (
+            select(Order)
+            .where(Order.destroyTime.is_(None))
+            .options(selectinload(Order.user), selectinload(Order.city))
+            .order_by(desc(Order.createdAt))
+        )
+        if date_from is not None:
+            statement = statement.where(Order.createdAt >= date_from)
+        if date_to is not None:
+            statement = statement.where(Order.createdAt <= date_to)
+
+        result = await self.session.execute(statement)
+        return list(result.scalars().all())
+
+    async def count_open(self, user_id: int) -> int:
         from app.enums.order import OrderStatus
+
         result = await self.session.execute(
-            select(Order).where(
+            select(func.count(Order.id)).where(
                 Order.UserId == user_id,
-                Order.status.in_([OrderStatus.NEW, OrderStatus.CONFIRMED, OrderStatus.PROCESSING]),
+                Order.status.in_([OrderStatus.CREATED, OrderStatus.PROCESSING]),
                 Order.destroyTime.is_(None),
             )
         )
-        return result.scalar_one_or_none()
+        return int(result.scalar_one())
 
-    async def get_user_orders(self, user_id: int, limit: int = 10) -> list[Order]:
+    async def count_user_orders(self, user_id: int) -> int:
+        result = await self.session.execute(
+            select(func.count(Order.id)).where(
+                Order.UserId == user_id,
+                Order.destroyTime.is_(None),
+            )
+        )
+        return int(result.scalar_one())
+
+    async def get_user_orders(self, user_id: int, limit: int = 10, offset: int = 0) -> list[Order]:
         result = await self.session.execute(
             select(Order)
             .where(Order.UserId == user_id, Order.destroyTime.is_(None))
-            .options(
-                selectinload(Order.bank),
-                selectinload(Order.card),
-            )
+            .options(selectinload(Order.city))
+            .order_by(desc(Order.createdAt))
+            .offset(offset)
+            .limit(limit)
+        )
+        return list(result.scalars().all())
+
+    async def list_by_status(self, status: int, *, limit: int = 10) -> list[Order]:
+        result = await self.session.execute(
+            select(Order)
+            .where(Order.status == int(status), Order.destroyTime.is_(None))
+            .options(selectinload(Order.user), selectinload(Order.city))
             .order_by(desc(Order.createdAt))
             .limit(limit)
+        )
+        return list(result.scalars().all())
+
+    async def list_all(self) -> list[Order]:
+        result = await self.session.execute(
+            select(Order)
+            .where(Order.destroyTime.is_(None))
+            .options(selectinload(Order.user), selectinload(Order.city))
+            .order_by(desc(Order.createdAt))
         )
         return list(result.scalars().all())

@@ -1,1 +1,1 @@
-"""Seed scripts."""
+"""Seed helpers."""

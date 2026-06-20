@@ -8,8 +8,10 @@ import jwt
 from fastapi import Depends, Header, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.config import settings
 from app.core.database import get_db_session
 from app.core.security import decode_access_token
+from app.models.admin import Admin
 from app.models.user import User
 from app.repositories.admin import AdminRepository
 from app.repositories.user import UserRepository
@@ -26,32 +28,49 @@ async def get_current_user(
     token = authorization.removeprefix("Bearer ")
     try:
         payload = decode_access_token(token)
-    except jwt.ExpiredSignatureError:
-        raise HTTPException(status_code=401, detail="Token expired")
-    except jwt.PyJWTError:
-        raise HTTPException(status_code=401, detail="Invalid token")
+    except jwt.ExpiredSignatureError as exc:
+        raise HTTPException(status_code=401, detail="Token expired") from exc
+    except jwt.PyJWTError as exc:
+        raise HTTPException(status_code=401, detail="Invalid token") from exc
 
     user_id = int(payload.get("sub", 0))
     repo = UserRepository(db)
-    user = await repo.get_by_id(user_id)
+    user = await repo.get_one(user_id)
     if not user:
         raise HTTPException(status_code=401, detail="User not found")
+    return user
+
+
+async def get_miniapp_user(
+    db: DbDep,
+    authorization: Annotated[str | None, Header()] = None,
+) -> User:
+    if authorization and authorization.startswith("Bearer "):
+        return await get_current_user(db, authorization)
+
+    if settings.app_env != "dev" or settings.dev_user_id is None:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+
+    user = await UserRepository(db).get_by_telegram_id(settings.dev_user_id)
+    if user is None:
+        raise HTTPException(status_code=401, detail="Dev user not found")
+
     return user
 
 
 async def get_admin(
     db: DbDep,
     authorization: Annotated[str | None, Header()] = None,
-) -> object:
+) -> Admin:
     if not authorization or not authorization.startswith("Bearer "):
         raise HTTPException(status_code=401, detail="Not authenticated")
     token = authorization.removeprefix("Bearer ")
     try:
         payload = decode_access_token(token)
-    except jwt.PyJWTError:
-        raise HTTPException(status_code=401, detail="Invalid token")
+    except jwt.PyJWTError as exc:
+        raise HTTPException(status_code=401, detail="Invalid token") from exc
 
-    if payload.get("type") != "admin":
+    if payload.get("type") not in {"admin", "admin_refresh"}:
         raise HTTPException(status_code=403, detail="Admin access required")
 
     admin_id = int(payload.get("sub", 0))
@@ -63,4 +82,5 @@ async def get_admin(
 
 
 CurrentUser = Annotated[User, Depends(get_current_user)]
-AdminUser = Annotated[object, Depends(get_admin)]
+MiniappUser = Annotated[User, Depends(get_miniapp_user)]
+AdminUser = Annotated[Admin, Depends(get_admin)]
