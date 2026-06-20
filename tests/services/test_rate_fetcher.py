@@ -2,10 +2,14 @@
 
 from __future__ import annotations
 
+from collections.abc import Iterator
+from contextlib import contextmanager
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import httpx
 import pytest
+from sqlalchemy import event
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import Settings, settings
 from app.services.rate_fetcher import fetch_and_save_rates, fetch_raw_rates
@@ -24,6 +28,29 @@ MOCK_CURRENCYBEACON_RESPONSE = {
         },
     },
 }
+
+
+@contextmanager
+def count_sql_statements(db_session: AsyncSession) -> Iterator[list[str]]:
+    statements: list[str] = []
+    bind = db_session.get_bind()
+
+    def before_cursor_execute(
+        conn,
+        cursor,
+        statement: str,
+        parameters,
+        context,
+        executemany: bool,
+    ) -> None:
+        del conn, cursor, parameters, context, executemany
+        statements.append(statement)
+
+    event.listen(bind, "before_cursor_execute", before_cursor_execute)
+    try:
+        yield statements
+    finally:
+        event.remove(bind, "before_cursor_execute", before_cursor_execute)
 
 
 @pytest.fixture
@@ -280,6 +307,24 @@ class TestFetchAndSaveRates:
         all_rates = await repo.get_all()
         currencies = [r.currency for r in all_rates]
         assert len(currencies) == len(set(currencies))
+
+    async def test_refresh_fetches_existing_rates_in_bulk(
+        self,
+        db_session,
+        mock_currencybeacon: AsyncMock,
+    ) -> None:
+        await fetch_and_save_rates(db_session)
+
+        with count_sql_statements(db_session) as statements:
+            await fetch_and_save_rates(db_session)
+
+        rate_selects = [
+            statement
+            for statement in statements
+            if statement.lstrip().upper().startswith("SELECT")
+            and ('FROM "RATES"' in statement.upper() or "FROM RATES" in statement.upper())
+        ]
+        assert len(rate_selects) == 1
 
     async def test_persistent_null_rub_keeps_existing_rub_rates(
         self,

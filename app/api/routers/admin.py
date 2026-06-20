@@ -282,11 +282,10 @@ async def list_orders(
 ) -> list[OrderOut]:
     repo = OrderRepository(db)
     if date_from and date_to:
-        orders = await repo.get_by_interval(date_from, date_to)
+        orders = await repo.list_for_admin(date_from=date_from, date_to=date_to)
     else:
-        orders = await repo.list_all()
-    hydrated = [await repo.get_one(order.id) for order in orders]
-    return [build_order_out(order) for order in hydrated if order is not None]
+        orders = await repo.list_for_admin()
+    return [build_order_out(order) for order in orders]
 
 
 @router.get("/orders/{order_id}", response_model=OrderOut)

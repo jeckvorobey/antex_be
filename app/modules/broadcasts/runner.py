@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+from collections.abc import AsyncIterable, Iterable
 from contextlib import suppress
 from html import escape
 from typing import Any
@@ -67,6 +68,18 @@ def normalize_text(text: str, text_format: str) -> str:
     if text_format == "html":
         return text
     return escape(text)
+
+
+async def _iter_recipients(
+    recipients: AsyncIterable[BroadcastRecipient] | Iterable[BroadcastRecipient],
+) -> AsyncIterable[BroadcastRecipient]:
+    if isinstance(recipients, AsyncIterable):
+        async for recipient in recipients:
+            yield recipient
+        return
+
+    for recipient in recipients:
+        yield recipient
 
 
 async def schedule_broadcast(*, broadcast_id: int) -> None:
@@ -183,9 +196,15 @@ async def run_broadcast(
             return
 
         audience = TelegramUserAudienceProvider(session)
-        recipients = await audience.list_recipients()
-        await repo.mark_running(broadcast, total_count=len(recipients))
+        total_count = await audience.count_recipients()
+        await repo.mark_running(broadcast, total_count=total_count)
         await session.commit()
+
+    async def recipients() -> AsyncIterable[BroadcastRecipient]:
+        async with session_factory() as session:
+            audience = TelegramUserAudienceProvider(session)
+            async for recipient in audience.iter_recipients():
+                yield recipient
 
     success_count = 0
     failed_count = 0
@@ -200,7 +219,7 @@ async def run_broadcast(
 
     try:
         success_count, failed_count = await deliver_recipients(
-            recipients=recipients,
+            recipients=recipients(),
             sender=sender,
             text=broadcast.text,
             text_format=broadcast.format,
@@ -255,7 +274,7 @@ async def run_broadcast(
 
 async def deliver_recipients(
     *,
-    recipients: list[BroadcastRecipient],
+    recipients: AsyncIterable[BroadcastRecipient] | Iterable[BroadcastRecipient],
     sender: Any,
     text: str,
     text_format: str,
@@ -272,8 +291,10 @@ async def deliver_recipients(
     failed_count = 0
     processed_count = 0
     processed_lock = asyncio.Lock()
-    recipient_queue: asyncio.Queue[BroadcastRecipient | None] = asyncio.Queue()
     worker_total = max(worker_count, 1)
+    recipient_queue: asyncio.Queue[BroadcastRecipient | None] = asyncio.Queue(
+        maxsize=max(worker_total * 2, 1)
+    )
     fatal_error: BroadcastDeliveryError | None = None
 
     async def maybe_emit_progress(force: bool = False) -> None:
@@ -357,7 +378,9 @@ async def deliver_recipients(
     ]
 
     try:
-        for recipient in recipients:
+        async for recipient in _iter_recipients(recipients):
+            if fatal_error is not None:
+                break
             await recipient_queue.put(recipient)
 
         for _ in range(worker_total):

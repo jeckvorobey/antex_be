@@ -54,6 +54,26 @@ class OrderRepository(BaseRepository[Order]):
         )
         return list(result.scalars().all())
 
+    async def list_for_admin(
+        self,
+        *,
+        date_from: datetime | None = None,
+        date_to: datetime | None = None,
+    ) -> list[Order]:
+        statement = (
+            select(Order)
+            .where(Order.destroyTime.is_(None))
+            .options(selectinload(Order.user), selectinload(Order.city))
+            .order_by(desc(Order.createdAt))
+        )
+        if date_from is not None:
+            statement = statement.where(Order.createdAt >= date_from)
+        if date_to is not None:
+            statement = statement.where(Order.createdAt <= date_to)
+
+        result = await self.session.execute(statement)
+        return list(result.scalars().all())
+
     async def count_open(self, user_id: int) -> int:
         from app.enums.order import OrderStatus
 

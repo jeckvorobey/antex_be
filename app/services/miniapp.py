@@ -295,9 +295,11 @@ def _build_home_rate_cards(snapshots: list[ExchangePairSnapshot]) -> list[Miniap
 def _build_currency_chips(cards: list[MiniappRateCard]) -> list[str]:
     """Возвращает валюты, которые встречаются в карточках курсов."""
     currencies: list[str] = []
+    seen: set[str] = set()
     for card in cards:
         for currency in (card.fromCurrency, card.toCurrency):
-            if currency not in currencies:
+            if currency not in seen:
+                seen.add(currency)
                 currencies.append(currency)
     return currencies
 

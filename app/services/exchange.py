@@ -250,10 +250,11 @@ class ExchangeService:
         if not rates:
             raise self.rate_unavailable_error()
 
-        rate, updated_at = self.resolve_pair_rate(rates, sell, buy)
-        if rate is None or updated_at is None:
+        rate_model = self.build_rate_index(rates).get(f"{sell}{buy}")
+        if rate_model is None:
             raise self.unsupported_pair_error()
 
+        rate = get_client_rate(rate_model)
         amount_buy = round(payload.amount_sell * rate, RATE_PRECISION)
         return ExchangeQuote(
             currency_sell=sell,
@@ -263,7 +264,7 @@ class ExchangeService:
             rate=rate,
             rate_display=format_rate_value(rate),
             rate_text=f"1 {sell} = {format_rate_value(rate)} {buy}",
-            updated_at=updated_at,
+            updated_at=rate_model.updatedAt,
             available_methods=self.get_methods_for_currency(buy),
         )
 
@@ -308,11 +309,17 @@ class ExchangeService:
         buy: str,
     ) -> tuple[float | None, datetime | None]:
         direct_key = f"{sell}{buy}"
+        rate = self.build_rate_index(rates).get(direct_key)
+        if rate is None:
+            return None, None
+        return get_client_rate(rate), rate.updatedAt
+
+    @staticmethod
+    def build_rate_index(rates: list[Rate]) -> dict[str, Rate]:
+        indexed: dict[str, Rate] = {}
         for rate in rates:
-            currency = rate.currency.upper()
-            if currency == direct_key:
-                return get_client_rate(rate), rate.updatedAt
-        return None, None
+            indexed.setdefault(rate.currency.upper(), rate)
+        return indexed
 
     def normalize_pair(self, currency_sell: str, currency_buy: str) -> tuple[str, str] | None:
         sell = currency_sell.upper()

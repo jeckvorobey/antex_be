@@ -227,12 +227,12 @@ async def fetch_and_save_rates(db: AsyncSession) -> dict[str, float]:
 
     repo = RateRepository(db)
     exchange_service = ExchangeService()
-    for currency, price in rates.items():
-        await repo.upsert(
-            currency,
-            price,
-            country=exchange_service.infer_country_from_pair(currency),
-        )
+    await repo.upsert_many(
+        {
+            currency: (price, exchange_service.infer_country_from_pair(currency))
+            for currency, price in rates.items()
+        }
+    )
 
     await db.commit()
     return rates

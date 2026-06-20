@@ -1,16 +1,46 @@
 from __future__ import annotations
 
 import hashlib
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Iterator
+from contextlib import contextmanager
+from datetime import UTC, datetime
 
 import pytest
 from httpx import ASGITransport, AsyncClient
-from sqlalchemy import select
+from sqlalchemy import event, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api import deps
 from app.core.security import create_access_token
+from app.enums.country import Country
+from app.enums.order import OrderStatus
 from app.models.admin import Admin
+from app.models.city import City
+from app.models.order import Order
+from app.models.user import User
+
+
+@contextmanager
+def count_sql_statements(db_session: AsyncSession) -> Iterator[list[str]]:
+    statements: list[str] = []
+    bind = db_session.get_bind()
+
+    def before_cursor_execute(
+        conn,
+        cursor,
+        statement: str,
+        parameters,
+        context,
+        executemany: bool,
+    ) -> None:
+        del conn, cursor, parameters, context, executemany
+        statements.append(statement)
+
+    event.listen(bind, "before_cursor_execute", before_cursor_execute)
+    try:
+        yield statements
+    finally:
+        event.remove(bind, "before_cursor_execute", before_cursor_execute)
 
 
 @pytest.fixture
@@ -167,3 +197,53 @@ async def test_delete_rejects_self_deletion(
 
     assert response.status_code == 400
     assert response.json()['detail'] == 'You cannot delete yourself'
+
+
+@pytest.mark.asyncio
+async def test_admin_orders_list_loads_related_data_in_bulk(
+    admin_crud_api_client: tuple[AsyncClient, AsyncSession],
+) -> None:
+    client, db_session = admin_crud_api_client
+    admin = Admin(username='root', email='root@example.com', password_hash='unused')
+    city = City(name='Bangkok', country=Country.THAILAND)
+    customer = User(telegram_id=900001, username='customer', first_name='Customer')
+    db_session.add_all([admin, city, customer])
+    await db_session.flush()
+    orders = [
+        Order(
+            UserId=customer.id,
+            CityId=city.id,
+            country=Country.THAILAND,
+            currencySell='RUB',
+            amountSell=5000 + index,
+            currencyBuy='THB',
+            amountBuy=2000 + index,
+            rate=0.4,
+            status=int(OrderStatus.CREATED),
+            methodGet='cash',
+            publicNumber=f'202606{index:04d}',
+            createdAt=datetime(2026, 6, index, 12, 0, tzinfo=UTC),
+        )
+        for index in range(1, 5)
+    ]
+    db_session.add_all(orders)
+    await db_session.flush()
+    token = create_access_token({'sub': str(admin.id), 'type': 'admin'})
+
+    with count_sql_statements(db_session) as statements:
+        response = await client.get(
+            '/api/admin/orders',
+            headers={'Authorization': f'Bearer {token}'},
+        )
+
+    assert response.status_code == 200
+    assert [item['publicNumber'] for item in response.json()] == [
+        '2026060004',
+        '2026060003',
+        '2026060002',
+        '2026060001',
+    ]
+    select_count = sum(
+        1 for statement in statements if statement.lstrip().upper().startswith('SELECT')
+    )
+    assert select_count <= 4

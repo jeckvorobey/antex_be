@@ -57,3 +57,30 @@ async def test_deliver_recipients_sends_all_recipients_with_multiple_workers() -
     assert result == (3, 0)
     assert sorted(sender.chat_ids) == [101, 102, 103]
     assert progress_updates[-1] == (3, 0)
+
+
+@pytest.mark.asyncio
+async def test_deliver_recipients_accepts_async_iterable() -> None:
+    sender = FakeBroadcastSender()
+
+    async def recipients():
+        for index in range(3):
+            yield BroadcastRecipient(user_id=index + 1, chat_id=201 + index)
+
+    result = await asyncio.wait_for(
+        deliver_recipients(
+            recipients=recipients(),
+            sender=sender,
+            text="Новости AntEx",
+            text_format="plain",
+            button_text=None,
+            button_url=None,
+            allow_paid_broadcast=False,
+            target_rps=28,
+            worker_count=2,
+        ),
+        timeout=0.5,
+    )
+
+    assert result == (3, 0)
+    assert sorted(sender.chat_ids) == [201, 202, 203]
