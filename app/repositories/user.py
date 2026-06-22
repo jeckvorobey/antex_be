@@ -53,6 +53,7 @@ class UserRepository(BaseRepository[User]):
             select(User).options(selectinload(User.city)).order_by(User.id)
         )
         return list(result.scalars().all())
+      
 
     async def search(self, query: str | None) -> list[User]:
         if not query:

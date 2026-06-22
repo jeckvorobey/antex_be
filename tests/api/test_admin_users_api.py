@@ -8,8 +8,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api import deps
 from app.core.security import create_access_token
+
+from app.enums.country import Country
 from app.enums.user import UserRole
 from app.models.admin import Admin
+from app.models.city import City
 from app.models.user import User
 
 
@@ -32,117 +35,30 @@ async def admin_users_api_client(
 
 
 @pytest.mark.asyncio
-async def test_admin_list_users_returns_all(
-    admin_users_api_client: tuple[AsyncClient, AsyncSession],
-) -> None:
-    client, db_session = admin_users_api_client
-    admin = Admin(username="admin", password_hash="unused")
-    user1 = User(
-        telegram_id=800001, username="alice", first_name="Alice", role=int(UserRole.USER)
+    user = User(
+        telegram_id=700001,
+        username="johndoe",
+        first_name="John",
+        role=int(UserRole.USER),
+        city_id=None,
     )
-    user2 = User(
-        telegram_id=800002, username="bob", first_name="Bob", role=int(UserRole.USER)
-    )
-    db_session.add_all([admin, user1, user2])
+    db_session.add_all([admin, user])
     await db_session.flush()
     token = create_access_token({"sub": str(admin.id), "type": "admin"})
 
-    response = await client.get(
-        "/api/admin/users",
+    response = await client.patch(
+        f"/api/admin/users/{user.id}",
         headers={"Authorization": f"Bearer {token}"},
+        json={"role": int(UserRole.MANAGER)},
     )
 
     assert response.status_code == 200
-    data = response.json()
-    assert len(data) == 2
+    assert response.json()["role"] == int(UserRole.MANAGER)
+    assert response.json()["city_id"] is None
 
 
 @pytest.mark.asyncio
-async def test_admin_list_users_search_by_username(
-    admin_users_api_client: tuple[AsyncClient, AsyncSession],
-) -> None:
-    client, db_session = admin_users_api_client
-    admin = Admin(username="admin", password_hash="unused")
-    user1 = User(
-        telegram_id=800003, username="alice", first_name="Alice", role=int(UserRole.USER)
-    )
-    user2 = User(
-        telegram_id=800004, username="bob", first_name="Bob", role=int(UserRole.USER)
-    )
-    db_session.add_all([admin, user1, user2])
-    await db_session.flush()
-    token = create_access_token({"sub": str(admin.id), "type": "admin"})
-
-    response = await client.get(
-        "/api/admin/users",
-        params={"search": "alice"},
-        headers={"Authorization": f"Bearer {token}"},
-    )
-
-    assert response.status_code == 200
-    data = response.json()
-    assert len(data) == 1
-    assert data[0]["username"] == "alice"
-
-
-@pytest.mark.asyncio
-async def test_admin_list_users_search_by_first_name(
-    admin_users_api_client: tuple[AsyncClient, AsyncSession],
-) -> None:
-    client, db_session = admin_users_api_client
-    admin = Admin(username="admin", password_hash="unused")
-    user1 = User(
-        telegram_id=800005, username="user1", first_name="Alice", role=int(UserRole.USER)
-    )
-    user2 = User(
-        telegram_id=800006, username="user2", first_name="Bob", role=int(UserRole.USER)
-    )
-    db_session.add_all([admin, user1, user2])
-    await db_session.flush()
-    token = create_access_token({"sub": str(admin.id), "type": "admin"})
-
-    response = await client.get(
-        "/api/admin/users",
-        params={"search": "Ali"},
-        headers={"Authorization": f"Bearer {token}"},
-    )
-
-    assert response.status_code == 200
-    data = response.json()
-    assert len(data) == 1
-    assert data[0]["first_name"] == "Alice"
-
-
-@pytest.mark.asyncio
-async def test_admin_list_users_search_by_telegram_id(
-    admin_users_api_client: tuple[AsyncClient, AsyncSession],
-) -> None:
-    client, db_session = admin_users_api_client
-    admin = Admin(username="admin", password_hash="unused")
-    user1 = User(
-        telegram_id=800007, username="user1", first_name="Alice", role=int(UserRole.USER)
-    )
-    user2 = User(
-        telegram_id=800008, username="user2", first_name="Bob", role=int(UserRole.USER)
-    )
-    db_session.add_all([admin, user1, user2])
-    await db_session.flush()
-    token = create_access_token({"sub": str(admin.id), "type": "admin"})
-
-    response = await client.get(
-        "/api/admin/users",
-        params={"search": "800007"},
-        headers={"Authorization": f"Bearer {token}"},
-    )
-
-    assert response.status_code == 200
-    data = response.json()
-    assert len(data) == 1
-    assert data[0]["telegram_id"] == 800007
-
-
-@pytest.mark.asyncio
-async def test_admin_list_users_search_by_id(
+async def test_admin_cannot_assign_second_global_manager(
     admin_users_api_client: tuple[AsyncClient, AsyncSession],
 ) -> None:
     client, db_session = admin_users_api_client

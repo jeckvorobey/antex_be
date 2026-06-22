@@ -229,13 +229,9 @@ async def delete_city(city_id: int, db: DbDep, _: AdminUser) -> dict[str, bool]:
 
 
 @router.get("/users", response_model=list[UserOut])
-async def list_users(
-    db: DbDep,
-    _: AdminUser,
-    search: str | None = Query(None),
-) -> list[UserOut]:
+async def list_users(db: DbDep, _: AdminUser) -> list[UserOut]:
     repo = UserRepository(db)
-    return [build_user_out(user) for user in await repo.search(search)]
+    return [build_user_out(user) for user in await repo.list_all()]
 
 
 @router.get("/users/{user_id}", response_model=UserOut)
