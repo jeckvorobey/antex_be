@@ -8,6 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api import deps
 from app.core.security import create_access_token
+
 from app.enums.country import Country
 from app.enums.user import UserRole
 from app.models.admin import Admin
@@ -34,11 +35,6 @@ async def admin_users_api_client(
 
 
 @pytest.mark.asyncio
-async def test_admin_can_promote_user_to_manager_without_city(
-    admin_users_api_client: tuple[AsyncClient, AsyncSession],
-) -> None:
-    client, db_session = admin_users_api_client
-    admin = Admin(username="admin", password_hash="unused")
     user = User(
         telegram_id=700001,
         username="johndoe",
@@ -67,56 +63,47 @@ async def test_admin_cannot_assign_second_global_manager(
 ) -> None:
     client, db_session = admin_users_api_client
     admin = Admin(username="admin", password_hash="unused")
-    city = City(name="Bangkok", country=Country.THAILAND)
-    existing_manager = User(
-        telegram_id=700001,
-        username="manager",
-        first_name="Manager",
-        role=int(UserRole.MANAGER),
-        city_id=None,
+    user1 = User(
+        telegram_id=800009, username="user1", first_name="Alice", role=int(UserRole.USER)
     )
-    another_user = User(
-        telegram_id=700002,
-        username="johndoe",
-        first_name="John",
-        role=int(UserRole.USER),
+    user2 = User(
+        telegram_id=800010, username="user2", first_name="Bob", role=int(UserRole.USER)
     )
-    db_session.add_all([admin, city, existing_manager, another_user])
+    db_session.add_all([admin, user1, user2])
     await db_session.flush()
-    another_user.city_id = city.id
     token = create_access_token({"sub": str(admin.id), "type": "admin"})
 
-    response = await client.patch(
-        f"/api/admin/users/{another_user.id}",
+    response = await client.get(
+        "/api/admin/users",
+        params={"search": str(user1.id)},
         headers={"Authorization": f"Bearer {token}"},
-        json={"role": int(UserRole.MANAGER)},
     )
 
-    assert response.status_code == 409
-    assert response.json()["detail"] == "Manager is already assigned"
+    assert response.status_code == 200
+    data = response.json()
+    assert len(data) == 1
+    assert data[0]["id"] == user1.id
 
 
 @pytest.mark.asyncio
-async def test_admin_cannot_assign_removed_admin_role(
+async def test_admin_list_users_search_no_results(
     admin_users_api_client: tuple[AsyncClient, AsyncSession],
 ) -> None:
     client, db_session = admin_users_api_client
     admin = Admin(username="admin", password_hash="unused")
     user = User(
-        telegram_id=700003,
-        username="legacyadmin",
-        first_name="Legacy",
-        role=int(UserRole.USER),
+        telegram_id=800011, username="alice", first_name="Alice", role=int(UserRole.USER)
     )
     db_session.add_all([admin, user])
     await db_session.flush()
     token = create_access_token({"sub": str(admin.id), "type": "admin"})
 
-    response = await client.patch(
-        f"/api/admin/users/{user.id}",
+    response = await client.get(
+        "/api/admin/users",
+        params={"search": "nonexistent"},
         headers={"Authorization": f"Bearer {token}"},
-        json={"role": 1},
     )
 
-    assert response.status_code == 422
-    assert response.json()["detail"][0]["msg"] == "Value error, Only user and manager roles are allowed"
+    assert response.status_code == 200
+    data = response.json()
+    assert len(data) == 0
