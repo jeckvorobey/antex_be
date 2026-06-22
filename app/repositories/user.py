@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import ClassVar
 
-from sqlalchemy import select
+from sqlalchemy import or_, select
 from sqlalchemy.orm import selectinload
 
 from app.enums.user import LEGACY_ADMIN_ROLE, UserRole
@@ -51,6 +51,29 @@ class UserRepository(BaseRepository[User]):
     async def list_all(self) -> list[User]:
         result = await self.session.execute(
             select(User).options(selectinload(User.city)).order_by(User.id)
+        )
+        return list(result.scalars().all())
+
+    async def search(self, query: str | None) -> list[User]:
+        if not query:
+            return await self.list_all()
+
+        pattern = f"%{query}%"
+        conditions = [
+            User.username.ilike(pattern),
+            User.first_name.ilike(pattern),
+            User.last_name.ilike(pattern),
+        ]
+
+        if query.isdigit():
+            conditions.append(User.id == int(query))
+            conditions.append(User.telegram_id == int(query))
+
+        result = await self.session.execute(
+            select(User)
+            .options(selectinload(User.city))
+            .where(or_(*conditions))
+            .order_by(User.id)
         )
         return list(result.scalars().all())
 

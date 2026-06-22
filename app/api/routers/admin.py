@@ -6,7 +6,7 @@ import hashlib
 from datetime import UTC, datetime, time
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, HTTPException, Query, status
 from sqlalchemy import func, select
 
 from app.api.deps import AdminUser, DbDep
@@ -229,9 +229,13 @@ async def delete_city(city_id: int, db: DbDep, _: AdminUser) -> dict[str, bool]:
 
 
 @router.get("/users", response_model=list[UserOut])
-async def list_users(db: DbDep, _: AdminUser) -> list[UserOut]:
+async def list_users(
+    db: DbDep,
+    _: AdminUser,
+    search: str | None = Query(None),
+) -> list[UserOut]:
     repo = UserRepository(db)
-    return [build_user_out(user) for user in await repo.list_all()]
+    return [build_user_out(user) for user in await repo.search(search)]
 
 
 @router.get("/users/{user_id}", response_model=UserOut)
