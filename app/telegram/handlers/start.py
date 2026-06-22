@@ -9,6 +9,7 @@ from aiogram.exceptions import TelegramBadRequest
 from aiogram.filters import Command, CommandStart
 from aiogram.fsm.context import FSMContext
 from aiogram.types import CallbackQuery, Message
+from aiogram.types import ReplyKeyboardRemove
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import create_db_session
@@ -152,6 +153,14 @@ async def manager_order_detail(callback: CallbackQuery) -> None:
         reply_markup=manager_order_open_chat(order_id=order.id),
     )
     await callback.answer()
+
+
+@router.message(Command("rmreplykb"))
+async def cmd_rmreplykb(message: Message) -> None:
+    await message.answer(
+        "\U0001f44b Устаревшая клавиатура удалена",
+        reply_markup=ReplyKeyboardRemove(),
+    )
 
 
 @router.message(Command("on"))

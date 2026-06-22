@@ -35,6 +35,11 @@ async def admin_users_api_client(
 
 
 @pytest.mark.asyncio
+async def test_admin_update_user_role_to_manager(
+    admin_users_api_client: tuple[AsyncClient, AsyncSession],
+) -> None:
+    client, db_session = admin_users_api_client
+    admin = Admin(username="admin", password_hash="unused")
     user = User(
         telegram_id=700001,
         username="johndoe",
