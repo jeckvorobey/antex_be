@@ -22,6 +22,13 @@ from app.services.order_numbers import OrderNumberService
 logger = logging.getLogger(__name__)
 MAX_ACTIVE_ORDERS_PER_USER = 10
 
+MIN_AMOUNT_BY_METHOD: dict[str, dict[str, int]] = {
+    MethodGet.CASH: {"RUB": 25_000, "USDT": 500},
+    MethodGet.QRCODE: {"RUB": 15_000, "USDT": 300},
+    MethodGet.BANK_ACCOUNT: {"RUB": 5_000, "USDT": 100},
+    MethodGet.PAY_SERVICES: {"RUB": 5_000, "USDT": 100},
+}
+
 
 async def create_order_for_user(
     db: AsyncSession,
@@ -41,6 +48,7 @@ async def create_order_for_user(
 
     city = await _resolve_city(db, payload)
     _validate_country_and_method(payload, city)
+    _validate_min_amount(payload)
 
     manager = await UserRepository(db).get_manager()
 
@@ -153,4 +161,18 @@ def _validate_quote_country(country: Country, currency_buy: str) -> None:
             "Currency pair does not match country",
             code="COUNTRY_CURRENCY_MISMATCH",
             status_code=422,
+        )
+
+
+def _validate_min_amount(payload: MiniappOrderCreate) -> None:
+    currency_sell = payload.currency_sell.upper()
+    method = payload.method_get
+    limits = MIN_AMOUNT_BY_METHOD.get(method, {})
+    min_amount = limits.get(currency_sell)
+    if min_amount and payload.amount_sell < min_amount:
+        raise AntExException(
+            f"Минимальная сумма для обмена {method} {min_amount}",
+            code="MIN_AMOUNT",
+            status_code=422,
+            params={"minAmount": min_amount, "method": method, "currency": currency_sell},
         )
