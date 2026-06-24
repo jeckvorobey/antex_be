@@ -146,7 +146,7 @@ async def test_orders_api_accepts_preliminary_rate_and_amount_buy_fields(
             "CityId": customer.city_id,
             "country": "thailand",
             "currencySell": "RUB",
-            "amountSell": 10000,
+            "amountSell": 30000,
             "currencyBuy": "THB",
             "amountBuy": 999999,
             "rate": 99,
