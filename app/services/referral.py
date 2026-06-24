@@ -174,6 +174,29 @@ class ReferralService:
         )
         return aex_amount
 
+    async def generate_batch_referral_codes(
+        self,
+        db: AsyncSession,
+    ) -> int:
+        """Сгенерировать реферальные коды для всех пользователей без кода.
+
+        Возвращает количество сгенерированных кодов.
+        """
+        repo = UserRepository(db)
+        users = await repo.get_users_without_referral_code()
+
+        if not users:
+            return 0
+
+        generated = 0
+        for user in users:
+            code = await self._generate_unique_code(db)
+            await repo.update(user, referral_code=code)
+            generated += 1
+
+        logger.info("Batch generated %d referral codes", generated)
+        return generated
+
     async def _generate_unique_code(self, db: AsyncSession) -> str:
         """Сгенерировать уникальный реферальный код."""
         repo = UserRepository(db)

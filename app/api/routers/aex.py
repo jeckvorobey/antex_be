@@ -194,3 +194,17 @@ async def admin_debit(
         raise
     await db.commit()
     return {"ok": True, "entry_id": entry.id}
+
+
+@admin_router.post("/generate-referral-codes")
+async def generate_referral_codes(
+    db: DbDep,
+    _: AdminUser,
+) -> dict[str, object]:
+    """Batch-генерация реферальных кодов для пользователей без кода."""
+    from app.services.referral import ReferralService
+
+    service = ReferralService()
+    generated = await service.generate_batch_referral_codes(db)
+    await db.commit()
+    return {"ok": True, "generated": generated}

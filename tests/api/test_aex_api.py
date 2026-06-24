@@ -327,3 +327,92 @@ class TestAdminAexWalletsEndpoint:
         data = response.json()
         assert len(data) >= 1
         assert data[0]["user_id"] == user.id
+
+
+# ─── Admin Batch Referral Code Generation ────────────────────────────────
+
+
+class TestAdminGenerateReferralCodes:
+    async def test_generates_codes_for_users_without_code(
+        self, aex_api_client: tuple[AsyncClient, AsyncSession]
+    ) -> None:
+        client, db = aex_api_client
+        admin = Admin(username="refgen_admin", email="refgen@test.com", password_hash="x")
+        user1 = User(telegram_id=50001, username="refgen_u1")
+        user2 = User(telegram_id=50002, username="refgen_u2")
+        db.add_all([admin, user1, user2])
+        await db.flush()
+        await db.refresh(admin)
+        await db.refresh(user1)
+        await db.refresh(user2)
+
+        response = await client.post(
+            "/api/admin/aex/generate-referral-codes",
+            headers={"Authorization": f"Bearer {_admin_token(admin.id)}"},
+        )
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["ok"] is True
+        assert data["generated"] == 2
+
+        # Verify codes were actually set
+        await db.refresh(user1)
+        await db.refresh(user2)
+        assert user1.referral_code is not None
+        assert user2.referral_code is not None
+        assert len(user1.referral_code) == 8
+        assert len(user2.referral_code) == 8
+        assert user1.referral_code != user2.referral_code
+
+    async def test_skips_users_with_existing_code(
+        self, aex_api_client: tuple[AsyncClient, AsyncSession]
+    ) -> None:
+        client, db = aex_api_client
+        admin = Admin(username="refskip_admin", email="refskip@test.com", password_hash="x")
+        user_with_code = User(telegram_id=50003, username="refskip_has", referral_code="EXISTING")
+        user_without = User(telegram_id=50004, username="refskip_none")
+        db.add_all([admin, user_with_code, user_without])
+        await db.flush()
+        await db.refresh(admin)
+
+        response = await client.post(
+            "/api/admin/aex/generate-referral-codes",
+            headers={"Authorization": f"Bearer {_admin_token(admin.id)}"},
+        )
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["ok"] is True
+        assert data["generated"] == 1
+
+        # Verify existing code was not changed
+        await db.refresh(user_with_code)
+        assert user_with_code.referral_code == "EXISTING"
+
+    async def test_returns_zero_when_all_have_codes(
+        self, aex_api_client: tuple[AsyncClient, AsyncSession]
+    ) -> None:
+        client, db = aex_api_client
+        admin = Admin(username="refzero_admin", email="refzero@test.com", password_hash="x")
+        user = User(telegram_id=50005, username="refzero_user", referral_code="HADCODE")
+        db.add_all([admin, user])
+        await db.flush()
+        await db.refresh(admin)
+
+        response = await client.post(
+            "/api/admin/aex/generate-referral-codes",
+            headers={"Authorization": f"Bearer {_admin_token(admin.id)}"},
+        )
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["ok"] is True
+        assert data["generated"] == 0
+
+    async def test_requires_admin_auth(
+        self, aex_api_client: tuple[AsyncClient, AsyncSession]
+    ) -> None:
+        client, _ = aex_api_client
+        response = await client.post("/api/admin/aex/generate-referral-codes")
+        assert response.status_code == 401

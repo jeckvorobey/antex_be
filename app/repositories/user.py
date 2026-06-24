@@ -131,3 +131,10 @@ class UserRepository(BaseRepository[User]):
             select(func.count(User.id)).where(User.referred_by == user_id)
         )
         return result.scalar_one()
+
+    async def get_users_without_referral_code(self) -> list[User]:
+        """Получить всех пользователей без реферального кода."""
+        result = await self.session.execute(
+            select(User).where(User.referral_code.is_(None)).order_by(User.id)
+        )
+        return list(result.scalars().all())
