@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import secrets
 from typing import TYPE_CHECKING
 
 from sqlalchemy import BigInteger, Boolean, ForeignKey, Integer, String, Text
@@ -11,8 +12,14 @@ from app.enums.user import UserRole
 from app.models.base import Base, TimestampMixin
 
 if TYPE_CHECKING:
+    from app.models.aex import AexPersonalRate, AexWallet
     from app.models.city import City
     from app.models.order import Order
+
+
+def _generate_referral_code() -> str:
+    """Генерирует уникальный 8-символьный реферальный код."""
+    return secrets.token_urlsafe(6)[:8]
 
 
 class User(Base, TimestampMixin):
@@ -37,6 +44,32 @@ class User(Base, TimestampMixin):
         server_default="ru",
         nullable=False,
     )
+    # Реферальная система
+    referral_code: Mapped[str | None] = mapped_column(
+        String(16),
+        unique=True,
+        nullable=True,
+    )
+    referred_by: Mapped[int | None] = mapped_column(
+        Integer,
+        ForeignKey("Users.id"),
+        nullable=True,
+    )
 
     orders: Mapped[list[Order]] = relationship("Order", back_populates="user")
     city: Mapped[City | None] = relationship("City", back_populates="users")
+    aex_wallet: Mapped[AexWallet | None] = relationship(
+        "AexWallet",
+        back_populates="user",
+        uselist=False,
+    )
+    aex_personal_rate: Mapped[AexPersonalRate | None] = relationship(
+        "AexPersonalRate",
+        back_populates="user",
+        uselist=False,
+    )
+    referrer: Mapped[User | None] = relationship(
+        "User",
+        remote_side="User.id",
+        foreign_keys=[referred_by],
+    )

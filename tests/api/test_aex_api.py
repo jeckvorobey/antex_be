@@ -1,0 +1,329 @@
+"""TDD тесты для API AEX и реферальной системы."""
+
+from __future__ import annotations
+
+from collections.abc import AsyncIterator
+from decimal import Decimal
+
+import pytest
+from httpx import ASGITransport, AsyncClient
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.api import deps
+from app.core.security import create_access_token
+from app.models.admin import Admin
+from app.models.user import User
+
+
+@pytest.fixture
+async def aex_api_client(
+    db_session: AsyncSession,
+) -> AsyncIterator[tuple[AsyncClient, AsyncSession]]:
+    from app.main import app
+
+    async def override_get_db_session() -> AsyncIterator[AsyncSession]:
+        yield db_session
+
+    app.dependency_overrides[deps.get_db_session] = override_get_db_session
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        yield client, db_session
+    app.dependency_overrides.clear()
+
+
+def _user_token(user_id: int) -> str:
+    return create_access_token({"sub": str(user_id), "type": "user"})
+
+
+def _admin_token(admin_id: int) -> str:
+    return create_access_token({"sub": str(admin_id), "type": "admin"})
+
+
+# ─── User AEX API ────────────────────────────────────────────────────────────
+
+
+class TestAexWalletEndpoint:
+    async def test_get_wallet_creates_if_missing(
+        self, aex_api_client: tuple[AsyncClient, AsyncSession]
+    ) -> None:
+        client, db = aex_api_client
+        user = User(telegram_id=1000, username="wtest")
+        db.add(user)
+        await db.flush()
+        await db.refresh(user)
+
+        response = await client.get(
+            "/api/aex/wallet",
+            headers={"Authorization": f"Bearer {_user_token(user.id)}"},
+        )
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["user_id"] == user.id
+        assert Decimal(data["balance_available"]) == Decimal("0")
+        assert Decimal(data["balance_reserved"]) == Decimal("0")
+        assert Decimal(data["balance_total"]) == Decimal("0")
+
+    async def test_get_wallet_requires_auth(
+        self, aex_api_client: tuple[AsyncClient, AsyncSession]
+    ) -> None:
+        client, _ = aex_api_client
+        response = await client.get("/api/aex/wallet")
+        assert response.status_code == 401
+
+
+class TestAexOperationsEndpoint:
+    async def test_get_operations_empty(
+        self, aex_api_client: tuple[AsyncClient, AsyncSession]
+    ) -> None:
+        client, db = aex_api_client
+        user = User(telegram_id=2000, username="opstest")
+        db.add(user)
+        await db.flush()
+        await db.refresh(user)
+
+        response = await client.get(
+            "/api/aex/operations",
+            headers={"Authorization": f"Bearer {_user_token(user.id)}"},
+        )
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["items"] == []
+        assert data["total"] == 0
+
+
+class TestAexTransferEndpoint:
+    async def test_transfer_holds_aex(
+        self, aex_api_client: tuple[AsyncClient, AsyncSession]
+    ) -> None:
+        client, db = aex_api_client
+        user = User(telegram_id=3000, username="transfertest")
+        db.add(user)
+        await db.flush()
+        await db.refresh(user)
+
+        # Credit first
+        from app.services.aex import AexService
+
+        await AexService().credit(db, user.id, Decimal("100"))
+        await db.commit()
+
+        response = await client.post(
+            "/api/aex/transfer",
+            json={"amount": "50"},
+            headers={"Authorization": f"Bearer {_user_token(user.id)}"},
+        )
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["ok"] is True
+
+    async def test_transfer_rejects_insufficient(
+        self, aex_api_client: tuple[AsyncClient, AsyncSession]
+    ) -> None:
+        client, db = aex_api_client
+        user = User(telegram_id=4000, username="nbaltest")
+        db.add(user)
+        await db.flush()
+        await db.refresh(user)
+
+        response = await client.post(
+            "/api/aex/transfer",
+            json={"amount": "100"},
+            headers={"Authorization": f"Bearer {_user_token(user.id)}"},
+        )
+
+        assert response.status_code == 422
+
+
+# ─── Referral API ────────────────────────────────────────────────────────────
+
+
+class TestReferralCodeEndpoint:
+    async def test_get_referral_code(
+        self, aex_api_client: tuple[AsyncClient, AsyncSession]
+    ) -> None:
+        client, db = aex_api_client
+        user = User(telegram_id=5000, username="reftest")
+        db.add(user)
+        await db.flush()
+        await db.refresh(user)
+
+        response = await client.get(
+            "/api/referral/code",
+            headers={"Authorization": f"Bearer {_user_token(user.id)}"},
+        )
+
+        assert response.status_code == 200
+        data = response.json()
+        assert len(data["referral_code"]) == 8
+        assert "ref_" in data["referral_link"]
+
+    async def test_get_referral_code_idempotent(
+        self, aex_api_client: tuple[AsyncClient, AsyncSession]
+    ) -> None:
+        client, db = aex_api_client
+        user = User(telegram_id=6000, username="refidem")
+        db.add(user)
+        await db.flush()
+        await db.refresh(user)
+
+        resp1 = await client.get(
+            "/api/referral/code",
+            headers={"Authorization": f"Bearer {_user_token(user.id)}"},
+        )
+        resp2 = await client.get(
+            "/api/referral/code",
+            headers={"Authorization": f"Bearer {_user_token(user.id)}"},
+        )
+
+        assert resp1.json()["referral_code"] == resp2.json()["referral_code"]
+
+
+class TestReferralBindEndpoint:
+    async def test_bind_referral(self, aex_api_client: tuple[AsyncClient, AsyncSession]) -> None:
+        client, db = aex_api_client
+        referrer = User(telegram_id=7000, username="bindref")
+        db.add(referrer)
+        await db.flush()
+        await db.refresh(referrer)
+
+        # Generate code
+        from app.services.referral import ReferralService
+
+        code = await ReferralService().get_or_create_referral_code(db, referrer)
+        await db.commit()
+
+        referred = User(telegram_id=8000, username="bindtarget")
+        db.add(referred)
+        await db.flush()
+        await db.refresh(referred)
+
+        response = await client.post(
+            "/api/referral/bind",
+            json={"referral_code": code},
+            headers={"Authorization": f"Bearer {_user_token(referred.id)}"},
+        )
+
+        assert response.status_code == 200
+        assert response.json()["ok"] is True
+
+
+class TestReferralStatsEndpoint:
+    async def test_get_referral_stats(
+        self, aex_api_client: tuple[AsyncClient, AsyncSession]
+    ) -> None:
+        client, db = aex_api_client
+        user = User(telegram_id=9000, username="statstest")
+        db.add(user)
+        await db.flush()
+        await db.refresh(user)
+
+        response = await client.get(
+            "/api/referral/stats",
+            headers={"Authorization": f"Bearer {_user_token(user.id)}"},
+        )
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["total_referrals"] == 0
+        assert data["total_earned"] == "0"
+
+
+# ─── Admin AEX API ───────────────────────────────────────────────────────────
+
+
+class TestAdminAexRatesEndpoint:
+    async def test_admin_list_rates(self, aex_api_client: tuple[AsyncClient, AsyncSession]) -> None:
+        client, db = aex_api_client
+        admin = Admin(username="aexadmin", email="aex@test.com", password_hash="x")
+        db.add(admin)
+        await db.flush()
+        await db.refresh(admin)
+
+        response = await client.get(
+            "/api/admin/aex/rates",
+            headers={"Authorization": f"Bearer {_admin_token(admin.id)}"},
+        )
+
+        assert response.status_code == 200
+        data = response.json()
+        assert len(data) >= 1
+        assert "global_rate" in data[0]
+
+
+class TestAdminAexCreditEndpoint:
+    async def test_admin_credit(self, aex_api_client: tuple[AsyncClient, AsyncSession]) -> None:
+        client, db = aex_api_client
+        admin = Admin(username="credadmin", email="cred@test.com", password_hash="x")
+        user = User(telegram_id=10000, username="credituser")
+        db.add_all([admin, user])
+        await db.flush()
+        await db.refresh(admin)
+        await db.refresh(user)
+
+        response = await client.post(
+            "/api/admin/aex/credit",
+            json={"user_id": user.id, "amount": "100", "description": "Test credit"},
+            headers={"Authorization": f"Bearer {_admin_token(admin.id)}"},
+        )
+
+        assert response.status_code == 200
+        assert response.json()["ok"] is True
+
+        # Verify balance
+        from app.services.aex import AexService
+
+        wallet = await AexService().get_balance(db, user.id)
+        assert wallet.balance_available == Decimal("100")
+
+
+class TestAdminAexDebitEndpoint:
+    async def test_admin_debit_insufficient(
+        self, aex_api_client: tuple[AsyncClient, AsyncSession]
+    ) -> None:
+        client, db = aex_api_client
+        admin = Admin(username="debitadmin", email="debit@test.com", password_hash="x")
+        user = User(telegram_id=11000, username="debituser")
+        db.add_all([admin, user])
+        await db.flush()
+        await db.refresh(admin)
+        await db.refresh(user)
+
+        response = await client.post(
+            "/api/admin/aex/debit",
+            json={"user_id": user.id, "amount": "50"},
+            headers={"Authorization": f"Bearer {_admin_token(admin.id)}"},
+        )
+
+        assert response.status_code == 422
+
+
+class TestAdminAexWalletsEndpoint:
+    async def test_admin_list_wallets(
+        self, aex_api_client: tuple[AsyncClient, AsyncSession]
+    ) -> None:
+        client, db = aex_api_client
+        admin = Admin(username="walladmin", email="wall@test.com", password_hash="x")
+        user = User(telegram_id=12000, username="walluser")
+        db.add_all([admin, user])
+        await db.flush()
+        await db.refresh(admin)
+        await db.refresh(user)
+
+        # Create wallet first
+        from app.services.aex import AexService
+
+        await AexService().get_or_create_wallet(db, user.id)
+        await db.commit()
+
+        response = await client.get(
+            "/api/admin/aex/wallets",
+            headers={"Authorization": f"Bearer {_admin_token(admin.id)}"},
+        )
+
+        assert response.status_code == 200
+        data = response.json()
+        assert len(data) >= 1
+        assert data[0]["user_id"] == user.id

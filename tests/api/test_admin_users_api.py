@@ -8,11 +8,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api import deps
 from app.core.security import create_access_token
-
-from app.enums.country import Country
 from app.enums.user import UserRole
 from app.models.admin import Admin
-from app.models.city import City
 from app.models.user import User
 
 
@@ -68,12 +65,8 @@ async def test_admin_cannot_assign_second_global_manager(
 ) -> None:
     client, db_session = admin_users_api_client
     admin = Admin(username="admin", password_hash="unused")
-    user1 = User(
-        telegram_id=800009, username="user1", first_name="Alice", role=int(UserRole.USER)
-    )
-    user2 = User(
-        telegram_id=800010, username="user2", first_name="Bob", role=int(UserRole.USER)
-    )
+    user1 = User(telegram_id=800009, username="user1", first_name="Alice", role=int(UserRole.USER))
+    user2 = User(telegram_id=800010, username="user2", first_name="Bob", role=int(UserRole.USER))
     db_session.add_all([admin, user1, user2])
     await db_session.flush()
     token = create_access_token({"sub": str(admin.id), "type": "admin"})
@@ -96,9 +89,7 @@ async def test_admin_list_users_search_no_results(
 ) -> None:
     client, db_session = admin_users_api_client
     admin = Admin(username="admin", password_hash="unused")
-    user = User(
-        telegram_id=800011, username="alice", first_name="Alice", role=int(UserRole.USER)
-    )
+    user = User(telegram_id=800011, username="alice", first_name="Alice", role=int(UserRole.USER))
     db_session.add_all([admin, user])
     await db_session.flush()
     token = create_access_token({"sub": str(admin.id), "type": "admin"})

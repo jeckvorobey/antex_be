@@ -7,12 +7,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.enums.country import Country
 from app.enums.user import UserRole
+from app.exceptions import AntExException
 from app.models.city import City
 from app.models.rate import Rate
 from app.models.user import User
 from app.schemas.miniapp import MiniappOrderCreate
 from app.services import order_flow
-from app.exceptions import AntExException
 
 
 @pytest.mark.asyncio

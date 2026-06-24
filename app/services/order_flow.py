@@ -69,9 +69,7 @@ async def create_order_for_user(
         status=int(OrderStatus.CREATED),
         contactTelegram=user.username or None,
         methodGet=payload.method_get,
-        publicNumber=await OrderNumberService(db).next_public_number(
-            created_at=datetime.now(UTC)
-        ),
+        publicNumber=await OrderNumberService(db).next_public_number(created_at=datetime.now(UTC)),
     )
     await db.commit()
     hydrated = await order_repo.get_one(order.id)

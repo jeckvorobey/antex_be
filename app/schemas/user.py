@@ -51,6 +51,7 @@ class UserUpdate(BaseModel):
 
 def build_user_out(user) -> UserOut:
     from app.schemas.city import build_city_out
+
     trusted_contact = build_trusted_contact(user)
 
     return UserOut(

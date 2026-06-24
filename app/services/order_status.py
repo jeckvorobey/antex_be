@@ -43,6 +43,28 @@ async def update_order_status(
     if hydrated is None:
         raise AntExException("Order not found", code="ORDER_NOT_FOUND", status_code=404)
 
+    # Начислить AEX рефереру при завершении обмена
+    if target_status == OrderStatus.COMPLETED:
+        try:
+            from decimal import Decimal
+
+            from app.services.referral import ReferralService
+
+            referral_service = ReferralService()
+            order_amount = Decimal(str(hydrated.amountSell))
+            await referral_service.credit_referral_bonus(
+                db,
+                order_id=hydrated.id,
+                order_amount=order_amount,
+                referred_user_id=hydrated.UserId,
+            )
+            await db.commit()
+        except Exception:
+            logger.exception(
+                "Failed to credit AEX referral bonus for order_id=%s",
+                order_id,
+            )
+
     manager = await UserRepository(db).get_manager()
     manager_chat_url = build_chat_url_for_user(manager) if manager is not None else None
 

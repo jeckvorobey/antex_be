@@ -1,5 +1,13 @@
 from __future__ import annotations
 
+import os
+
+# Ensure DATABASE_URL is set before any app module is imported,
+# because app.core.database creates an engine at module level.
+os.environ.setdefault("DATABASE_URL", "postgresql+asyncpg://test:test@localhost/test")
+os.environ.setdefault("JWT_SECRET", "test-secret-for-tests-only")
+os.environ["timezone"] = "UTC"  # noqa: SIM112
+
 from collections.abc import AsyncIterator
 
 import pytest

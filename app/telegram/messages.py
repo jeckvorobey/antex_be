@@ -404,8 +404,13 @@ def orders_item(
                 f" → {_format_order_amount(amount_buy)} {format_currency_label(currency_buy)}"
             ),
             f"{translate('orders-item-rate-label')}: {_format_order_rate(rate)}",
-            f"{translate('orders-item-method-label')}: {_format_order_method(method, translate=translate)}",
-            _format_order_list_date(created_at=created_at, updated_at=updated_at, end_time=end_time),
+            f"{translate('orders-item-method-label')}: "
+            f"{_format_order_method(method, translate=translate)}",
+            _format_order_list_date(
+                created_at=created_at,
+                updated_at=updated_at,
+                end_time=end_time,
+            ),
         ]
     )
 

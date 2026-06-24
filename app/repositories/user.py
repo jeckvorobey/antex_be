@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import ClassVar
 
-from sqlalchemy import or_, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.orm import selectinload
 
 from app.enums.user import LEGACY_ADMIN_ROLE, UserRole
@@ -53,7 +53,6 @@ class UserRepository(BaseRepository[User]):
             select(User).options(selectinload(User.city)).order_by(User.id)
         )
         return list(result.scalars().all())
-      
 
     async def search(self, query: str | None) -> list[User]:
         if not query:
@@ -71,10 +70,7 @@ class UserRepository(BaseRepository[User]):
             conditions.append(User.telegram_id == int(query))
 
         result = await self.session.execute(
-            select(User)
-            .options(selectinload(User.city))
-            .where(or_(*conditions))
-            .order_by(User.id)
+            select(User).options(selectinload(User.city)).where(or_(*conditions)).order_by(User.id)
         )
         return list(result.scalars().all())
 
@@ -95,7 +91,10 @@ class UserRepository(BaseRepository[User]):
 
     async def get_manager_by_city(self, city_id: int) -> User | None:
         result = await self.session.execute(
-            select(User).where(User.city_id == city_id, User.role.in_([int(UserRole.MANAGER), LEGACY_ADMIN_ROLE]))
+            select(User).where(
+                User.city_id == city_id,
+                User.role.in_([int(UserRole.MANAGER), LEGACY_ADMIN_ROLE]),
+            )
         )
         return result.scalar_one_or_none()
 
@@ -113,3 +112,22 @@ class UserRepository(BaseRepository[User]):
             select(User).where(User.createdAt >= date_from, User.createdAt <= date_to)
         )
         return list(result.scalars().all())
+
+    async def get_by_referral_code(self, code: str) -> User | None:
+        result = await self.session.execute(select(User).where(User.referral_code == code))
+        return result.scalar_one_or_none()
+
+    async def get_referrals(self, user_id: int) -> list[User]:
+        result = await self.session.execute(
+            select(User)
+            .where(User.referred_by == user_id)
+            .options(selectinload(User.city))
+            .order_by(User.id)
+        )
+        return list(result.scalars().all())
+
+    async def count_referrals(self, user_id: int) -> int:
+        result = await self.session.execute(
+            select(func.count(User.id)).where(User.referred_by == user_id)
+        )
+        return result.scalar_one()

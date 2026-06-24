@@ -14,11 +14,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.routers import (
     admin,
+    aex,
     auth,
     broadcasts,
     miniapp,
     orders,
     public,
+    referral,
     telegram,
     users,
 )
@@ -149,6 +151,9 @@ app.include_router(users.router)
 app.include_router(orders.router)
 app.include_router(miniapp.router)
 app.include_router(admin.router)
+app.include_router(aex.router)
+app.include_router(aex.admin_router)
+app.include_router(referral.router)
 app.include_router(broadcasts.router)
 app.include_router(public.router)
 app.include_router(telegram.router)

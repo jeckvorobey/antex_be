@@ -1,6 +1,7 @@
 """Экспорт всех моделей."""
 
 from app.models.admin import Admin
+from app.models.aex import AexLedgerEntry, AexPersonalRate, AexRate, AexWallet
 from app.models.city import City
 from app.models.config import Config
 from app.models.order import Order
@@ -12,6 +13,10 @@ from app.modules.broadcasts.models import Broadcast
 
 __all__ = [
     "Admin",
+    "AexLedgerEntry",
+    "AexPersonalRate",
+    "AexRate",
+    "AexWallet",
     "Broadcast",
     "City",
     "Config",
