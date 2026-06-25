@@ -65,6 +65,62 @@ async def update_order_status(
                 order_id,
             )
 
+    # Списать AEX рефереру при отмене обмена (компенсация)
+    if target_status == OrderStatus.CANCELLED:
+        try:
+            from sqlalchemy import select
+
+            from app.models.aex import AexLedgerEntry
+            from app.services.aex import AexService
+
+            # Найти начисление referral за этот заказ
+            referral_result = await db.execute(
+                select(AexLedgerEntry).where(
+                    AexLedgerEntry.reference_type == "referral",
+                    AexLedgerEntry.reference_id == str(order_id),
+                    AexLedgerEntry.entry_type == "credit",
+                )
+            )
+            referral_entry = referral_result.scalar_one_or_none()
+
+            if referral_entry is not None:
+                # Найти владельца кошелька
+                from app.repositories.aex import AexWalletRepository
+                wallet = await AexWalletRepository(db).get_by_id(referral_entry.wallet_id)
+                if wallet is not None:
+                    aex_service = AexService()
+                    # Проверить достаточность баланса перед списанием
+                    if wallet.balance_available >= referral_entry.amount:
+                        await aex_service.debit(
+                            db,
+                            wallet.user_id,
+                            referral_entry.amount,
+                            reference_type="referral_reversal",
+                            reference_id=str(order_id),
+                            description=f"Referral bonus reversal for cancelled order #{order_id}",
+                        )
+                        await db.commit()
+                        logger.info(
+                            "Reversed %s AEX from user %s for cancelled order %s",
+                            referral_entry.amount,
+                            wallet.user_id,
+                            order_id,
+                        )
+                    else:
+                        logger.warning(
+                            "Insufficient AEX balance for reversal:"
+                            " user=%s has=%s needs=%s order=%s",
+                            wallet.user_id,
+                            wallet.balance_available,
+                            referral_entry.amount,
+                            order_id,
+                        )
+        except Exception:
+            logger.exception(
+                "Failed to reverse AEX referral bonus for cancelled order_id=%s",
+                order_id,
+            )
+
     manager = await UserRepository(db).get_manager()
     manager_chat_url = build_chat_url_for_user(manager) if manager is not None else None
 

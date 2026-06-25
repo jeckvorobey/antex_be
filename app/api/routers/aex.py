@@ -49,15 +49,16 @@ async def get_operations(
     db: DbDep,
     user: CurrentUser,
     limit: int = Query(default=50, ge=1, le=100),
-    offset: int = Query(default=0, ge=0),
+    cursor: int | None = Query(default=None, ge=1),
 ) -> AexOperationsResponse:
-    """Получить историю операций AEX."""
-    entries, total = await aex_service.get_operations(db, user.id, limit=limit, offset=offset)
+    """Получить историю операций AEX (cursor-based pagination)."""
+    entries, next_cursor = await aex_service.get_operations_cursor(
+        db, user.id, limit=limit, cursor=cursor
+    )
     return AexOperationsResponse(
         items=[build_aex_ledger_entry_out(e) for e in entries],
-        total=total,
+        next_cursor=next_cursor,
         limit=limit,
-        offset=offset,
     )
 
 

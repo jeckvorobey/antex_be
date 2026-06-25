@@ -90,7 +90,7 @@ class TestAexOperationsEndpoint:
         assert response.status_code == 200
         data = response.json()
         assert data["items"] == []
-        assert data["total"] == 0
+        assert data["next_cursor"] is None
 
 
 class TestAexTransferEndpoint:
@@ -135,6 +135,150 @@ class TestAexTransferEndpoint:
         )
 
         assert response.status_code == 422
+
+
+# ─── Cursor Pagination ───────────────────────────────────────────────────────
+
+
+class TestAexOperationsCursorPagination:
+    """TDD: cursor-based pagination для /api/aex/operations."""
+
+    async def test_first_page_no_cursor(
+        self, aex_api_client: tuple[AsyncClient, AsyncSession]
+    ) -> None:
+        client, db = aex_api_client
+        user = User(telegram_id=60001, username="cursor_first")
+        db.add(user)
+        await db.flush()
+        await db.refresh(user)
+
+        from app.services.aex import AexService
+
+        service = AexService()
+        for i in range(5):
+            await service.credit(db, user.id, Decimal("10"), description=f"entry_{i}")
+        await db.commit()
+
+        response = await client.get(
+            "/api/aex/operations?limit=3",
+            headers={"Authorization": f"Bearer {_user_token(user.id)}"},
+        )
+
+        assert response.status_code == 200
+        data = response.json()
+        assert len(data["items"]) == 3
+        assert data["next_cursor"] is not None
+        # Desc order: newest first
+        assert data["items"][0]["description"] == "entry_4"
+
+    async def test_second_page_with_cursor(
+        self, aex_api_client: tuple[AsyncClient, AsyncSession]
+    ) -> None:
+        client, db = aex_api_client
+        user = User(telegram_id=60002, username="cursor_second")
+        db.add(user)
+        await db.flush()
+        await db.refresh(user)
+
+        from app.services.aex import AexService
+
+        service = AexService()
+        for i in range(5):
+            await service.credit(db, user.id, Decimal("10"), description=f"entry_{i}")
+        await db.commit()
+
+        # First page
+        resp1 = await client.get(
+            "/api/aex/operations?limit=3",
+            headers={"Authorization": f"Bearer {_user_token(user.id)}"},
+        )
+        cursor = resp1.json()["next_cursor"]
+
+        # Second page
+        resp2 = await client.get(
+            f"/api/aex/operations?limit=3&cursor={cursor}",
+            headers={"Authorization": f"Bearer {_user_token(user.id)}"},
+        )
+
+        assert resp2.status_code == 200
+        data = resp2.json()
+        assert len(data["items"]) == 2
+        assert data["next_cursor"] is None  # Last page
+
+    async def test_empty_result(
+        self, aex_api_client: tuple[AsyncClient, AsyncSession]
+    ) -> None:
+        client, db = aex_api_client
+        user = User(telegram_id=60003, username="cursor_empty")
+        db.add(user)
+        await db.flush()
+        await db.refresh(user)
+
+        response = await client.get(
+            "/api/aex/operations?limit=10",
+            headers={"Authorization": f"Bearer {_user_token(user.id)}"},
+        )
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["items"] == []
+        assert data["next_cursor"] is None
+
+    async def test_invalid_cursor_returns_error(
+        self, aex_api_client: tuple[AsyncClient, AsyncSession]
+    ) -> None:
+        client, db = aex_api_client
+        user = User(telegram_id=60004, username="cursor_invalid")
+        db.add(user)
+        await db.flush()
+        await db.refresh(user)
+
+        response = await client.get(
+            "/api/aex/operations?limit=10&cursor=abc",
+            headers={"Authorization": f"Bearer {_user_token(user.id)}"},
+        )
+
+        assert response.status_code == 422
+
+    async def test_cursor_no_duplicates_or_gaps(
+        self, aex_api_client: tuple[AsyncClient, AsyncSession]
+    ) -> None:
+        """Pagination stable: no duplicates, no gaps."""
+        client, db = aex_api_client
+        user = User(telegram_id=60005, username="cursor_stable")
+        db.add(user)
+        await db.flush()
+        await db.refresh(user)
+
+        from app.services.aex import AexService
+
+        service = AexService()
+        ids_seen: list[int] = []
+        for i in range(7):
+            entry = await service.credit(db, user.id, Decimal("10"), description=f"e{i}")
+            ids_seen.append(entry.id)
+        await db.commit()
+
+        all_items: list[dict] = []
+        cursor = None
+        for _ in range(10):  # Safety limit
+            url = "/api/aex/operations?limit=3"
+            if cursor:
+                url += f"&cursor={cursor}"
+            resp = await client.get(
+                url,
+                headers={"Authorization": f"Bearer {_user_token(user.id)}"},
+            )
+            data = resp.json()
+            all_items.extend(data["items"])
+            cursor = data.get("next_cursor")
+            if cursor is None:
+                break
+
+        assert len(all_items) == 7
+        # No duplicates
+        item_ids = [item["id"] for item in all_items]
+        assert len(set(item_ids)) == 7
 
 
 # ─── Referral API ────────────────────────────────────────────────────────────

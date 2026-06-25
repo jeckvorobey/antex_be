@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import AsyncIterator
+from decimal import Decimal
 
 import pytest
 from httpx import ASGITransport, AsyncClient
@@ -103,3 +104,77 @@ async def test_admin_list_users_search_no_results(
     assert response.status_code == 200
     data = response.json()
     assert len(data) == 0
+
+
+@pytest.mark.asyncio
+async def test_admin_list_users_includes_referral_and_aex_columns(
+    admin_users_api_client: tuple[AsyncClient, AsyncSession],
+) -> None:
+    client, db_session = admin_users_api_client
+    admin = Admin(username="admin", password_hash="unused")
+    user = User(
+        telegram_id=800012,
+        username="ref_admin_row",
+        first_name="Referral",
+        role=int(UserRole.USER),
+        referral_code="REFROW12",
+    )
+    db_session.add_all([admin, user])
+    await db_session.flush()
+    await db_session.refresh(admin)
+    await db_session.refresh(user)
+
+    from app.services.aex import AexService
+    from app.services.aex_rate import AexRateService
+
+    await AexService().credit(db_session, user.id, Decimal("12.5"))
+    await AexRateService().set_personal_rate(db_session, user.id, Decimal("0.015"))
+    await db_session.commit()
+
+    token = create_access_token({"sub": str(admin.id), "type": "admin"})
+    response = await client.get(
+        "/api/admin/users",
+        params={"search": "ref_admin_row"},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+
+    assert response.status_code == 200
+    data = response.json()
+    assert len(data) == 1
+    row = data[0]
+    assert row["referral_code"] == "REFROW12"
+    assert row["referral_rate"] == "0.015000"
+    assert row["referral_rate_percent"] == "1.500000"
+    assert row["aex_balance"] == "12.50000000"
+
+
+@pytest.mark.asyncio
+async def test_admin_get_user_without_wallet_returns_referral_defaults(
+    admin_users_api_client: tuple[AsyncClient, AsyncSession],
+) -> None:
+    client, db_session = admin_users_api_client
+    admin = Admin(username="admin", password_hash="unused")
+    user = User(
+        telegram_id=800013,
+        username="ref_admin_detail",
+        first_name="Referral",
+        role=int(UserRole.USER),
+        referral_code=None,
+    )
+    db_session.add_all([admin, user])
+    await db_session.flush()
+    await db_session.refresh(admin)
+    await db_session.refresh(user)
+
+    token = create_access_token({"sub": str(admin.id), "type": "admin"})
+    response = await client.get(
+        f"/api/admin/users/{user.id}",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+
+    assert response.status_code == 200
+    row = response.json()
+    assert row["referral_code"] is None
+    assert row["referral_rate"] == "0.002000"
+    assert row["referral_rate_percent"] == "0.200000"
+    assert row["aex_balance"] == "0"
