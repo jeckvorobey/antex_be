@@ -159,6 +159,36 @@ class AexService:
             description=description,
         )
 
+    async def debit_reserved(
+        self,
+        db: AsyncSession,
+        user_id: int,
+        amount: Decimal,
+        *,
+        reference_type: str | None = None,
+        reference_id: str | None = None,
+        description: str | None = None,
+    ) -> AexLedgerEntry:
+        """Списать AEX из reserved-баланса (завершение sale после hold)."""
+        if amount <= 0:
+            raise self._invalid_amount_error()
+
+        wallet = await self._ensure_wallet_for_update(db, user_id)
+        if wallet.balance_reserved < amount:
+            raise self._reserved_exceeds_error()
+
+        wallet.balance_reserved -= amount
+
+        return await self._create_entry(
+            db,
+            wallet_id=wallet.id,
+            amount=-amount,
+            entry_type=AexLedgerEntryType.DEBIT,
+            reference_type=reference_type,
+            reference_id=reference_id,
+            description=description,
+        )
+
     async def get_operations(
         self,
         db: AsyncSession,
@@ -167,7 +197,7 @@ class AexService:
         limit: int = 50,
         offset: int = 0,
     ) -> tuple[list[AexLedgerEntry], int]:
-        """Получить историю операций пользователя."""
+        """Получить историю операций пользователя (offset pagination)."""
         wallet = await AexWalletRepository(db).get_by_user_id(user_id)
         if wallet is None:
             return [], 0
@@ -176,6 +206,36 @@ class AexService:
         entries = await entry_repo.get_by_wallet(wallet.id, limit=limit, offset=offset)
         total = await entry_repo.count_by_wallet(wallet.id)
         return entries, total
+
+    async def get_operations_cursor(
+        self,
+        db: AsyncSession,
+        user_id: int,
+        *,
+        limit: int = 50,
+        cursor: int | None = None,
+    ) -> tuple[list[AexLedgerEntry], int | None]:
+        """Получить историю операций (cursor pagination).
+
+        Returns:
+            (entries, next_cursor) — next_cursor=None если страниц больше нет.
+        """
+        wallet = await AexWalletRepository(db).get_by_user_id(user_id)
+        if wallet is None:
+            return [], None
+
+        entry_repo = AexLedgerEntryRepository(db)
+        rows = await entry_repo.get_by_wallet_cursor(
+            wallet.id, limit=limit, cursor=cursor
+        )
+        # Detect has_more: if we got limit+1, there's a next page
+        next_cursor: int | None = None
+        has_more = len(rows) > limit
+        if has_more:
+            rows = rows[:limit]
+        if rows:
+            next_cursor = rows[-1].id if has_more else None
+        return rows, next_cursor
 
     async def _get_wallet_for_update(
         self,

@@ -17,9 +17,17 @@ class UserRepository(BaseRepository[User]):
     model = User
     _nullable_refresh_fields: ClassVar[set[str]] = {"photo_url"}
 
+    @staticmethod
+    def _admin_user_options():
+        return (
+            selectinload(User.city),
+            selectinload(User.aex_wallet),
+            selectinload(User.aex_personal_rate),
+        )
+
     async def get_by_telegram_id(self, tg_id: int) -> User | None:
         result = await self.session.execute(
-            select(User).where(User.telegram_id == tg_id).options(selectinload(User.city))
+            select(User).where(User.telegram_id == tg_id).options(*self._admin_user_options())
         )
         return result.scalar_one_or_none()
 
@@ -44,13 +52,13 @@ class UserRepository(BaseRepository[User]):
 
     async def get_one(self, user_id: int) -> User | None:
         result = await self.session.execute(
-            select(User).where(User.id == user_id).options(selectinload(User.city))
+            select(User).where(User.id == user_id).options(*self._admin_user_options())
         )
         return result.scalar_one_or_none()
 
     async def list_all(self) -> list[User]:
         result = await self.session.execute(
-            select(User).options(selectinload(User.city)).order_by(User.id)
+            select(User).options(*self._admin_user_options()).order_by(User.id)
         )
         return list(result.scalars().all())
 
@@ -70,7 +78,7 @@ class UserRepository(BaseRepository[User]):
             conditions.append(User.telegram_id == int(query))
 
         result = await self.session.execute(
-            select(User).options(selectinload(User.city)).where(or_(*conditions)).order_by(User.id)
+            select(User).options(*self._admin_user_options()).where(or_(*conditions)).order_by(User.id)
         )
         return list(result.scalars().all())
 

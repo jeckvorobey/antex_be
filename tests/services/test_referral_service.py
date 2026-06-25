@@ -69,6 +69,29 @@ class TestReferralCodeGeneration:
 
         assert code1 != code2
 
+    async def test_batch_generation_retries_when_generated_code_already_exists(
+        self,
+        db_session: AsyncSession,
+        service: ReferralService,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        existing = User(telegram_id=410, username="existing", referral_code="DUPLICAT")
+        missing = User(telegram_id=420, username="missing", referral_code=None)
+        db_session.add_all([existing, missing])
+        await db_session.flush()
+
+        generated = iter(["DUPLICAT-collision", "UNIQUE12-fresh"])
+        monkeypatch.setattr(
+            "app.services.referral.secrets.token_urlsafe",
+            lambda _: next(generated),
+        )
+
+        count = await service.generate_batch_referral_codes(db_session)
+
+        assert count == 1
+        await db_session.refresh(missing)
+        assert missing.referral_code == "UNIQUE12"
+
 
 class TestReferralBinding:
     async def test_bind_referral_success(

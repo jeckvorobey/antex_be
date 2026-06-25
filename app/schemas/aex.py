@@ -54,9 +54,10 @@ class AexLedgerEntryOut(BaseModel):
 
 class AexOperationsResponse(BaseModel):
     items: list[AexLedgerEntryOut]
-    total: int
-    limit: int
-    offset: int
+    next_cursor: int | None = None
+    total: int | None = None
+    limit: int | None = None
+    offset: int | None = None
 
 
 # ── Rate ─────────────────────────────────────────────────────────────

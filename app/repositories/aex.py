@@ -61,6 +61,25 @@ class AexLedgerEntryRepository(BaseRepository[AexLedgerEntry]):
         )
         return list(result.scalars().all())
 
+    async def get_by_wallet_cursor(
+        self,
+        wallet_id: int,
+        *,
+        limit: int = 50,
+        cursor: int | None = None,
+    ) -> list[AexLedgerEntry]:
+        """Cursor-based pagination: возвращает записи после cursor (DESC)."""
+        query = (
+            select(AexLedgerEntry)
+            .where(AexLedgerEntry.wallet_id == wallet_id)
+            .order_by(self._default_order)
+            .limit(limit + 1)  # Fetch one extra to detect has_more
+        )
+        if cursor is not None:
+            query = query.where(AexLedgerEntry.id < cursor)
+        result = await self.session.execute(query)
+        return list(result.scalars().all())
+
     async def count_by_wallet(self, wallet_id: int) -> int:
         from sqlalchemy import func
 
