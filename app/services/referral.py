@@ -220,12 +220,12 @@ class ReferralService:
         self,
         db: AsyncSession,
     ) -> int:
-        """Сгенерировать реферальные коды для всех пользователей.
+        """Сгенерировать реферальные коды для всех пользователей без кода.
 
         Возвращает количество сгенерированных кодов.
         """
         repo = UserRepository(db)
-        users = await repo.list_all()
+        users = await repo.get_users_without_referral_code()
 
         if not users:
             return 0

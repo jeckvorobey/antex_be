@@ -606,7 +606,7 @@ class TestAdminAexWalletsEndpoint:
 
 
 class TestAdminGenerateReferralCodes:
-    async def test_generates_codes_for_all_users(
+    async def test_generates_codes_for_users_without_code(
         self, aex_api_client: tuple[AsyncClient, AsyncSession]
     ) -> None:
         client, db = aex_api_client
@@ -638,7 +638,7 @@ class TestAdminGenerateReferralCodes:
         assert len(user2.referral_code) == 8
         assert user1.referral_code != user2.referral_code
 
-    async def test_rewrites_existing_codes(
+    async def test_skips_users_with_existing_code(
         self, aex_api_client: tuple[AsyncClient, AsyncSession]
     ) -> None:
         client, db = aex_api_client
@@ -657,14 +657,13 @@ class TestAdminGenerateReferralCodes:
         assert response.status_code == 200
         data = response.json()
         assert data["ok"] is True
-        assert data["generated"] == 2
+        assert data["generated"] == 1
 
-        # Verify existing code was changed
+        # Verify existing code was not changed
         await db.refresh(user_with_code)
-        assert user_with_code.referral_code is not None
-        assert user_with_code.referral_code != "EXISTING"
+        assert user_with_code.referral_code == "EXISTING"
 
-    async def test_rewrites_codes_when_all_have_codes(
+    async def test_returns_zero_when_all_have_codes(
         self, aex_api_client: tuple[AsyncClient, AsyncSession]
     ) -> None:
         client, db = aex_api_client
@@ -682,10 +681,7 @@ class TestAdminGenerateReferralCodes:
         assert response.status_code == 200
         data = response.json()
         assert data["ok"] is True
-        assert data["generated"] == 1
-
-        await db.refresh(user)
-        assert user.referral_code != "HADCODE"
+        assert data["generated"] == 0
 
     async def test_requires_admin_auth(
         self, aex_api_client: tuple[AsyncClient, AsyncSession]
