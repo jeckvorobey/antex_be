@@ -16,6 +16,7 @@ from app.enums.country import Country
 from app.enums.order import OrderStatus
 from app.enums.user import UserRole
 from app.models.admin import Admin
+from app.models.aex import AexLedgerEntry, AexWallet
 from app.models.city import City
 from app.models.order import Order
 from app.models.rate import Rate
@@ -162,6 +163,74 @@ async def test_miniapp_home_and_exchange_are_backend_driven(
     assert {"rub-gel", "rub-vnd", "usdt-gel", "usdt-vnd"} <= {
         pair["id"] for pair in exchange["pairs"]
     }
+
+
+@pytest.mark.asyncio
+async def test_miniapp_aex_referral_returns_ready_link(
+    api_client: tuple[AsyncClient, AsyncSession],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from app.core.config import settings
+
+    client, db_session = api_client
+    _, _, customer = await seed_exchange_data(db_session)
+    referred = User(
+        telegram_id=700003,
+        username="invited",
+        first_name="Invited",
+        referred_by=customer.id,
+    )
+    db_session.add(referred)
+    await db_session.flush()
+    order = Order(
+        UserId=referred.id,
+        CityId=None,
+        country=Country.THAILAND,
+        currencySell="RUB",
+        amountSell=1000,
+        currencyBuy="THB",
+        amountBuy=400,
+        rate=0.4,
+        status=int(OrderStatus.COMPLETED),
+        contactTelegram="@invited",
+        methodGet="qrcode",
+        publicNumber="RF0001",
+    )
+    wallet = AexWallet(user_id=customer.id)
+    db_session.add_all([order, wallet])
+    await db_session.flush()
+    db_session.add(
+        AexLedgerEntry(
+            wallet_id=wallet.id,
+            amount=12.5,
+            entry_type="credit",
+            reference_type="referral",
+            reference_id=str(order.id),
+            description="Referral bonus for order",
+        )
+    )
+    await db_session.flush()
+    token = create_access_token({"sub": str(customer.id), "role": customer.role})
+    monkeypatch.setattr(settings, "telegram_bot_username", "antex_test_bot")
+
+    response = await client.get(
+        "/api/miniapp/aex/referral",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+
+    assert response.status_code == 200
+    data = response.json()
+    assert len(data["referralCode"]) == 8
+    assert data["referralLink"] == f"https://t.me/antex_test_bot?startapp=ref_{data['referralCode']}"
+    assert data["totalReferrals"] == 1
+    assert data["referrals"] == [
+        {
+            "id": referred.id,
+            "displayName": "Invited",
+            "joinedAt": referred.createdAt.isoformat().replace("+00:00", "Z"),
+            "earnedAex": 12.5,
+        }
+    ]
 
 
 @pytest.mark.asyncio

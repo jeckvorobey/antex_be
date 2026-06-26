@@ -5,8 +5,9 @@ from __future__ import annotations
 from fastapi import APIRouter, HTTPException, status
 
 from app.api.deps import CurrentUser, DbDep
+from app.core.config import settings
 from app.schemas.aex import ReferralBindRequest, ReferralCodeOut, ReferralStatsOut
-from app.services.referral import ReferralService
+from app.services.referral import ReferralService, build_referral_link
 
 router = APIRouter(prefix="/api/referral", tags=["referral"])
 
@@ -20,7 +21,7 @@ async def get_referral_code(db: DbDep, user: CurrentUser) -> ReferralCodeOut:
     await db.commit()
     return ReferralCodeOut(
         referral_code=code,
-        referral_link=f"https://t.me/antex_bot?startapp=ref_{code}",
+        referral_link=build_referral_link(code, settings.telegram_bot_username),
     )
 
 

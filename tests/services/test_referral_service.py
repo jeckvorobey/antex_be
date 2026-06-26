@@ -10,7 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.exceptions import AntExException
 from app.models.user import User
 from app.services.aex import AexService
-from app.services.referral import ReferralService
+from app.services.referral import ReferralService, build_referral_link
 
 
 @pytest.fixture
@@ -34,6 +34,18 @@ async def referred(db_session: AsyncSession) -> User:
 @pytest.fixture
 def service() -> ReferralService:
     return ReferralService()
+
+
+class TestReferralLinkBuilder:
+    def test_build_referral_link_uses_configured_bot_username(self) -> None:
+        assert build_referral_link("ABC12345", "@antex_test_bot") == (
+            "https://t.me/antex_test_bot?startapp=ref_ABC12345"
+        )
+
+    def test_build_referral_link_falls_back_to_default_bot_username(self) -> None:
+        assert build_referral_link("ABC12345", "") == (
+            "https://t.me/antex_bot?startapp=ref_ABC12345"
+        )
 
 
 class TestReferralCodeGeneration:
