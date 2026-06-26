@@ -115,3 +115,7 @@ order-completed-bottom = Thanks for using our service! If you have a minute, we�
 order-cancelled = ❌ Order #{ $id } cancelled.
 manager-chat-open-text = Hello! You had left order #{ $id } for exchanging { $amount } { $currency }. Are you ready to continue?
 user-chat-open-text = Hello! For order #{ $id } in the amount of { $amount } { $currency }, I confirm I’m ready to exchange.
+referral-bonus-credited =
+    🎁 { $amount } AEX credited for order #{ $order_id }.
+
+    Invited user: { $invited_name }.

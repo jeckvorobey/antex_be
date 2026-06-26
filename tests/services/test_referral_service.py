@@ -155,8 +155,9 @@ class TestReferralBinding:
         code = await service.get_or_create_referral_code(db_session, referrer)
         await service.bind_referral(db_session, referred, code)
 
-        with pytest.raises(AntExException, match="already has a referrer"):
-            await service.bind_referral(db_session, referred, code)
+        result = await service.bind_referral(db_session, referred, code)
+
+        assert result.referred_by == referrer.id
 
     async def test_bind_rejects_invalid_code(
         self,
@@ -164,8 +165,66 @@ class TestReferralBinding:
         referred: User,
         service: ReferralService,
     ) -> None:
-        with pytest.raises(AntExException, match="Invalid referral code"):
+        with pytest.raises(AntExException, match="Неверный реферальный код"):
             await service.bind_referral(db_session, referred, "INVALID123")
+
+    async def test_bind_rejects_nonexistent_eight_char_code(
+        self,
+        db_session: AsyncSession,
+        referred: User,
+        service: ReferralService,
+    ) -> None:
+        with pytest.raises(AntExException, match="Неверный реферальный код"):
+            await service.bind_referral(db_session, referred, "A7kP2mX9")
+
+    async def test_bind_does_not_rewrite_existing_referrer(
+        self,
+        db_session: AsyncSession,
+        referred: User,
+        service: ReferralService,
+    ) -> None:
+        referrer_one = User(telegram_id=310, username="ref_one", referral_code="hF84LmQz")
+        referrer_two = User(telegram_id=320, username="ref_two", referral_code="N2vX8aBc")
+        db_session.add_all([referrer_one, referrer_two])
+        await db_session.flush()
+
+        await service.bind_referral(db_session, referred, "hF84LmQz")
+        result = await service.bind_referral(db_session, referred, "N2vX8aBc")
+
+        assert result.referred_by == referrer_one.id
+
+    async def test_bind_rejects_direct_mutual_referral(
+        self,
+        db_session: AsyncSession,
+        service: ReferralService,
+    ) -> None:
+        user_a = User(telegram_id=330, username="user_a", referral_code="pQ7Rk91T")
+        user_b = User(telegram_id=340, username="user_b", referral_code="Xz4Lm8Pw")
+        db_session.add_all([user_a, user_b])
+        await db_session.flush()
+
+        await service.bind_referral(db_session, user_b, "pQ7Rk91T")
+
+        with pytest.raises(AntExException) as exc_info:
+            await service.bind_referral(db_session, user_a, "Xz4Lm8Pw")
+        assert exc_info.value.code == "MUTUAL_REFERRAL"
+
+    async def test_bind_allows_regular_chain(
+        self,
+        db_session: AsyncSession,
+        service: ReferralService,
+    ) -> None:
+        user_a = User(telegram_id=350, username="chain_a", referral_code="3KdVq7Rn")
+        user_b = User(telegram_id=360, username="chain_b", referral_code="Y9mNc2Lp")
+        user_c = User(telegram_id=370, username="chain_c")
+        db_session.add_all([user_a, user_b, user_c])
+        await db_session.flush()
+
+        await service.bind_referral(db_session, user_b, "3KdVq7Rn")
+        await service.bind_referral(db_session, user_c, "Y9mNc2Lp")
+
+        assert user_b.referred_by == user_a.id
+        assert user_c.referred_by == user_b.id
 
 
 class TestReferralStats:

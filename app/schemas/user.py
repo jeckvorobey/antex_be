@@ -33,6 +33,7 @@ class UserOut(BaseModel):
     trusted_contact_source: str | None
     trusted_contact_ready: bool
     referral_code: str | None = None
+    referred_by: int | None = None
     referral_rate: str = "0.002000"
     referral_rate_percent: str = "0.200000"
     aex_balance: str = "0"
@@ -102,6 +103,7 @@ def build_user_out(user, *, referral_rate: Decimal | None = None) -> UserOut:
         trusted_contact_source=trusted_contact.source,
         trusted_contact_ready=trusted_contact.ready,
         referral_code=getattr(user, "referral_code", None),
+        referred_by=getattr(user, "referred_by", None),
         referral_rate=_format_referral_rate(effective_referral_rate),
         referral_rate_percent=_format_referral_rate_percent(effective_referral_rate),
         aex_balance=aex_balance,

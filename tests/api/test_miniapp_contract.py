@@ -221,7 +221,9 @@ async def test_miniapp_aex_referral_returns_ready_link(
     assert response.status_code == 200
     data = response.json()
     assert len(data["referralCode"]) == 8
-    assert data["referralLink"] == f"https://t.me/antex_test_bot?startapp=ref_{data['referralCode']}"
+    assert (
+        data["referralLink"] == f"https://t.me/antex_test_bot?startapp=ref_{data['referralCode']}"
+    )
     assert data["totalReferrals"] == 1
     assert data["referrals"] == [
         {
@@ -231,6 +233,61 @@ async def test_miniapp_aex_referral_returns_ready_link(
             "earnedAex": 12.5,
         }
     ]
+
+
+@pytest.mark.asyncio
+async def test_miniapp_referral_apply_binds_once(
+    api_client: tuple[AsyncClient, AsyncSession],
+) -> None:
+    client, db_session = api_client
+    _, _, customer = await seed_exchange_data(db_session)
+    referrer_one = User(telegram_id=700004, username="ref_one", referral_code="A7kP2mX9")
+    referrer_two = User(telegram_id=700005, username="ref_two", referral_code="hF84LmQz")
+    db_session.add_all([referrer_one, referrer_two])
+    await db_session.flush()
+    token = create_access_token({"sub": str(customer.id), "role": customer.role})
+
+    first = await client.post(
+        "/api/miniapp/aex/referral/apply",
+        json={"code": "A7kP2mX9"},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    second = await client.post(
+        "/api/miniapp/aex/referral/apply",
+        json={"code": "hF84LmQz"},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+
+    assert first.status_code == 200
+    assert first.json() == {"success": True}
+    assert second.status_code == 200
+    await db_session.refresh(customer)
+    assert customer.referred_by == referrer_one.id
+
+
+@pytest.mark.asyncio
+async def test_miniapp_referral_apply_invalid_or_missing_code_returns_expected_message(
+    api_client: tuple[AsyncClient, AsyncSession],
+) -> None:
+    client, db_session = api_client
+    _, _, customer = await seed_exchange_data(db_session)
+    token = create_access_token({"sub": str(customer.id), "role": customer.role})
+
+    invalid_format = await client.post(
+        "/api/miniapp/aex/referral/apply",
+        json={"code": "bad-code"},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    missing = await client.post(
+        "/api/miniapp/aex/referral/apply",
+        json={"code": "N2vX8aBc"},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+
+    assert invalid_format.status_code == 422
+    assert missing.status_code == 422
+    assert invalid_format.json()["message"] == "Неверный реферальный код. Проверте или удалите!"
+    assert missing.json()["message"] == "Неверный реферальный код. Проверте или удалите!"
 
 
 @pytest.mark.asyncio

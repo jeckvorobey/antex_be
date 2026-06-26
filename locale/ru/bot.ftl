@@ -131,3 +131,7 @@ order-completed-bottom =
 order-cancelled = ❌ Заявка #{ $id } отменена.
 manager-chat-open-text = Здравствуйте! Вы оставляли заявку #{ $id } на обмен { $amount } { $currency }. Готовы продолжить?
 user-chat-open-text = Здравствуйте! По заявке #{ $id } на сумму { $amount } { $currency } подтверждаю готовность к обмену.
+referral-bonus-credited =
+    🎁 Начислено { $amount } AEX за заявку #{ $order_id }.
+
+    Приглашённый пользователь: { $invited_name }.

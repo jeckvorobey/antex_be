@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter
 
 from app.api.deps import CurrentUser, DbDep
 from app.core.config import settings
@@ -42,15 +42,6 @@ async def bind_referral(
     user: CurrentUser,
 ) -> dict[str, bool]:
     """Привязать реферала по коду (вызывается при deep-link)."""
-    try:
-        await referral_service.bind_referral(db, user, body.referral_code)
-    except Exception as exc:
-        code = getattr(exc, "code", None)
-        if code in {"ALREADY_REFERRED", "INVALID_REFERRAL_CODE", "SELF_REFERRAL"}:
-            raise HTTPException(
-                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-                detail=str(exc),
-            ) from exc
-        raise
+    await referral_service.bind_referral(db, user, body.referral_code)
     await db.commit()
     return {"ok": True}
