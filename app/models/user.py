@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import secrets
 from typing import TYPE_CHECKING
 
 from sqlalchemy import BigInteger, Boolean, ForeignKey, Integer, String, Text
@@ -15,11 +14,6 @@ if TYPE_CHECKING:
     from app.models.aex import AexPersonalRate, AexWallet
     from app.models.city import City
     from app.models.order import Order
-
-
-def _generate_referral_code() -> str:
-    """Генерирует уникальный 8-символьный реферальный код."""
-    return secrets.token_urlsafe(6)[:8]
 
 
 class User(Base, TimestampMixin):

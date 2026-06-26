@@ -244,6 +244,8 @@ class ReferralService:
         repo = UserRepository(db)
         for _ in range(10):
             code = secrets.token_urlsafe(REFERRAL_CODE_LENGTH)[:REFERRAL_CODE_LENGTH]
+            if not code.isascii() or not code.isalnum():
+                continue
             existing = await repo.get_by_referral_code(code)
             if existing is None:
                 return code
