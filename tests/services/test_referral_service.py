@@ -58,6 +58,22 @@ class TestReferralCodeGeneration:
         assert len(code) == 8
         assert referrer.referral_code == code
 
+    async def test_generated_code_contains_only_ascii_letters_and_digits(
+        self,
+        db_session: AsyncSession,
+        service: ReferralService,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        generated = iter(["itrx_TUI", "AB12cd34"])
+        monkeypatch.setattr(
+            "app.services.referral.secrets.token_urlsafe",
+            lambda _: next(generated),
+        )
+
+        code = await service._generate_unique_code(db_session)
+
+        assert code == "AB12cd34"
+
     async def test_returns_existing_code(
         self, db_session: AsyncSession, referrer: User, service: ReferralService
     ) -> None:
