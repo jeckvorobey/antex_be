@@ -7,7 +7,7 @@ from decimal import Decimal
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models.aex import AexLedgerEntry, AexPersonalRate, AexRate, AexWallet
+from app.models.aex import AexLedgerEntry, AexPartnerRate, AexPersonalRate, AexRate, AexWallet
 from app.models.user import User
 
 
@@ -207,6 +207,39 @@ class TestAexPersonalRate:
 
         assert user.aex_personal_rate is not None
         assert user.aex_personal_rate.rate == Decimal("0.003")
+
+
+class TestAexPartnerRate:
+    async def test_create_partner_rate(self, db_session: AsyncSession, user: User) -> None:
+        rate = AexPartnerRate(user_id=user.id, rate=Decimal("0.007"))
+        db_session.add(rate)
+        await db_session.flush()
+        await db_session.refresh(rate)
+
+        assert rate.id is not None
+        assert rate.user_id == user.id
+        assert rate.rate == Decimal("0.007")
+
+    async def test_partner_rate_user_relationship(
+        self, db_session: AsyncSession, user: User
+    ) -> None:
+        rate = AexPartnerRate(user_id=user.id, rate=Decimal("0.004"))
+        db_session.add(rate)
+        await db_session.flush()
+        await db_session.refresh(rate)
+
+        assert rate.user.id == user.id
+
+    async def test_user_partner_rate_relationship(
+        self, db_session: AsyncSession, user: User
+    ) -> None:
+        rate = AexPartnerRate(user_id=user.id, rate=Decimal("0.004"))
+        db_session.add(rate)
+        await db_session.flush()
+        await db_session.refresh(user, ["aex_partner_rate"])
+
+        assert user.aex_partner_rate is not None
+        assert user.aex_partner_rate.rate == Decimal("0.004")
 
 
 class TestUserReferralFields:

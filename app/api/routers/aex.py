@@ -7,18 +7,26 @@ from fastapi import APIRouter, HTTPException, Query, status
 from app.api.deps import AdminUser, CurrentUser, DbDep
 from app.repositories.aex import (
     AexLedgerEntryRepository,
+    AexPartnerRateRepository,
+    AexPersonalRateRepository,
     AexRateRepository,
     AexWalletRepository,
 )
 from app.schemas.aex import (
     AexAdminCreditRequest,
     AexAdminDebitRequest,
+    AexAdminRateCreate,
+    AexAdminRateOut,
+    AexAdminRateRowOut,
+    AexAdminRateUpdate,
     AexAdminWalletOut,
     AexOperationsResponse,
     AexRateOut,
     AexRateUpdate,
     AexTransferRequest,
     AexWalletOut,
+    build_admin_rate_out,
+    build_admin_rate_row_out,
     build_admin_wallet_out,
     build_aex_ledger_entry_out,
     build_aex_rate_out,
@@ -86,8 +94,6 @@ async def transfer_aex(
 @admin_router.get("/rates", response_model=list[AexRateOut])
 async def list_rates(db: DbDep, _: AdminUser) -> list[AexRateOut]:
     """Список ставок AEX (глобальная + персональные)."""
-    from app.repositories.aex import AexPersonalRateRepository
-
     global_rate = await rate_service.get_global_rate(db)
     personal_rates = await AexPersonalRateRepository(db).get_all_with_users()
     result = [build_aex_rate_out(global_rate)]
@@ -99,8 +105,131 @@ async def list_rates(db: DbDep, _: AdminUser) -> list[AexRateOut]:
                 createdAt=pr.createdAt,
                 updatedAt=pr.updatedAt,
             )
-        )
+    )
     return result
+
+
+@admin_router.get("/rate", response_model=AexAdminRateOut)
+async def get_admin_rate(db: DbDep, _: AdminUser) -> AexAdminRateOut:
+    """Получить глобальную ставку AEX для админки."""
+    rate = await rate_service.get_global_rate(db)
+    return build_admin_rate_out(rate)
+
+
+@admin_router.put("/rate", response_model=AexAdminRateOut)
+async def update_admin_rate(
+    body: AexAdminRateUpdate,
+    db: DbDep,
+    _: AdminUser,
+) -> AexAdminRateOut:
+    """Обновить глобальную ставку AEX для админки."""
+    rate = await rate_service.update_global_rate(db, body.rate)
+    await db.commit()
+    return build_admin_rate_out(rate)
+
+
+@admin_router.get("/rates/personal", response_model=list[AexAdminRateRowOut])
+async def list_personal_rates(db: DbDep, _: AdminUser) -> list[AexAdminRateRowOut]:
+    """Список персональных ставок AEX."""
+    rates = await rate_service.get_all_personal_rates(db)
+    return [build_admin_rate_row_out(rate) for rate in rates]
+
+
+@admin_router.post("/rates/personal", response_model=AexAdminRateRowOut)
+async def create_personal_rate(
+    body: AexAdminRateCreate,
+    db: DbDep,
+    _: AdminUser,
+) -> AexAdminRateRowOut:
+    """Создать персональную ставку AEX."""
+    rate = await rate_service.set_personal_rate(db, body.userId, body.rate)
+    await db.commit()
+    return build_admin_rate_row_out(rate)
+
+
+@admin_router.patch("/rates/personal/{rate_id}", response_model=AexAdminRateRowOut)
+async def update_personal_rate(
+    rate_id: int,
+    body: AexAdminRateUpdate,
+    db: DbDep,
+    _: AdminUser,
+) -> AexAdminRateRowOut:
+    """Обновить персональную ставку AEX."""
+    repo = AexPersonalRateRepository(db)
+    rate = await repo.get_by_id(rate_id)
+    if rate is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Rate not found")
+    updated = await repo.update(rate, rate=body.rate)
+    await db.commit()
+    return build_admin_rate_row_out(updated)
+
+
+@admin_router.delete("/rates/personal/{rate_id}")
+async def delete_personal_rate(
+    rate_id: int,
+    db: DbDep,
+    _: AdminUser,
+) -> dict[str, bool]:
+    """Удалить персональную ставку AEX."""
+    repo = AexPersonalRateRepository(db)
+    rate = await repo.get_by_id(rate_id)
+    if rate is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Rate not found")
+    await repo.delete(rate)
+    await db.commit()
+    return {"ok": True}
+
+
+@admin_router.get("/rates/partner", response_model=list[AexAdminRateRowOut])
+async def list_partner_rates(db: DbDep, _: AdminUser) -> list[AexAdminRateRowOut]:
+    """Список партнёрских ставок AEX."""
+    rates = await rate_service.get_all_partner_rates(db)
+    return [build_admin_rate_row_out(rate) for rate in rates]
+
+
+@admin_router.post("/rates/partner", response_model=AexAdminRateRowOut)
+async def create_partner_rate(
+    body: AexAdminRateCreate,
+    db: DbDep,
+    _: AdminUser,
+) -> AexAdminRateRowOut:
+    """Создать партнёрскую ставку AEX."""
+    rate = await rate_service.set_partner_rate(db, body.userId, body.rate)
+    await db.commit()
+    return build_admin_rate_row_out(rate)
+
+
+@admin_router.patch("/rates/partner/{rate_id}", response_model=AexAdminRateRowOut)
+async def update_partner_rate(
+    rate_id: int,
+    body: AexAdminRateUpdate,
+    db: DbDep,
+    _: AdminUser,
+) -> AexAdminRateRowOut:
+    """Обновить партнёрскую ставку AEX."""
+    repo = AexPartnerRateRepository(db)
+    rate = await repo.get_by_id(rate_id)
+    if rate is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Rate not found")
+    updated = await repo.update(rate, rate=body.rate)
+    await db.commit()
+    return build_admin_rate_row_out(updated)
+
+
+@admin_router.delete("/rates/partner/{rate_id}")
+async def delete_partner_rate(
+    rate_id: int,
+    db: DbDep,
+    _: AdminUser,
+) -> dict[str, bool]:
+    """Удалить партнёрскую ставку AEX."""
+    repo = AexPartnerRateRepository(db)
+    rate = await repo.get_by_id(rate_id)
+    if rate is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Rate not found")
+    await repo.delete(rate)
+    await db.commit()
+    return {"ok": True}
 
 
 @admin_router.put("/rates/{rate_id}", response_model=AexRateOut)

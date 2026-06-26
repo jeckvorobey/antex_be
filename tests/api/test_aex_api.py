@@ -397,6 +397,135 @@ class TestAdminAexRatesEndpoint:
         assert "global_rate" in data[0]
 
 
+class TestAdminAexRateSettingsEndpoint:
+    async def test_get_admin_rate(self, aex_api_client: tuple[AsyncClient, AsyncSession]) -> None:
+        client, db = aex_api_client
+        admin = Admin(username="rateadmin", email="rate@test.com", password_hash="x")
+        db.add(admin)
+        await db.flush()
+        await db.refresh(admin)
+
+        response = await client.get(
+            "/api/admin/aex/rate",
+            headers={"Authorization": f"Bearer {_admin_token(admin.id)}"},
+        )
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["rate"] == "0.002000"
+        assert data["updatedAt"] is not None
+
+    async def test_update_admin_rate(
+        self, aex_api_client: tuple[AsyncClient, AsyncSession]
+    ) -> None:
+        client, db = aex_api_client
+        admin = Admin(username="rateupd", email="rateupd@test.com", password_hash="x")
+        db.add(admin)
+        await db.flush()
+        await db.refresh(admin)
+
+        response = await client.put(
+            "/api/admin/aex/rate",
+            json={"rate": "0.25"},
+            headers={"Authorization": f"Bearer {_admin_token(admin.id)}"},
+        )
+
+        assert response.status_code == 200
+        assert response.json()["rate"] == "0.250000"
+
+
+class TestAdminAexPersonalRatesEndpoint:
+    async def test_personal_rates_crud(
+        self, aex_api_client: tuple[AsyncClient, AsyncSession]
+    ) -> None:
+        client, db = aex_api_client
+        admin = Admin(username="prateadmin", email="prate@test.com", password_hash="x")
+        user = User(telegram_id=13000, username="prateuser", first_name="Partner")
+        db.add_all([admin, user])
+        await db.flush()
+        await db.refresh(admin)
+        await db.refresh(user)
+
+        response = await client.get(
+            "/api/admin/aex/rates/personal",
+            headers={"Authorization": f"Bearer {_admin_token(admin.id)}"},
+        )
+        assert response.status_code == 200
+        assert response.json() == []
+
+        create_response = await client.post(
+            "/api/admin/aex/rates/personal",
+            json={"userId": user.id, "rate": "0.5"},
+            headers={"Authorization": f"Bearer {_admin_token(admin.id)}"},
+        )
+        assert create_response.status_code == 200
+        created = create_response.json()
+        assert created["userId"] == user.id
+        assert created["rate"] == "0.500000"
+
+        rate_id = created["id"]
+        update_response = await client.patch(
+            f"/api/admin/aex/rates/personal/{rate_id}",
+            json={"rate": "0.6"},
+            headers={"Authorization": f"Bearer {_admin_token(admin.id)}"},
+        )
+        assert update_response.status_code == 200
+        assert update_response.json()["rate"] == "0.600000"
+
+        delete_response = await client.delete(
+            f"/api/admin/aex/rates/personal/{rate_id}",
+            headers={"Authorization": f"Bearer {_admin_token(admin.id)}"},
+        )
+        assert delete_response.status_code == 200
+        assert delete_response.json()["ok"] is True
+
+
+class TestAdminAexPartnerRatesEndpoint:
+    async def test_partner_rates_crud(
+        self, aex_api_client: tuple[AsyncClient, AsyncSession]
+    ) -> None:
+        client, db = aex_api_client
+        admin = Admin(username="partneradmin", email="partner@test.com", password_hash="x")
+        user = User(telegram_id=14000, username="partneruser", first_name="Partner")
+        db.add_all([admin, user])
+        await db.flush()
+        await db.refresh(admin)
+        await db.refresh(user)
+
+        response = await client.get(
+            "/api/admin/aex/rates/partner",
+            headers={"Authorization": f"Bearer {_admin_token(admin.id)}"},
+        )
+        assert response.status_code == 200
+        assert response.json() == []
+
+        create_response = await client.post(
+            "/api/admin/aex/rates/partner",
+            json={"userId": user.id, "rate": "1.1"},
+            headers={"Authorization": f"Bearer {_admin_token(admin.id)}"},
+        )
+        assert create_response.status_code == 200
+        created = create_response.json()
+        assert created["userId"] == user.id
+        assert created["rate"] == "1.100000"
+
+        rate_id = created["id"]
+        update_response = await client.patch(
+            f"/api/admin/aex/rates/partner/{rate_id}",
+            json={"rate": "1.2"},
+            headers={"Authorization": f"Bearer {_admin_token(admin.id)}"},
+        )
+        assert update_response.status_code == 200
+        assert update_response.json()["rate"] == "1.200000"
+
+        delete_response = await client.delete(
+            f"/api/admin/aex/rates/partner/{rate_id}",
+            headers={"Authorization": f"Bearer {_admin_token(admin.id)}"},
+        )
+        assert delete_response.status_code == 200
+        assert delete_response.json()["ok"] is True
+
+
 class TestAdminAexCreditEndpoint:
     async def test_admin_credit(self, aex_api_client: tuple[AsyncClient, AsyncSession]) -> None:
         client, db = aex_api_client
