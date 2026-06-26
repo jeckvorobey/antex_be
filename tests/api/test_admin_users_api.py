@@ -80,8 +80,11 @@ async def test_admin_cannot_assign_second_global_manager(
 
     assert response.status_code == 200
     data = response.json()
-    assert len(data) == 1
-    assert data[0]["id"] == user1.id
+    assert data["total"] == 1
+    assert data["limit"] == 50
+    assert data["offset"] == 0
+    assert len(data["items"]) == 1
+    assert data["items"][0]["id"] == user1.id
 
 
 @pytest.mark.asyncio
@@ -103,7 +106,7 @@ async def test_admin_list_users_search_no_results(
 
     assert response.status_code == 200
     data = response.json()
-    assert len(data) == 0
+    assert data == {"items": [], "total": 0, "limit": 50, "offset": 0}
 
 
 @pytest.mark.asyncio
@@ -139,13 +142,47 @@ async def test_admin_list_users_includes_referral_and_aex_columns(
     )
 
     assert response.status_code == 200
-    data = response.json()
+    data = response.json()["items"]
     assert len(data) == 1
     row = data[0]
     assert row["referral_code"] == "REFROW12"
     assert row["referral_rate"] == "0.015000"
     assert row["referral_rate_percent"] == "1.500000"
     assert row["aex_balance"] == "12.50000000"
+
+
+@pytest.mark.asyncio
+async def test_admin_users_list_respects_limit_offset_and_total(
+    admin_users_api_client: tuple[AsyncClient, AsyncSession],
+) -> None:
+    client, db_session = admin_users_api_client
+    admin = Admin(username="admin", password_hash="unused")
+    db_session.add(admin)
+    await db_session.flush()
+    for index in range(3):
+        db_session.add(
+            User(
+                telegram_id=810000 + index,
+                username=f"user_{index}",
+                first_name=f"User {index}",
+                role=int(UserRole.USER),
+            )
+        )
+    await db_session.flush()
+    token = create_access_token({"sub": str(admin.id), "type": "admin"})
+
+    response = await client.get(
+        "/api/admin/users",
+        params={"limit": 2, "offset": 1},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["total"] == 3
+    assert data["limit"] == 2
+    assert data["offset"] == 1
+    assert [item["username"] for item in data["items"]] == ["user_1", "user_2"]
 
 
 @pytest.mark.asyncio

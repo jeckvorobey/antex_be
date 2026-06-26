@@ -233,17 +233,20 @@ async def test_admin_orders_list_loads_related_data_in_bulk(
     with count_sql_statements(db_session) as statements:
         response = await client.get(
             "/api/admin/orders",
+            params={"limit": 2, "offset": 1},
             headers={"Authorization": f"Bearer {token}"},
         )
 
     assert response.status_code == 200
-    assert [item["publicNumber"] for item in response.json()] == [
-        "2026060004",
+    payload = response.json()
+    assert payload["total"] == 4
+    assert payload["limit"] == 2
+    assert payload["offset"] == 1
+    assert [item["publicNumber"] for item in payload["items"]] == [
         "2026060003",
         "2026060002",
-        "2026060001",
     ]
     select_count = sum(
         1 for statement in statements if statement.lstrip().upper().startswith("SELECT")
     )
-    assert select_count <= 4
+    assert select_count <= 5

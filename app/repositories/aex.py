@@ -5,7 +5,7 @@ from __future__ import annotations
 from decimal import Decimal
 from typing import ClassVar
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import selectinload
 
 from app.models.aex import AexLedgerEntry, AexPartnerRate, AexPersonalRate, AexRate, AexWallet
@@ -32,11 +32,34 @@ class AexWalletRepository(BaseRepository[AexWallet]):
             )
         return wallet
 
-    async def get_all_with_users(self) -> list[AexWallet]:
-        result = await self.session.execute(
-            select(AexWallet).options(selectinload(AexWallet.user)).order_by(AexWallet.id)
-        )
-        return list(result.scalars().all())
+    async def get_all_with_users(
+        self,
+        *,
+        limit: int | None = None,
+        offset: int | None = None,
+        search: str | None = None,
+    ) -> tuple[list[AexWallet], int]:
+        statement = select(AexWallet).options(selectinload(AexWallet.user)).join(AexWallet.user)
+        count_statement = select(func.count(AexWallet.id)).join(AexWallet.user)
+        if search:
+            pattern = f"%{search}%"
+            from app.models.user import User
+
+            conditions = [User.username.ilike(pattern), User.first_name.ilike(pattern)]
+            if search.isdigit():
+                conditions.extend([User.id == int(search), AexWallet.user_id == int(search)])
+            from sqlalchemy import or_
+
+            statement = statement.where(or_(*conditions))
+            count_statement = count_statement.where(or_(*conditions))
+        statement = statement.order_by(AexWallet.id)
+        if offset is not None:
+            statement = statement.offset(offset)
+        if limit is not None:
+            statement = statement.limit(limit)
+        result = await self.session.execute(statement)
+        total_result = await self.session.execute(count_statement)
+        return list(result.scalars().all()), total_result.scalar_one()
 
 
 class AexLedgerEntryRepository(BaseRepository[AexLedgerEntry]):
@@ -93,15 +116,48 @@ class AexLedgerEntryRepository(BaseRepository[AexLedgerEntry]):
         *,
         limit: int = 50,
         offset: int = 0,
+        user_id: int | None = None,
+        entry_type: str | None = None,
+        date_from=None,
+        date_to=None,
     ) -> list[AexLedgerEntry]:
-        result = await self.session.execute(
+        statement = (
             select(AexLedgerEntry)
-            .options(selectinload(AexLedgerEntry.wallet))
-            .order_by(self._default_order)
-            .limit(limit)
-            .offset(offset)
+            .options(selectinload(AexLedgerEntry.wallet).selectinload(AexWallet.user))
+            .join(AexLedgerEntry.wallet)
+        )
+        if user_id is not None:
+            statement = statement.where(AexWallet.user_id == user_id)
+        if entry_type is not None:
+            statement = statement.where(AexLedgerEntry.entry_type == entry_type)
+        if date_from is not None:
+            statement = statement.where(AexLedgerEntry.createdAt >= date_from)
+        if date_to is not None:
+            statement = statement.where(AexLedgerEntry.createdAt <= date_to)
+        result = await self.session.execute(
+            statement.order_by(self._default_order).limit(limit).offset(offset)
         )
         return list(result.scalars().all())
+
+    async def count_all(
+        self,
+        *,
+        user_id: int | None = None,
+        entry_type: str | None = None,
+        date_from=None,
+        date_to=None,
+    ) -> int:
+        statement = select(func.count(AexLedgerEntry.id)).join(AexLedgerEntry.wallet)
+        if user_id is not None:
+            statement = statement.where(AexWallet.user_id == user_id)
+        if entry_type is not None:
+            statement = statement.where(AexLedgerEntry.entry_type == entry_type)
+        if date_from is not None:
+            statement = statement.where(AexLedgerEntry.createdAt >= date_from)
+        if date_to is not None:
+            statement = statement.where(AexLedgerEntry.createdAt <= date_to)
+        result = await self.session.execute(statement)
+        return result.scalar_one()
 
 
 class AexRateRepository(BaseRepository[AexRate]):
@@ -125,13 +181,24 @@ class AexPersonalRateRepository(BaseRepository[AexPersonalRate]):
         )
         return result.scalar_one_or_none()
 
-    async def get_all_with_users(self) -> list[AexPersonalRate]:
-        result = await self.session.execute(
+    async def get_all_with_users(
+        self,
+        *,
+        limit: int | None = None,
+        offset: int | None = None,
+    ) -> tuple[list[AexPersonalRate], int]:
+        statement = (
             select(AexPersonalRate)
             .options(selectinload(AexPersonalRate.user))
             .order_by(AexPersonalRate.id)
         )
-        return list(result.scalars().all())
+        if offset is not None:
+            statement = statement.offset(offset)
+        if limit is not None:
+            statement = statement.limit(limit)
+        result = await self.session.execute(statement)
+        total_result = await self.session.execute(select(func.count(AexPersonalRate.id)))
+        return list(result.scalars().all()), total_result.scalar_one()
 
 
 class AexPartnerRateRepository(BaseRepository[AexPartnerRate]):
@@ -145,10 +212,21 @@ class AexPartnerRateRepository(BaseRepository[AexPartnerRate]):
         )
         return result.scalar_one_or_none()
 
-    async def get_all_with_users(self) -> list[AexPartnerRate]:
-        result = await self.session.execute(
+    async def get_all_with_users(
+        self,
+        *,
+        limit: int | None = None,
+        offset: int | None = None,
+    ) -> tuple[list[AexPartnerRate], int]:
+        statement = (
             select(AexPartnerRate)
             .options(selectinload(AexPartnerRate.user))
             .order_by(AexPartnerRate.id)
         )
-        return list(result.scalars().all())
+        if offset is not None:
+            statement = statement.offset(offset)
+        if limit is not None:
+            statement = statement.limit(limit)
+        result = await self.session.execute(statement)
+        total_result = await self.session.execute(select(func.count(AexPartnerRate.id)))
+        return list(result.scalars().all()), total_result.scalar_one()

@@ -60,6 +60,40 @@ class AexOperationsResponse(BaseModel):
     offset: int | None = None
 
 
+class AexAdminOperationOut(BaseModel):
+    id: int
+    userId: int
+    username: str | None = None
+    firstName: str | None = None
+    type: str
+    amount: float
+    balanceBefore: float
+    balanceAfter: float
+    reason: str | None = None
+    createdAt: datetime
+
+
+class PaginatedAexWalletsResponse(BaseModel):
+    items: list[AexAdminWalletOut]
+    total: int
+    limit: int
+    offset: int
+
+
+class PaginatedAexRateRowsResponse(BaseModel):
+    items: list[AexAdminRateRowOut]
+    total: int
+    limit: int
+    offset: int
+
+
+class PaginatedAexOperationsResponse(BaseModel):
+    items: list[AexAdminOperationOut]
+    total: int
+    limit: int
+    offset: int
+
+
 # ── Rate ─────────────────────────────────────────────────────────────
 
 
@@ -201,6 +235,27 @@ def build_aex_ledger_entry_out(entry) -> AexLedgerEntryOut:
         reference_type=entry.reference_type,
         reference_id=entry.reference_id,
         description=entry.description,
+        createdAt=entry.createdAt,
+    )
+
+
+def build_admin_operation_out(entry) -> AexAdminOperationOut:
+    wallet = getattr(entry, "wallet", None)
+    user = getattr(wallet, "user", None)
+    current_total = 0.0
+    if wallet is not None:
+        current_total = float(wallet.balance_available + wallet.balance_reserved)
+
+    return AexAdminOperationOut(
+        id=entry.id,
+        userId=wallet.user_id if wallet is not None else 0,
+        username=user.username if user else None,
+        firstName=user.first_name if user else None,
+        type=entry.entry_type,
+        amount=float(entry.amount),
+        balanceBefore=current_total,
+        balanceAfter=current_total,
+        reason=entry.description,
         createdAt=entry.createdAt,
     )
 

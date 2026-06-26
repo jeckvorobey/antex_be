@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 
 from app.modules.broadcasts.models import Broadcast
 from app.repositories.base import BaseRepository
@@ -39,6 +39,10 @@ class BroadcastRepository(BaseRepository[Broadcast]):
             .limit(limit)
         )
         return list(result.scalars().all())
+
+    async def count_all(self) -> int:
+        result = await self.session.execute(select(func.count(Broadcast.id)))
+        return result.scalar_one()
 
     async def mark_running(self, broadcast: Broadcast, *, total_count: int) -> Broadcast:
         broadcast.status = "running"

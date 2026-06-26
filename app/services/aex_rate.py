@@ -108,12 +108,14 @@ class AexRateService:
     async def get_all_personal_rates(self, db: AsyncSession) -> list[AexPersonalRate]:
         """Получить все персональные ставки."""
         repo = AexPersonalRateRepository(db)
-        return await repo.get_all_with_users()
+        rates, _ = await repo.get_all_with_users()
+        return rates
 
     async def get_all_partner_rates(self, db: AsyncSession) -> list[AexPartnerRate]:
         """Получить все партнёрские ставки."""
         repo = AexPartnerRateRepository(db)
-        return await repo.get_all_with_users()
+        rates, _ = await repo.get_all_with_users()
+        return rates
 
     async def delete_personal_rate(
         self,
