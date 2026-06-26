@@ -6,6 +6,7 @@ from fastapi import APIRouter, Query, status
 
 from app.api.deps import DbDep, MiniappUser
 from app.schemas.miniapp import (
+    MiniappAexReferralResponse,
     MiniappCitiesResponse,
     MiniappExchangeScreenResponse,
     MiniappHomeResponse,
@@ -19,6 +20,7 @@ from app.schemas.miniapp import (
 )
 from app.services.miniapp import (
     calculate_miniapp_quote,
+    get_miniapp_aex_referral,
     get_miniapp_exchange,
     get_miniapp_home,
     get_miniapp_profile_screen,
@@ -89,3 +91,8 @@ async def create_order(
 @router.get("/profile", response_model=MiniappProfileScreenResponse)
 async def get_profile(db: DbDep, user: MiniappUser) -> MiniappProfileScreenResponse:
     return await get_miniapp_profile_screen(db, user)
+
+
+@router.get("/aex/referral", response_model=MiniappAexReferralResponse)
+async def get_aex_referral(db: DbDep, user: MiniappUser) -> MiniappAexReferralResponse:
+    return await get_miniapp_aex_referral(db, user)

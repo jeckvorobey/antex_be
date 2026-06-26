@@ -20,6 +20,15 @@ logger = logging.getLogger(__name__)
 
 REFERRAL_CODE_LENGTH = 8
 REFERRAL_RATE_DEFAULT = Decimal("0.002")
+DEFAULT_REFERRAL_BOT_USERNAME = "antex_bot"
+
+
+def build_referral_link(referral_code: str, bot_username: str | None = None) -> str:
+    """Собрать готовую Telegram Mini App deep-link ссылку по referral-коду."""
+    username = (bot_username or DEFAULT_REFERRAL_BOT_USERNAME).strip().lstrip("@")
+    if not username:
+        username = DEFAULT_REFERRAL_BOT_USERNAME
+    return f"https://t.me/{username}?startapp=ref_{referral_code}"
 
 
 class ReferralService:
@@ -121,6 +130,39 @@ class ReferralService:
         total_earned = result.scalar() or Decimal("0")
 
         return total_referrals, total_earned
+
+    async def get_referral_earnings_by_user_id(
+        self,
+        db: AsyncSession,
+        user: User,
+        referral_user_ids: list[int],
+    ) -> dict[int, Decimal]:
+        """Вернуть сумму AEX-начислений по каждому приглашённому пользователю."""
+        if not referral_user_ids:
+            return {}
+
+        from sqlalchemy import String, cast, func, select
+
+        from app.models.aex import AexLedgerEntry
+        from app.models.order import Order
+        from app.repositories.aex import AexWalletRepository
+
+        wallet = await AexWalletRepository(db).get_by_user_id(user.id)
+        if wallet is None:
+            return {}
+
+        result = await db.execute(
+            select(Order.UserId, func.sum(AexLedgerEntry.amount))
+            .join(AexLedgerEntry, AexLedgerEntry.reference_id == cast(Order.id, String))
+            .where(
+                AexLedgerEntry.wallet_id == wallet.id,
+                AexLedgerEntry.entry_type == "credit",
+                AexLedgerEntry.reference_type == "referral",
+                Order.UserId.in_(referral_user_ids),
+            )
+            .group_by(Order.UserId)
+        )
+        return {user_id: amount or Decimal("0") for user_id, amount in result.all()}
 
     async def credit_referral_bonus(
         self,

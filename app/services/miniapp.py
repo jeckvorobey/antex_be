@@ -3,11 +3,13 @@
 
 from __future__ import annotations
 
+from app.core.config import settings
 from app.repositories.city import CityRepository
 from app.repositories.order import OrderRepository
 from app.repositories.user import UserRepository
 from app.schemas.city import build_city_out
 from app.schemas.miniapp import (
+    MiniappAexReferralResponse,
     MiniappBanner,
     MiniappCalculatorState,
     MiniappCitiesResponse,
@@ -24,6 +26,7 @@ from app.schemas.miniapp import (
     MiniappRatesResponse,
     MiniappRatesSection,
     MiniappServiceItem,
+    build_miniapp_aex_referral_item,
     build_miniapp_order_item,
     build_miniapp_profile_summary,
 )
@@ -38,6 +41,7 @@ from app.services.exchange import (
     ExchangeService,
 )
 from app.services.order_notifications import build_chat_url_for_user
+from app.services.referral import ReferralService, build_referral_link
 
 DEFAULT_AMOUNT_SELL = 5000
 DEFAULT_PAIR = ("RUB", "THB")
@@ -252,6 +256,32 @@ async def get_miniapp_profile_screen(db, user) -> MiniappProfileScreenResponse:
             ),
         ],
         version="1.0.0",
+    )
+
+
+async def get_miniapp_aex_referral(db, user) -> MiniappAexReferralResponse:
+    """Возвращает referral-контракт Mini App с готовой ссылкой для копирования."""
+    referral_service = ReferralService()
+    referral_code = await referral_service.get_or_create_referral_code(db, user)
+    referrals = await referral_service.get_referral_list(db, user)
+    earnings_by_user_id = await referral_service.get_referral_earnings_by_user_id(
+        db,
+        user,
+        [referral.id for referral in referrals],
+    )
+    await db.commit()
+
+    return MiniappAexReferralResponse(
+        referralCode=referral_code,
+        referralLink=build_referral_link(referral_code, settings.telegram_bot_username),
+        referrals=[
+            build_miniapp_aex_referral_item(
+                referral,
+                earnings_by_user_id.get(referral.id, 0.0),
+            )
+            for referral in referrals
+        ],
+        totalReferrals=len(referrals),
     )
 
 

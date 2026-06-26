@@ -6,6 +6,10 @@ Miniapp использует backend-driven namespace `/api/miniapp/*`.
 
 - `GET /api/miniapp/home` возвращает профиль, быстрые действия, featured rates,
   баннер, сервисы и города для главного экрана.
+- `GET /api/miniapp/aex/referral` возвращает AEX referral payload для страницы
+  рефералов: `referralCode`, готовую `referralLink` вида
+  `https://t.me/<bot_username>?startapp=ref_<code>`, список `referrals`
+  (`id`, `displayName`, `joinedAt`, `earnedAex`) и `totalReferrals`.
 - `GET /api/miniapp/exchange` возвращает начальное состояние калькулятора,
   chips, доступные пары и стартовый quote.
 - `GET /api/miniapp/exchange/quote?currencySell=&currencyBuy=&amountSell=`
