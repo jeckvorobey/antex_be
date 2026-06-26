@@ -97,7 +97,7 @@ class TestReferralCodeGeneration:
 
         assert code1 != code2
 
-    async def test_batch_generation_retries_when_generated_code_already_exists(
+    async def test_batch_generation_overwrites_existing_codes(
         self,
         db_session: AsyncSession,
         service: ReferralService,
@@ -108,7 +108,7 @@ class TestReferralCodeGeneration:
         db_session.add_all([existing, missing])
         await db_session.flush()
 
-        generated = iter(["DUPLICAT-collision", "UNIQUE12-fresh"])
+        generated = iter(["DUPLICAT-collision", "UNIQUE12-fresh", "ANOTHER1"])
         monkeypatch.setattr(
             "app.services.referral.secrets.token_urlsafe",
             lambda _: next(generated),
@@ -116,9 +116,11 @@ class TestReferralCodeGeneration:
 
         count = await service.generate_batch_referral_codes(db_session)
 
-        assert count == 1
+        assert count == 2
+        await db_session.refresh(existing)
         await db_session.refresh(missing)
-        assert missing.referral_code == "UNIQUE12"
+        assert existing.referral_code == "UNIQUE12"
+        assert missing.referral_code == "ANOTHER1"
 
 
 class TestReferralBinding:
