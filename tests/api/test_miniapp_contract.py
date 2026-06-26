@@ -236,6 +236,53 @@ async def test_miniapp_aex_referral_returns_ready_link(
 
 
 @pytest.mark.asyncio
+async def test_miniapp_aex_transactions_returns_offset_pagination_contract(
+    api_client: tuple[AsyncClient, AsyncSession],
+) -> None:
+    client, db_session = api_client
+    _, _, customer = await seed_exchange_data(db_session)
+    wallet = AexWallet(user_id=customer.id)
+    db_session.add(wallet)
+    await db_session.flush()
+    db_session.add_all(
+        [
+            AexLedgerEntry(
+                wallet_id=wallet.id,
+                amount=12.5,
+                entry_type="credit",
+                reference_type="referral",
+                reference_id="1",
+                description="Referral reward",
+            ),
+            AexLedgerEntry(
+                wallet_id=wallet.id,
+                amount=-5,
+                entry_type="debit",
+                reference_type="transfer",
+                reference_id="2",
+                description="Withdrawal",
+            ),
+        ]
+    )
+    await db_session.commit()
+    token = create_access_token({"sub": str(customer.id), "role": customer.role})
+
+    response = await client.get(
+        "/api/miniapp/aex/transactions",
+        params={"limit": 1, "offset": 0},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["limit"] == 1
+    assert data["offset"] == 0
+    assert data["total"] == 2
+    assert data["hasMore"] is True
+    assert len(data["items"]) == 1
+
+
+@pytest.mark.asyncio
 async def test_miniapp_referral_apply_binds_once(
     api_client: tuple[AsyncClient, AsyncSession],
 ) -> None:

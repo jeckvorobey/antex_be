@@ -30,13 +30,22 @@ from app.schemas.admin import (
     AdminSummaryOut,
     AdminSummaryRateOut,
     AdminTokenResponse,
+    PaginatedUsersResponse,
 )
 from app.schemas.aex import AdminReferralGenerateResponse, AdminReferralReferredByRequest
 from app.schemas.city import CityCreate, CityOut, CityUpdate, build_city_out
 from app.schemas.config import AppConfigOut, AppConfigUpdate
-from app.schemas.order import OrderOut, OrderStatusUpdate, build_order_out
+from app.schemas.order import (
+    OrderOut,
+    OrderStatusUpdate,
+    PaginatedOrdersResponse,
+    build_order_out,
+)
 from app.schemas.rate import AdminRateOut, RateCreate, RateUpdate, build_admin_rate_out
-from app.schemas.site_lead import SiteLeadOut, build_site_lead_out
+from app.schemas.site_lead import (
+    PaginatedSiteLeadsResponse,
+    build_site_lead_out,
+)
 from app.schemas.user import UserOut, UserUpdate, build_user_out
 from app.services.exchange import ExchangeService
 from app.services.order_status import update_order_status as apply_order_status
@@ -230,14 +239,22 @@ async def delete_city(city_id: int, db: DbDep, _: AdminUser) -> dict[str, bool]:
     return {"ok": True}
 
 
-@router.get("/users", response_model=list[UserOut])
+@router.get("/users", response_model=PaginatedUsersResponse)
 async def list_users(
     db: DbDep,
     _: AdminUser,
     search: str | None = Query(None),
-) -> list[UserOut]:
+    limit: int = Query(default=50, ge=1, le=100),
+    offset: int = Query(default=0, ge=0),
+) -> PaginatedUsersResponse:
     repo = UserRepository(db)
-    return [build_user_out(user) for user in await repo.search(search)]
+    users, total = await repo.search_paginated(search, limit=limit, offset=offset)
+    return PaginatedUsersResponse(
+        items=[build_user_out(user) for user in users],
+        total=total,
+        limit=limit,
+        offset=offset,
+    )
 
 
 @router.get("/users/{user_id}", response_model=UserOut)
@@ -322,19 +339,29 @@ async def update_user_referred_by(
     return build_user_out(updated)
 
 
-@router.get("/orders", response_model=list[OrderOut])
+@router.get("/orders", response_model=PaginatedOrdersResponse)
 async def list_orders(
     db: DbDep,
     _: AdminUser,
     date_from: datetime | None = None,
     date_to: datetime | None = None,
-) -> list[OrderOut]:
+    limit: int = Query(default=50, ge=1, le=100),
+    offset: int = Query(default=0, ge=0),
+) -> PaginatedOrdersResponse:
     repo = OrderRepository(db)
-    if date_from and date_to:
-        orders = await repo.list_for_admin(date_from=date_from, date_to=date_to)
-    else:
-        orders = await repo.list_for_admin()
-    return [build_order_out(order) for order in orders]
+    orders = await repo.list_for_admin(
+        date_from=date_from,
+        date_to=date_to,
+        limit=limit,
+        offset=offset,
+    )
+    total = await repo.count_for_admin(date_from=date_from, date_to=date_to)
+    return PaginatedOrdersResponse(
+        items=[build_order_out(order) for order in orders],
+        total=total,
+        limit=limit,
+        offset=offset,
+    )
 
 
 @router.get("/orders/{order_id}", response_model=OrderOut)
@@ -369,9 +396,20 @@ async def update_order_status(
     return build_order_out(hydrated)
 
 
-@router.get("/site-leads", response_model=list[SiteLeadOut])
-async def list_site_leads(db: DbDep, _: AdminUser) -> list[SiteLeadOut]:
-    return [build_site_lead_out(lead) for lead in await SiteLeadRepository(db).list_all()]
+@router.get("/site-leads", response_model=PaginatedSiteLeadsResponse)
+async def list_site_leads(
+    db: DbDep,
+    _: AdminUser,
+    limit: int = Query(default=50, ge=1, le=100),
+    offset: int = Query(default=0, ge=0),
+) -> PaginatedSiteLeadsResponse:
+    items, total = await SiteLeadRepository(db).list_paginated(limit=limit, offset=offset)
+    return PaginatedSiteLeadsResponse(
+        items=[build_site_lead_out(lead) for lead in items],
+        total=total,
+        limit=limit,
+        offset=offset,
+    )
 
 
 @router.get("/rates", response_model=list[AdminRateOut])

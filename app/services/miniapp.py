@@ -3,6 +3,8 @@
 
 from __future__ import annotations
 
+from decimal import Decimal
+
 from app.core.config import settings
 from app.repositories.city import CityRepository
 from app.repositories.order import OrderRepository
@@ -10,6 +12,8 @@ from app.repositories.user import UserRepository
 from app.schemas.city import build_city_out
 from app.schemas.miniapp import (
     MiniappAexReferralResponse,
+    MiniappAexTransactionItem,
+    MiniappAexTransactionsResponse,
     MiniappBanner,
     MiniappCalculatorState,
     MiniappCitiesResponse,
@@ -31,6 +35,7 @@ from app.schemas.miniapp import (
     build_miniapp_profile_summary,
 )
 from app.schemas.rate import build_rate_out
+from app.services.aex import AexService
 from app.services.exchange import (
     COUNTRY_CURRENCY,
     COUNTRY_PRIORITY,
@@ -83,6 +88,48 @@ async def list_miniapp_orders(
         offset=offset,
         total=total,
         hasMore=offset + len(orders) < total,
+    )
+
+
+def _map_miniapp_aex_transaction_type(entry) -> str:
+    if entry.reference_type == "referral":
+        return "referral_reward"
+    if entry.reference_type == "transfer":
+        return "withdrawal"
+    if entry.entry_type == "credit":
+        return "bonus"
+    return "adjustment"
+
+
+async def list_miniapp_aex_transactions(
+    db,
+    user_id: int,
+    *,
+    limit: int = 20,
+    offset: int = 0,
+) -> MiniappAexTransactionsResponse:
+    entries, total = await AexService().get_operations(db, user_id, limit=limit, offset=offset)
+    running_balance = Decimal("0")
+    items: list[MiniappAexTransactionItem] = []
+    for entry in reversed(entries):
+        running_balance += entry.amount
+        items.append(
+            MiniappAexTransactionItem(
+                id=entry.id,
+                type=_map_miniapp_aex_transaction_type(entry),
+                amount=float(entry.amount),
+                balanceAfter=float(running_balance),
+                description=entry.description or "",
+                createdAt=entry.createdAt,
+            )
+        )
+    items.reverse()
+    return MiniappAexTransactionsResponse(
+        items=items,
+        limit=limit,
+        offset=offset,
+        total=total,
+        hasMore=offset + len(items) < total,
     )
 
 

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from datetime import datetime
+
 from fastapi import APIRouter, HTTPException, Query, status
 
 from app.api.deps import AdminUser, CurrentUser, DbDep
@@ -19,12 +21,15 @@ from app.schemas.aex import (
     AexAdminRateOut,
     AexAdminRateRowOut,
     AexAdminRateUpdate,
-    AexAdminWalletOut,
     AexOperationsResponse,
     AexRateOut,
     AexRateUpdate,
     AexTransferRequest,
     AexWalletOut,
+    PaginatedAexOperationsResponse,
+    PaginatedAexRateRowsResponse,
+    PaginatedAexWalletsResponse,
+    build_admin_operation_out,
     build_admin_rate_out,
     build_admin_rate_row_out,
     build_admin_wallet_out,
@@ -95,7 +100,7 @@ async def transfer_aex(
 async def list_rates(db: DbDep, _: AdminUser) -> list[AexRateOut]:
     """Список ставок AEX (глобальная + персональные)."""
     global_rate = await rate_service.get_global_rate(db)
-    personal_rates = await AexPersonalRateRepository(db).get_all_with_users()
+    personal_rates, _ = await AexPersonalRateRepository(db).get_all_with_users()
     result = [build_aex_rate_out(global_rate)]
     for pr in personal_rates:
         result.append(
@@ -128,11 +133,24 @@ async def update_admin_rate(
     return build_admin_rate_out(rate)
 
 
-@admin_router.get("/rates/personal", response_model=list[AexAdminRateRowOut])
-async def list_personal_rates(db: DbDep, _: AdminUser) -> list[AexAdminRateRowOut]:
+@admin_router.get("/rates/personal", response_model=PaginatedAexRateRowsResponse)
+async def list_personal_rates(
+    db: DbDep,
+    _: AdminUser,
+    limit: int = Query(default=50, ge=1, le=100),
+    offset: int = Query(default=0, ge=0),
+) -> PaginatedAexRateRowsResponse:
     """Список персональных ставок AEX."""
-    rates = await rate_service.get_all_personal_rates(db)
-    return [build_admin_rate_row_out(rate) for rate in rates]
+    rates, total = await AexPersonalRateRepository(db).get_all_with_users(
+        limit=limit,
+        offset=offset,
+    )
+    return PaginatedAexRateRowsResponse(
+        items=[build_admin_rate_row_out(rate) for rate in rates],
+        total=total,
+        limit=limit,
+        offset=offset,
+    )
 
 
 @admin_router.post("/rates/personal", response_model=AexAdminRateRowOut)
@@ -180,11 +198,21 @@ async def delete_personal_rate(
     return {"ok": True}
 
 
-@admin_router.get("/rates/partner", response_model=list[AexAdminRateRowOut])
-async def list_partner_rates(db: DbDep, _: AdminUser) -> list[AexAdminRateRowOut]:
+@admin_router.get("/rates/partner", response_model=PaginatedAexRateRowsResponse)
+async def list_partner_rates(
+    db: DbDep,
+    _: AdminUser,
+    limit: int = Query(default=50, ge=1, le=100),
+    offset: int = Query(default=0, ge=0),
+) -> PaginatedAexRateRowsResponse:
     """Список партнёрских ставок AEX."""
-    rates = await rate_service.get_all_partner_rates(db)
-    return [build_admin_rate_row_out(rate) for rate in rates]
+    rates, total = await AexPartnerRateRepository(db).get_all_with_users(limit=limit, offset=offset)
+    return PaginatedAexRateRowsResponse(
+        items=[build_admin_rate_row_out(rate) for rate in rates],
+        total=total,
+        limit=limit,
+        offset=offset,
+    )
 
 
 @admin_router.post("/rates/partner", response_model=AexAdminRateRowOut)
@@ -249,33 +277,64 @@ async def update_rate(
     return build_aex_rate_out(updated)
 
 
-@admin_router.get("/wallets", response_model=list[AexAdminWalletOut])
-async def list_wallets(db: DbDep, _: AdminUser) -> list[AexAdminWalletOut]:
+@admin_router.get("/wallets", response_model=PaginatedAexWalletsResponse)
+async def list_wallets(
+    db: DbDep,
+    _: AdminUser,
+    limit: int = Query(default=50, ge=1, le=100),
+    offset: int = Query(default=0, ge=0),
+    search: str | None = Query(default=None),
+) -> PaginatedAexWalletsResponse:
     """Список всех AEX-кошельков."""
-    wallets = await AexWalletRepository(db).get_all_with_users()
-    return [build_admin_wallet_out(w) for w in wallets]
+    wallets, total = await AexWalletRepository(db).get_all_with_users(
+        limit=limit,
+        offset=offset,
+        search=search,
+    )
+    return PaginatedAexWalletsResponse(
+        items=[build_admin_wallet_out(w) for w in wallets],
+        total=total,
+        limit=limit,
+        offset=offset,
+    )
 
 
-@admin_router.get("/operations", response_model=AexOperationsResponse)
+@admin_router.get("/operations", response_model=PaginatedAexOperationsResponse)
 async def list_all_operations(
     db: DbDep,
     _: AdminUser,
     limit: int = Query(default=50, ge=1, le=100),
     offset: int = Query(default=0, ge=0),
-) -> AexOperationsResponse:
+    user_id: int | None = Query(default=None, alias="userId", ge=1),
+    entry_type: str | None = Query(default=None, alias="type"),
+    date_from: str | None = Query(default=None, alias="dateFrom"),
+    date_to: str | None = Query(default=None, alias="dateTo"),
+) -> PaginatedAexOperationsResponse:
     """Журнал всех операций AEX."""
     repo = AexLedgerEntryRepository(db)
-    entries = await repo.get_all_paginated(limit=limit, offset=offset)
-    # Count total
-    from sqlalchemy import func, select
+    parsed_date_from = (
+        None
+        if not date_from
+        else datetime.fromisoformat(f"{date_from}T00:00:00+00:00")
+    )
+    parsed_date_to = None if not date_to else datetime.fromisoformat(f"{date_to}T23:59:59+00:00")
+    entries = await repo.get_all_paginated(
+        limit=limit,
+        offset=offset,
+        user_id=user_id,
+        entry_type=entry_type,
+        date_from=parsed_date_from,
+        date_to=parsed_date_to,
+    )
+    total = await repo.count_all(
+        user_id=user_id,
+        entry_type=entry_type,
+        date_from=parsed_date_from,
+        date_to=parsed_date_to,
+    )
 
-    from app.models.aex import AexLedgerEntry
-
-    count_result = await db.execute(select(func.count(AexLedgerEntry.id)))
-    total = count_result.scalar_one()
-
-    return AexOperationsResponse(
-        items=[build_aex_ledger_entry_out(e) for e in entries],
+    return PaginatedAexOperationsResponse(
+        items=[build_admin_operation_out(e) for e in entries],
         total=total,
         limit=limit,
         offset=offset,

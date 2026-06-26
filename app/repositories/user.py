@@ -63,24 +63,55 @@ class UserRepository(BaseRepository[User]):
         return list(result.scalars().all())
 
     async def search(self, query: str | None) -> list[User]:
-        if not query:
-            return await self.list_all()
+        statement = select(User).options(*self._admin_user_options()).order_by(User.id)
+        if query:
+            pattern = f"%{query}%"
+            conditions = [
+                User.username.ilike(pattern),
+                User.first_name.ilike(pattern),
+                User.last_name.ilike(pattern),
+            ]
 
-        pattern = f"%{query}%"
-        conditions = [
-            User.username.ilike(pattern),
-            User.first_name.ilike(pattern),
-            User.last_name.ilike(pattern),
-        ]
+            if query.isdigit():
+                conditions.append(User.id == int(query))
+                conditions.append(User.telegram_id == int(query))
 
-        if query.isdigit():
-            conditions.append(User.id == int(query))
-            conditions.append(User.telegram_id == int(query))
+            statement = statement.where(or_(*conditions))
+
+        result = await self.session.execute(statement)
+        return list(result.scalars().all())
+
+    async def search_paginated(
+        self,
+        query: str | None,
+        *,
+        limit: int,
+        offset: int,
+    ) -> tuple[list[User], int]:
+        statement = select(User)
+        count_statement = select(func.count(User.id))
+        if query:
+            pattern = f"%{query}%"
+            conditions = [
+                User.username.ilike(pattern),
+                User.first_name.ilike(pattern),
+                User.last_name.ilike(pattern),
+            ]
+            if query.isdigit():
+                conditions.append(User.id == int(query))
+                conditions.append(User.telegram_id == int(query))
+            statement = statement.where(or_(*conditions))
+            count_statement = count_statement.where(or_(*conditions))
 
         result = await self.session.execute(
-            select(User).options(*self._admin_user_options()).where(or_(*conditions)).order_by(User.id)
+            statement
+            .options(*self._admin_user_options())
+            .order_by(User.id)
+            .limit(limit)
+            .offset(offset)
         )
-        return list(result.scalars().all())
+        total_result = await self.session.execute(count_statement)
+        return list(result.scalars().all()), total_result.scalar_one()
 
     async def set_role(self, user_id: int, role: int) -> User | None:
         user = await self.session.get(User, user_id)

@@ -105,7 +105,9 @@ async def test_admin_can_create_and_list_broadcasts(
     )
 
     assert list_response.status_code == 200
-    assert list_response.json()[0]["text"] == "Новости AntEx"
+    payload = list_response.json()
+    assert payload["total"] == 1
+    assert payload["items"][0]["text"] == "Новости AntEx"
 
 
 @pytest.mark.asyncio

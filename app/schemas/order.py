@@ -60,6 +60,13 @@ class OrderStatusUpdate(BaseModel):
     status: int
 
 
+class PaginatedOrdersResponse(BaseModel):
+    items: list[OrderOut]
+    total: int
+    limit: int
+    offset: int
+
+
 def build_order_out(order) -> OrderOut:
     from app.schemas.city import build_city_out
     from app.schemas.user import build_user_out

@@ -209,6 +209,23 @@ class MiniappOrdersResponse(BaseModel):
     hasMore: bool
 
 
+class MiniappAexTransactionItem(BaseModel):
+    id: int
+    type: str
+    amount: float
+    balanceAfter: float
+    description: str
+    createdAt: datetime
+
+
+class MiniappAexTransactionsResponse(BaseModel):
+    items: list[MiniappAexTransactionItem]
+    limit: int
+    offset: int
+    total: int
+    hasMore: bool
+
+
 class MiniappOrderCreatedResponse(BaseModel):
     success: bool = True
     orderId: int

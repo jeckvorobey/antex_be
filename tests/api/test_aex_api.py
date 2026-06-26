@@ -12,6 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.api import deps
 from app.core.security import create_access_token
 from app.models.admin import Admin
+from app.models.aex import AexPartnerRate, AexPersonalRate
 from app.models.user import User
 
 
@@ -281,6 +282,94 @@ class TestAexOperationsCursorPagination:
         assert len(set(item_ids)) == 7
 
 
+class TestAdminAexPagination:
+    async def test_admin_wallets_returns_paginated_envelope(
+        self, aex_api_client: tuple[AsyncClient, AsyncSession]
+    ) -> None:
+        client, db = aex_api_client
+        admin = Admin(username="admin", password_hash="unused")
+        db.add(admin)
+        await db.flush()
+
+        from app.services.aex import AexService
+
+        for index in range(3):
+            user = User(telegram_id=910000 + index, username=f"wallet_{index}")
+            db.add(user)
+            await db.flush()
+            await AexService().credit(db, user.id, Decimal("10"))
+        await db.commit()
+
+        response = await client.get(
+            "/api/admin/aex/wallets",
+            params={"limit": 2, "offset": 1},
+            headers={"Authorization": f"Bearer {_admin_token(admin.id)}"},
+        )
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["total"] == 3
+        assert data["limit"] == 2
+        assert data["offset"] == 1
+        assert len(data["items"]) == 2
+
+    async def test_admin_personal_rates_returns_paginated_envelope(
+        self, aex_api_client: tuple[AsyncClient, AsyncSession]
+    ) -> None:
+        client, db = aex_api_client
+        admin = Admin(username="admin", password_hash="unused")
+        db.add(admin)
+        await db.flush()
+
+        for index in range(3):
+            user = User(telegram_id=920000 + index, username=f"personal_{index}")
+            db.add(user)
+            await db.flush()
+            db.add(AexPersonalRate(user_id=user.id, rate=Decimal("0.01")))
+        await db.commit()
+
+        response = await client.get(
+            "/api/admin/aex/rates/personal",
+            params={"limit": 2, "offset": 1},
+            headers={"Authorization": f"Bearer {_admin_token(admin.id)}"},
+        )
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["total"] == 3
+        assert data["limit"] == 2
+        assert data["offset"] == 1
+        assert len(data["items"]) == 2
+
+    async def test_admin_partner_rates_returns_paginated_envelope(
+        self, aex_api_client: tuple[AsyncClient, AsyncSession]
+    ) -> None:
+        client, db = aex_api_client
+        admin = Admin(username="admin", password_hash="unused")
+        db.add(admin)
+        await db.flush()
+
+        for index in range(3):
+            user = User(telegram_id=930000 + index, username=f"partner_{index}")
+            db.add(user)
+            await db.flush()
+            db.add(AexPartnerRate(user_id=user.id, rate=Decimal("0.02")))
+        await db.commit()
+
+        response = await client.get(
+            "/api/admin/aex/rates/partner",
+            params={"limit": 2, "offset": 0},
+            headers={"Authorization": f"Bearer {_admin_token(admin.id)}"},
+        )
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["total"] == 3
+        assert data["limit"] == 2
+        assert data["offset"] == 0
+        assert len(data["items"]) == 2
+
+
 # ─── Referral API ────────────────────────────────────────────────────────────
 
 
@@ -451,7 +540,7 @@ class TestAdminAexPersonalRatesEndpoint:
             headers={"Authorization": f"Bearer {_admin_token(admin.id)}"},
         )
         assert response.status_code == 200
-        assert response.json() == []
+        assert response.json() == {"items": [], "total": 0, "limit": 50, "offset": 0}
 
         create_response = await client.post(
             "/api/admin/aex/rates/personal",
@@ -497,7 +586,7 @@ class TestAdminAexPartnerRatesEndpoint:
             headers={"Authorization": f"Bearer {_admin_token(admin.id)}"},
         )
         assert response.status_code == 200
-        assert response.json() == []
+        assert response.json() == {"items": [], "total": 0, "limit": 50, "offset": 0}
 
         create_response = await client.post(
             "/api/admin/aex/rates/partner",
@@ -598,8 +687,8 @@ class TestAdminAexWalletsEndpoint:
 
         assert response.status_code == 200
         data = response.json()
-        assert len(data) >= 1
-        assert data[0]["user_id"] == user.id
+        assert len(data["items"]) >= 1
+        assert data["items"][0]["user_id"] == user.id
 
 
 # ─── Admin Batch Referral Code Generation ────────────────────────────────
