@@ -5,7 +5,7 @@ from __future__ import annotations
 from decimal import Decimal
 from typing import TYPE_CHECKING
 
-from sqlalchemy import ForeignKey, Integer, Numeric, String, Text
+from sqlalchemy import ForeignKey, Index, Integer, Numeric, String, Text, text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.models.base import Base, TimestampMixin
@@ -76,6 +76,16 @@ class AexLedgerEntry(Base, TimestampMixin):
     description: Mapped[str | None] = mapped_column(
         Text,
         nullable=True,
+    )
+    __table_args__ = (
+        Index(
+            "uq_aex_ledger_referral_reference",
+            "reference_type",
+            "reference_id",
+            unique=True,
+            postgresql_where=text("reference_type = 'referral'"),
+            sqlite_where=text("reference_type = 'referral'"),
+        ),
     )
 
     wallet: Mapped[AexWallet] = relationship(

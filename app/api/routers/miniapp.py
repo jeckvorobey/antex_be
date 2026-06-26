@@ -5,6 +5,7 @@ from __future__ import annotations
 from fastapi import APIRouter, Query, status
 
 from app.api.deps import DbDep, MiniappUser
+from app.schemas.aex import ReferralApplyRequest, ReferralApplyResponse
 from app.schemas.miniapp import (
     MiniappAexReferralResponse,
     MiniappCitiesResponse,
@@ -29,6 +30,7 @@ from app.services.miniapp import (
     list_miniapp_rates,
 )
 from app.services.order_flow import create_order_for_user
+from app.services.referral import ReferralService
 
 router = APIRouter(prefix="/api/miniapp", tags=["miniapp"])
 
@@ -96,3 +98,15 @@ async def get_profile(db: DbDep, user: MiniappUser) -> MiniappProfileScreenRespo
 @router.get("/aex/referral", response_model=MiniappAexReferralResponse)
 async def get_aex_referral(db: DbDep, user: MiniappUser) -> MiniappAexReferralResponse:
     return await get_miniapp_aex_referral(db, user)
+
+
+@router.post("/aex/referral/apply", response_model=ReferralApplyResponse)
+async def apply_aex_referral(
+    body: ReferralApplyRequest,
+    db: DbDep,
+    user: MiniappUser,
+) -> ReferralApplyResponse:
+    """Применить referral deep-link один раз при первом входе miniapp."""
+    await ReferralService().bind_referral(db, user, body.code)
+    await db.commit()
+    return ReferralApplyResponse(success=True)

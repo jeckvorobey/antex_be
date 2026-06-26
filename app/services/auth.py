@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import logging
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -10,9 +11,14 @@ from app.core.security import create_access_token, validate_telegram_init_data
 from app.exceptions import AntExException
 from app.repositories.user import UserRepository
 from app.schemas.auth import TokenResponse, TrustedContactResponse, build_trusted_contact
+from app.services.referral import ReferralService
+
+REFERRAL_START_PARAM_PREFIX = "ref_"
+logger = logging.getLogger(__name__)
 
 
 async def telegram_auth(db: AsyncSession, init_data: str) -> TokenResponse:
+    """Авторизовать Mini App пользователя и применить referral start_param."""
     parsed = validate_telegram_init_data(init_data)
     if not parsed:
         raise AntExException("Invalid Telegram initData", code="INVALID_INIT_DATA", status_code=401)
@@ -38,12 +44,36 @@ async def telegram_auth(db: AsyncSession, init_data: str) -> TokenResponse:
         is_bot=user_data.get("is_bot", False),
         is_premium=user_data.get("is_premium", False),
     )
+    referral_code = extract_referral_code_from_start_param(parsed.get("start_param"))
+    if referral_code and user.referred_by is None:
+        try:
+            await ReferralService().bind_referral(db, user, referral_code)
+        except AntExException as exc:
+            logger.info(
+                "Referral start_param ignored during auth: user_id=%s, code=%s, error_code=%s",
+                user.id,
+                referral_code,
+                exc.code,
+            )
 
     token = create_access_token({"sub": str(user.id), "role": user.role})
     return TokenResponse(access_token=token)
 
 
+def extract_referral_code_from_start_param(start_param: object) -> str | None:
+    """Извлечь referral-код из Telegram start_param формата ref_<code>."""
+    if not isinstance(start_param, str):
+        return None
+
+    if not start_param.startswith(REFERRAL_START_PARAM_PREFIX):
+        return None
+
+    referral_code = start_param.removeprefix(REFERRAL_START_PARAM_PREFIX).strip()
+    return referral_code or None
+
+
 def resolve_trusted_contact(user) -> TrustedContactResponse:
+    """Вернуть доверенный контакт пользователя для Mini App."""
     return build_trusted_contact(user)
 
 

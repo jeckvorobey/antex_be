@@ -178,3 +178,54 @@ async def test_admin_get_user_without_wallet_returns_referral_defaults(
     assert row["referral_rate"] == "0.002000"
     assert row["referral_rate_percent"] == "0.200000"
     assert row["aex_balance"] == "0"
+
+
+@pytest.mark.asyncio
+async def test_admin_generate_referral_code_for_single_user(
+    admin_users_api_client: tuple[AsyncClient, AsyncSession],
+) -> None:
+    client, db_session = admin_users_api_client
+    admin = Admin(username="admin", password_hash="unused")
+    target = User(telegram_id=800014, username="ref_single_target")
+    other = User(telegram_id=800015, username="ref_single_other")
+    db_session.add_all([admin, target, other])
+    await db_session.flush()
+    token = create_access_token({"sub": str(admin.id), "type": "admin"})
+
+    response = await client.post(
+        f"/api/admin/users/{target.id}/generate-referral-code",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+
+    assert response.status_code == 200
+    assert len(response.json()["referral_code"]) == 8
+    await db_session.refresh(target)
+    await db_session.refresh(other)
+    assert target.referral_code == response.json()["referral_code"]
+    assert other.referral_code is None
+
+
+@pytest.mark.asyncio
+async def test_admin_regenerate_referral_code_for_single_user_only(
+    admin_users_api_client: tuple[AsyncClient, AsyncSession],
+) -> None:
+    client, db_session = admin_users_api_client
+    admin = Admin(username="admin", password_hash="unused")
+    target = User(telegram_id=800016, username="ref_regen_target", referral_code="tH6wQ8Er")
+    other = User(telegram_id=800017, username="ref_regen_other", referral_code="Y9mNc2Lp")
+    db_session.add_all([admin, target, other])
+    await db_session.flush()
+    token = create_access_token({"sub": str(admin.id), "type": "admin"})
+
+    response = await client.post(
+        f"/api/admin/users/{target.id}/generate-referral-code",
+        params={"regenerate": True},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+
+    assert response.status_code == 200
+    await db_session.refresh(target)
+    await db_session.refresh(other)
+    assert target.referral_code == response.json()["referral_code"]
+    assert target.referral_code != "tH6wQ8Er"
+    assert other.referral_code == "Y9mNc2Lp"

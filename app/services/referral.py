@@ -1,3 +1,4 @@
+# ruff: noqa: RUF002
 """Сервис реферальной системы.
 
 Генерация referral-кода, валидация deep-link, связывание пользователей,
@@ -10,17 +11,22 @@ import logging
 import secrets
 from decimal import Decimal
 
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.exceptions import AntExException
+from app.models.aex import AexLedgerEntry
 from app.models.user import User
 from app.repositories.user import UserRepository
+from app.telegram import messages
+from app.telegram.i18n import get_user_translator
 
 logger = logging.getLogger(__name__)
 
 REFERRAL_CODE_LENGTH = 8
 REFERRAL_RATE_DEFAULT = Decimal("0.002")
 DEFAULT_REFERRAL_BOT_USERNAME = "antex_bot"
+INVALID_REFERRAL_CODE_MESSAGE = "Неверный реферальный код. Проверте или удалите!"
 
 
 def build_referral_link(referral_code: str, bot_username: str | None = None) -> str:
@@ -59,30 +65,66 @@ class ReferralService:
 
         Правила:
         - Нельзя привязать себя
-        - Нельзя привязать повторно
+        - Нельзя менять уже установленную пользовательскую привязку
         - Код должен существовать
         """
         if user.referred_by is not None:
-            raise AntExException(
-                "User already has a referrer",
-                code="ALREADY_REFERRED",
-                status_code=422,
-            )
+            return user
 
         repo = UserRepository(db)
+        self._validate_referral_code(referral_code)
         referrer = await repo.get_by_referral_code(referral_code)
 
         if referrer is None:
-            raise AntExException(
-                "Invalid referral code",
-                code="INVALID_REFERRAL_CODE",
-                status_code=422,
-            )
+            raise self._invalid_referral_code_error()
 
         if referrer.id == user.id:
             raise AntExException(
                 "Cannot refer yourself",
                 code="SELF_REFERRAL",
+                status_code=422,
+            )
+
+        if referrer.referred_by == user.id:
+            raise AntExException(
+                "Cannot create mutual referral",
+                code="MUTUAL_REFERRAL",
+                status_code=422,
+            )
+
+        await repo.update(user, referred_by=referrer.id)
+        await db.refresh(user)
+        return user
+
+    async def set_referrer_by_code(
+        self,
+        db: AsyncSession,
+        user: User,
+        referral_code: str | None,
+    ) -> User:
+        """Admin-only смена привязки реферера с теми же доменными запретами."""
+        repo = UserRepository(db)
+        if referral_code is None or referral_code == "":
+            await repo.update(user, referred_by=None)
+            await db.refresh(user)
+            return user
+
+        self._validate_referral_code(referral_code)
+        referrer = await repo.get_by_referral_code(referral_code)
+        if referrer is None:
+            raise self._invalid_referral_code_error()
+
+        if referrer.id == user.id:
+            raise AntExException(
+                "Cannot refer yourself",
+                code="SELF_REFERRAL",
+                status_code=422,
+            )
+
+        if referrer.referred_by == user.id:
+            raise AntExException(
+                "Cannot create mutual referral",
+                code="MUTUAL_REFERRAL",
                 status_code=422,
             )
 
@@ -183,6 +225,9 @@ class ReferralService:
             return Decimal("0")
 
         referrer_id = referred_user.referred_by
+        existing_entry = await self._get_referral_bonus_entry(db, order_id)
+        if existing_entry is not None:
+            return existing_entry.amount
 
         # Получить эффективную ставку
         from app.services.aex_rate import AexRateService
@@ -205,6 +250,13 @@ class ReferralService:
             reference_type="referral",
             reference_id=str(order_id),
             description=f"Referral bonus for order #{order_id}",
+        )
+        await self._notify_referral_bonus(
+            db,
+            referrer_id=referrer_id,
+            referred_user=referred_user,
+            order_id=order_id,
+            amount=aex_amount,
         )
 
         logger.info(
@@ -239,6 +291,23 @@ class ReferralService:
         logger.info("Batch generated %d referral codes", generated)
         return generated
 
+    async def generate_referral_code_for_user(
+        self,
+        db: AsyncSession,
+        user: User,
+        *,
+        regenerate: bool = False,
+    ) -> str:
+        """Создать или вручную пересоздать referral_code выбранного пользователя."""
+        if user.referral_code and not regenerate:
+            return user.referral_code
+
+        repo = UserRepository(db)
+        code = await self._generate_unique_code(db)
+        await repo.update(user, referral_code=code)
+        await db.refresh(user)
+        return code
+
     async def _generate_unique_code(self, db: AsyncSession) -> str:
         """Сгенерировать уникальный реферальный код."""
         repo = UserRepository(db)
@@ -254,3 +323,82 @@ class ReferralService:
             code="CODE_GENERATION_FAILED",
             status_code=500,
         )
+
+    def _validate_referral_code(self, referral_code: str) -> None:
+        """Проверить публичный referral-код из deep-link/admin формы."""
+        if (
+            len(referral_code) != REFERRAL_CODE_LENGTH
+            or not referral_code.isascii()
+            or not referral_code.isalnum()
+        ):
+            raise self._invalid_referral_code_error()
+
+    def _invalid_referral_code_error(self) -> AntExException:
+        """Единая ошибка для неверного формата и несуществующего кода."""
+        return AntExException(
+            INVALID_REFERRAL_CODE_MESSAGE,
+            code="INVALID_REFERRAL_CODE",
+            status_code=422,
+        )
+
+    async def _get_referral_bonus_entry(
+        self,
+        db: AsyncSession,
+        order_id: int,
+    ) -> AexLedgerEntry | None:
+        """Найти уже созданное referral-начисление по заявке."""
+        result = await db.execute(
+            select(AexLedgerEntry).where(
+                AexLedgerEntry.reference_type == "referral",
+                AexLedgerEntry.reference_id == str(order_id),
+                AexLedgerEntry.entry_type == "credit",
+            )
+        )
+        return result.scalar_one_or_none()
+
+    async def _notify_referral_bonus(
+        self,
+        db: AsyncSession,
+        *,
+        referrer_id: int,
+        referred_user: User,
+        order_id: int,
+        amount: Decimal,
+    ) -> None:
+        """Best-effort Telegram-уведомление рефереру после начисления."""
+        referrer = await UserRepository(db).get_one(referrer_id)
+        if referrer is None or not referrer.telegram_id:
+            return
+
+        from app.telegram import bot as telegram_bot
+
+        if telegram_bot.bot is None:
+            logger.warning("Referral bonus notification skipped: bot is not initialized")
+            return
+
+        try:
+            translate = get_user_translator(referrer)
+            await telegram_bot.bot.send_message(
+                chat_id=referrer.telegram_id,
+                text=messages.referral_bonus_credited(
+                    amount=str(amount),
+                    order_id=order_id,
+                    invited_name=self._format_referred_user(referred_user),
+                    translator=translate,
+                ),
+            )
+        except Exception:
+            logger.exception(
+                "Failed to send referral bonus notification: referrer_id=%s order_id=%s",
+                referrer_id,
+                order_id,
+            )
+
+    def _format_referred_user(self, user: User) -> str:
+        """Собрать имя приглашённого для уведомления."""
+        display_name = " ".join(part for part in (user.first_name, user.last_name) if part).strip()
+        if display_name:
+            return display_name
+        if user.username:
+            return f"@{user.username}"
+        return f"User #{user.id}"

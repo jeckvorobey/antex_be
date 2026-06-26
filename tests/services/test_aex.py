@@ -57,22 +57,21 @@ class TestReferralCodeService:
 @pytest.mark.asyncio
 class TestReferralBinding:
     async def test_bind_referral_success(self, db_session):
-        referrer = await create_user(db_session, telegram_id=300001, referral_code="REFERRER1")
+        referrer = await create_user(db_session, telegram_id=300001, referral_code="A7kP2mX9")
         referred = await create_user(db_session, telegram_id=300002)
 
         service = ReferralService()
-        await service.bind_referral(db_session, referred, "REFERRER1")
+        await service.bind_referral(db_session, referred, "A7kP2mX9")
 
         assert referred.referred_by == referrer.id
 
     async def test_bind_referral_already_bound(self, db_session):
-        referrer = await create_user(db_session, telegram_id=300003, referral_code="REFERRER2")
+        referrer = await create_user(db_session, telegram_id=300003, referral_code="hF84LmQz")
         referred = await create_user(db_session, telegram_id=300004, referred_by=referrer.id)
 
         service = ReferralService()
-        with pytest.raises(Exception) as exc_info:
-            await service.bind_referral(db_session, referred, "REFERRER2")
-        assert exc_info.value.code == "ALREADY_REFERRED"
+        result = await service.bind_referral(db_session, referred, "hF84LmQz")
+        assert result.referred_by == referrer.id
 
     async def test_bind_referral_invalid_code(self, db_session):
         user = await create_user(db_session, telegram_id=300005)
@@ -82,14 +81,14 @@ class TestReferralBinding:
         assert exc_info.value.code == "INVALID_REFERRAL_CODE"
 
     async def test_bind_referral_self(self, db_session):
-        user = await create_user(db_session, telegram_id=300006, referral_code="SELFREF1")
+        user = await create_user(db_session, telegram_id=300006, referral_code="N2vX8aBc")
         service = ReferralService()
         with pytest.raises(Exception) as exc_info:
-            await service.bind_referral(db_session, user, "SELFREF1")
+            await service.bind_referral(db_session, user, "N2vX8aBc")
         assert exc_info.value.code == "SELF_REFERRAL"
 
     async def test_get_referral_list(self, db_session):
-        referrer = await create_user(db_session, telegram_id=300007, referral_code="LISTREF1")
+        referrer = await create_user(db_session, telegram_id=300007, referral_code="pQ7Rk91T")
         await create_user(db_session, telegram_id=300008, referred_by=referrer.id)
         await create_user(db_session, telegram_id=300009, referred_by=referrer.id)
 
@@ -318,3 +317,30 @@ class TestReferralBonus:
         assert entries[0].entry_type == "credit"
         assert entries[0].reference_type == "referral"
         assert entries[0].reference_id == "42"
+
+    async def test_credit_referral_bonus_is_idempotent_by_order(self, db_session):
+        referrer = await create_user(db_session, telegram_id=700008, referral_code="BONUS4")
+        referred = await create_user(db_session, telegram_id=700009, referred_by=referrer.id)
+
+        service = ReferralService()
+        first = await service.credit_referral_bonus(
+            db_session,
+            order_id=77,
+            order_amount=Decimal("10000"),
+            referred_user_id=referred.id,
+        )
+        second = await service.credit_referral_bonus(
+            db_session,
+            order_id=77,
+            order_amount=Decimal("10000"),
+            referred_user_id=referred.id,
+        )
+
+        wallet = await AexWalletRepository(db_session).get_by_user_id(referrer.id)
+        ledger_repo = AexLedgerEntryRepository(db_session)
+        entries = await ledger_repo.get_by_wallet(wallet.id)
+
+        assert first == Decimal("20.000000")
+        assert second == Decimal("20.00000000")
+        assert wallet.balance_available == Decimal("20.000000")
+        assert len([entry for entry in entries if entry.reference_type == "referral"]) == 1

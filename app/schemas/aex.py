@@ -146,6 +146,23 @@ class ReferralBindRequest(BaseModel):
     referral_code: str
 
 
+class ReferralApplyRequest(BaseModel):
+    code: str
+
+
+class ReferralApplyResponse(BaseModel):
+    success: bool = True
+
+
+class AdminReferralGenerateResponse(BaseModel):
+    ok: bool = True
+    referral_code: str
+
+
+class AdminReferralReferredByRequest(BaseModel):
+    referral_code: str | None = None
+
+
 # ── Builders ─────────────────────────────────────────────────────────
 
 
