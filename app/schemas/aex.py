@@ -86,6 +86,30 @@ class AexPersonalRateOut(BaseModel):
     updatedAt: datetime
 
 
+class AexAdminRateOut(BaseModel):
+    rate: str
+    updatedAt: datetime
+
+
+class AexAdminRateUpdate(BaseModel):
+    rate: Decimal = Field(gt=0)
+
+
+class AexAdminRateCreate(BaseModel):
+    userId: int
+    rate: Decimal = Field(gt=0)
+
+
+class AexAdminRateRowOut(BaseModel):
+    id: int
+    userId: int
+    username: str | None = None
+    firstName: str | None = None
+    rate: str
+    createdAt: datetime
+    updatedAt: datetime
+
+
 # ── Requests ─────────────────────────────────────────────────────────
 
 
@@ -177,6 +201,26 @@ def build_aex_personal_rate_out(rate) -> AexPersonalRateOut:
     return AexPersonalRateOut(
         id=rate.id,
         user_id=rate.user_id,
+        rate=str(rate.rate),
+        createdAt=rate.createdAt,
+        updatedAt=rate.updatedAt,
+    )
+
+
+def build_admin_rate_out(rate) -> AexAdminRateOut:
+    return AexAdminRateOut(
+        rate=str(rate.global_rate),
+        updatedAt=rate.updatedAt,
+    )
+
+
+def build_admin_rate_row_out(rate) -> AexAdminRateRowOut:
+    user = getattr(rate, "user", None)
+    return AexAdminRateRowOut(
+        id=rate.id,
+        userId=rate.user_id,
+        username=user.username if user else None,
+        firstName=user.first_name if user else None,
         rate=str(rate.rate),
         createdAt=rate.createdAt,
         updatedAt=rate.updatedAt,

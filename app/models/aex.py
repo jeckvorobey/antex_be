@@ -116,3 +116,23 @@ class AexPersonalRate(Base, TimestampMixin):
     )
 
     user: Mapped[User] = relationship("User", back_populates="aex_personal_rate")
+
+
+class AexPartnerRate(Base, TimestampMixin):
+    """Партнёрская ставка начисления AEX для пользователя."""
+
+    __tablename__ = "AexPartnerRates"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    user_id: Mapped[int] = mapped_column(
+        Integer,
+        ForeignKey("Users.id"),
+        unique=True,
+        nullable=False,
+    )
+    rate: Mapped[Decimal] = mapped_column(
+        Numeric(precision=10, scale=6),
+        nullable=False,
+    )
+
+    user: Mapped[User] = relationship("User", back_populates="aex_partner_rate")

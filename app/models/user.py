@@ -11,7 +11,7 @@ from app.enums.user import UserRole
 from app.models.base import Base, TimestampMixin
 
 if TYPE_CHECKING:
-    from app.models.aex import AexPersonalRate, AexWallet
+    from app.models.aex import AexPartnerRate, AexPersonalRate, AexWallet
     from app.models.city import City
     from app.models.order import Order
 
@@ -59,6 +59,11 @@ class User(Base, TimestampMixin):
     )
     aex_personal_rate: Mapped[AexPersonalRate | None] = relationship(
         "AexPersonalRate",
+        back_populates="user",
+        uselist=False,
+    )
+    aex_partner_rate: Mapped[AexPartnerRate | None] = relationship(
+        "AexPartnerRate",
         back_populates="user",
         uselist=False,
     )

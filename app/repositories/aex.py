@@ -8,7 +8,7 @@ from typing import ClassVar
 from sqlalchemy import select
 from sqlalchemy.orm import selectinload
 
-from app.models.aex import AexLedgerEntry, AexPersonalRate, AexRate, AexWallet
+from app.models.aex import AexLedgerEntry, AexPartnerRate, AexPersonalRate, AexRate, AexWallet
 from app.repositories.base import BaseRepository
 
 
@@ -130,5 +130,25 @@ class AexPersonalRateRepository(BaseRepository[AexPersonalRate]):
             select(AexPersonalRate)
             .options(selectinload(AexPersonalRate.user))
             .order_by(AexPersonalRate.id)
+        )
+        return list(result.scalars().all())
+
+
+class AexPartnerRateRepository(BaseRepository[AexPartnerRate]):
+    """Репозиторий партнёрских ставок AEX."""
+
+    model = AexPartnerRate
+
+    async def get_by_user_id(self, user_id: int) -> AexPartnerRate | None:
+        result = await self.session.execute(
+            select(AexPartnerRate).where(AexPartnerRate.user_id == user_id)
+        )
+        return result.scalar_one_or_none()
+
+    async def get_all_with_users(self) -> list[AexPartnerRate]:
+        result = await self.session.execute(
+            select(AexPartnerRate)
+            .options(selectinload(AexPartnerRate.user))
+            .order_by(AexPartnerRate.id)
         )
         return list(result.scalars().all())
