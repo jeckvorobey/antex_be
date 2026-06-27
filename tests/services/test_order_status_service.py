@@ -16,14 +16,17 @@ async def test_update_order_status_persists_and_notifies(monkeypatch) -> None:
     updated_order = SimpleNamespace(id=5, status=int(OrderStatus.PROCESSING))
     hydrated_order = SimpleNamespace(id=5, status=int(OrderStatus.PROCESSING))
     commit_mock = AsyncMock()
+    first_get_done = False
 
     class _FakeRepo:
         def __init__(self, db) -> None:
             self.db = db
 
         async def get_one(self, order_id: int):
+            nonlocal first_get_done
             assert order_id == 5
-            if commit_mock.await_count == 0:
+            if not first_get_done:
+                first_get_done = True
                 return initial_order
             return hydrated_order
 
@@ -68,14 +71,17 @@ async def test_update_order_status_keeps_success_when_notification_fails(monkeyp
     hydrated_order = SimpleNamespace(id=5, status=int(OrderStatus.PROCESSING))
     commit_mock = AsyncMock()
     rollback_mock = AsyncMock()
+    first_get_done = False
 
     class _FakeRepo:
         def __init__(self, db) -> None:
             self.db = db
 
         async def get_one(self, order_id: int):
+            nonlocal first_get_done
             assert order_id == 5
-            if commit_mock.await_count == 0:
+            if not first_get_done:
+                first_get_done = True
                 return initial_order
             return hydrated_order
 

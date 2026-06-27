@@ -38,7 +38,7 @@ from app.schemas.aex import (
     build_aex_wallet_out,
 )
 from app.services.aex import AexService
-from app.services.aex_rate import AexRateService
+from app.services.aex_rate import AexRateService, percent_to_rate, rate_to_percent
 
 router = APIRouter(prefix="/api/aex", tags=["aex"])
 admin_router = APIRouter(prefix="/api/admin/aex", tags=["admin-aex"])
@@ -106,11 +106,11 @@ async def list_rates(db: DbDep, _: AdminUser) -> list[AexRateOut]:
         result.append(
             AexRateOut(
                 id=pr.id,
-                global_rate=pr.rate,
+                global_rate=rate_to_percent(pr.rate),
                 createdAt=pr.createdAt,
                 updatedAt=pr.updatedAt,
             )
-    )
+        )
     return result
 
 
@@ -128,7 +128,7 @@ async def update_admin_rate(
     _: AdminUser,
 ) -> AexAdminRateOut:
     """Обновить глобальную ставку AEX для админки."""
-    rate = await rate_service.update_global_rate(db, body.rate)
+    rate = await rate_service.update_global_rate(db, percent_to_rate(body.rate))
     await db.commit()
     return build_admin_rate_out(rate)
 
@@ -160,7 +160,7 @@ async def create_personal_rate(
     _: AdminUser,
 ) -> AexAdminRateRowOut:
     """Создать персональную ставку AEX."""
-    rate = await rate_service.set_personal_rate(db, body.userId, body.rate)
+    rate = await rate_service.set_personal_rate(db, body.userId, percent_to_rate(body.rate))
     await db.commit()
     return build_admin_rate_row_out(rate)
 
@@ -177,7 +177,7 @@ async def update_personal_rate(
     rate = await repo.get_by_id(rate_id)
     if rate is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Rate not found")
-    updated = await repo.update(rate, rate=body.rate)
+    updated = await repo.update(rate, rate=percent_to_rate(body.rate))
     await db.commit()
     return build_admin_rate_row_out(updated)
 
@@ -222,7 +222,7 @@ async def create_partner_rate(
     _: AdminUser,
 ) -> AexAdminRateRowOut:
     """Создать партнёрскую ставку AEX."""
-    rate = await rate_service.set_partner_rate(db, body.userId, body.rate)
+    rate = await rate_service.set_partner_rate(db, body.userId, percent_to_rate(body.rate))
     await db.commit()
     return build_admin_rate_row_out(rate)
 
@@ -239,7 +239,7 @@ async def update_partner_rate(
     rate = await repo.get_by_id(rate_id)
     if rate is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Rate not found")
-    updated = await repo.update(rate, rate=body.rate)
+    updated = await repo.update(rate, rate=percent_to_rate(body.rate))
     await db.commit()
     return build_admin_rate_row_out(updated)
 

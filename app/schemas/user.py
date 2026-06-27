@@ -9,6 +9,7 @@ from decimal import Decimal
 from pydantic import BaseModel, field_validator
 
 from app.enums.user import get_role_title, is_assignable_user_role, normalize_user_role
+from app.services.aex_rate import DEFAULT_AEX_RATE, normalize_aex_rate, rate_to_percent
 from app.schemas.auth import build_trusted_contact
 from app.schemas.city import CityOut
 
@@ -57,11 +58,11 @@ class UserUpdate(BaseModel):
 
 
 def _format_referral_rate(rate: Decimal) -> str:
-    return str(rate.quantize(Decimal("0.000001")))
+    return str(normalize_aex_rate(rate))
 
 
 def _format_referral_rate_percent(rate: Decimal) -> str:
-    return str((rate * Decimal("100")).quantize(Decimal("0.000001")))
+    return str(rate_to_percent(rate))
 
 
 def _resolve_aex_balance(user) -> str:
@@ -79,7 +80,7 @@ def build_user_out(user, *, referral_rate: Decimal | None = None) -> UserOut:
     if effective_referral_rate is None:
         personal_rate = user.__dict__.get("aex_personal_rate")
         effective_referral_rate = (
-            personal_rate.rate if personal_rate is not None else Decimal("0.002")
+            personal_rate.rate if personal_rate is not None else DEFAULT_AEX_RATE
         )
     aex_balance = _resolve_aex_balance(user)
 

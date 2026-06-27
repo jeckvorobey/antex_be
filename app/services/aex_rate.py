@@ -17,6 +17,25 @@ from app.repositories.aex import (
     AexRateRepository,
 )
 
+DEFAULT_AEX_RATE = Decimal("0.002")
+AEX_RATE_QUANTIZER = Decimal("0.000001")
+AEX_PERCENT_MULTIPLIER = Decimal("100")
+
+
+def normalize_aex_rate(rate: Decimal) -> Decimal:
+    """Нормализовать долю ставки AEX для хранения и ответов."""
+    return rate.quantize(AEX_RATE_QUANTIZER)
+
+
+def rate_to_percent(rate: Decimal) -> Decimal:
+    """Преобразовать внутреннюю долю ставки в процент для UI/admin API."""
+    return (rate * AEX_PERCENT_MULTIPLIER).quantize(AEX_RATE_QUANTIZER)
+
+
+def percent_to_rate(percent: Decimal) -> Decimal:
+    """Преобразовать пользовательский процент в внутреннюю долю ставки."""
+    return normalize_aex_rate(percent / AEX_PERCENT_MULTIPLIER)
+
 
 class AexRateService:
     """Доменный сервис управления ставками AEX."""
@@ -26,7 +45,7 @@ class AexRateService:
         repo = AexRateRepository(db)
         rate = await repo.get_current()
         if rate is None:
-            rate = await repo.create(global_rate=Decimal("0.002"))
+            rate = await repo.create(global_rate=DEFAULT_AEX_RATE)
         return rate
 
     async def update_global_rate(
@@ -45,8 +64,8 @@ class AexRateService:
         repo = AexRateRepository(db)
         rate = await repo.get_current()
         if rate is not None:
-            return await repo.update(rate, global_rate=new_rate)
-        return await repo.create(global_rate=new_rate)
+            return await repo.update(rate, global_rate=normalize_aex_rate(new_rate))
+        return await repo.create(global_rate=normalize_aex_rate(new_rate))
 
     async def get_effective_rate(
         self,
@@ -82,8 +101,8 @@ class AexRateService:
         repo = AexPersonalRateRepository(db)
         existing = await repo.get_by_user_id(user_id)
         if existing is not None:
-            return await repo.update(existing, rate=rate)
-        return await repo.create(user_id=user_id, rate=rate)
+            return await repo.update(existing, rate=normalize_aex_rate(rate))
+        return await repo.create(user_id=user_id, rate=normalize_aex_rate(rate))
 
     async def set_partner_rate(
         self,
@@ -102,8 +121,8 @@ class AexRateService:
         repo = AexPartnerRateRepository(db)
         existing = await repo.get_by_user_id(user_id)
         if existing is not None:
-            return await repo.update(existing, rate=rate)
-        return await repo.create(user_id=user_id, rate=rate)
+            return await repo.update(existing, rate=normalize_aex_rate(rate))
+        return await repo.create(user_id=user_id, rate=normalize_aex_rate(rate))
 
     async def get_all_personal_rates(self, db: AsyncSession) -> list[AexPersonalRate]:
         """Получить все персональные ставки."""

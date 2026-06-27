@@ -6,6 +6,8 @@ from decimal import Decimal
 
 import pytest
 
+from app.enums.country import Country
+from app.models.rate import Rate
 from app.models.user import User
 from app.repositories.aex import (
     AexLedgerEntryRepository,
@@ -267,6 +269,29 @@ class TestReferralBonus:
         wallet = await AexWalletRepository(db_session).get_by_user_id(referrer.id)
         assert wallet is not None
         assert wallet.balance_available == Decimal("20.000000")
+
+    async def test_credit_referral_bonus_rub_order_uses_usdt_equivalent(self, db_session):
+        referrer = await create_user(db_session, telegram_id=700010, referral_code="BONUSRUB")
+        referred = await create_user(db_session, telegram_id=700011, referred_by=referrer.id)
+        db_session.add_all(
+            [
+                Rate(currency="USDTTHB", price=35.5, margin=3.0, country=Country.THAILAND),
+                Rate(currency="RUBTHB", price=0.355, margin=3.0, country=Country.THAILAND),
+            ]
+        )
+        await db_session.flush()
+
+        service = ReferralService()
+        aex_amount = await service.credit_referral_bonus(
+            db_session,
+            order_id=3,
+            order_amount=Decimal("100000"),
+            referred_user_id=referred.id,
+            currency_sell="RUB",
+            currency_buy="THB",
+        )
+
+        assert aex_amount == Decimal("2.000000")
 
     async def test_credit_referral_bonus_no_referrer(self, db_session):
         user = await create_user(db_session, telegram_id=700003)
