@@ -38,7 +38,6 @@ async def update_order_status(
         return order
 
     order = await repo.update_status(order_id, int(target_status))
-    await db.commit()
     hydrated = await repo.get_one(order_id)
     if hydrated is None:
         raise AntExException("Order not found", code="ORDER_NOT_FOUND", status_code=404)
@@ -56,8 +55,11 @@ async def update_order_status(
             order_id=hydrated.id,
             order_amount=order_amount,
             referred_user_id=hydrated.UserId,
+            currency_sell=str(hydrated.currencySell),
+            currency_buy=str(hydrated.currencyBuy),
         )
-        await db.commit()
+
+    await db.commit()
 
     # Списать AEX рефереру при отмене обмена (компенсация)
     if target_status == OrderStatus.CANCELLED:

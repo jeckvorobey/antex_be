@@ -7,13 +7,15 @@ from decimal import Decimal
 
 import pytest
 from httpx import ASGITransport, AsyncClient
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api import deps
 from app.core.security import create_access_token
 from app.models.admin import Admin
-from app.models.aex import AexPartnerRate, AexPersonalRate
+from app.models.aex import AexPartnerRate, AexPersonalRate, AexRate
 from app.models.user import User
+from app.repositories.aex import AexPartnerRateRepository, AexPersonalRateRepository
 
 
 @pytest.fixture
@@ -501,7 +503,7 @@ class TestAdminAexRateSettingsEndpoint:
 
         assert response.status_code == 200
         data = response.json()
-        assert data["rate"] == "0.002000"
+        assert data["rate"] == "0.200000"
         assert data["updatedAt"] is not None
 
     async def test_update_admin_rate(
@@ -521,6 +523,8 @@ class TestAdminAexRateSettingsEndpoint:
 
         assert response.status_code == 200
         assert response.json()["rate"] == "0.250000"
+        stored = (await db.execute(select(AexRate).order_by(AexRate.id.desc()))).scalar_one()
+        assert stored.global_rate == Decimal("0.002500")
 
 
 class TestAdminAexPersonalRatesEndpoint:
@@ -551,6 +555,9 @@ class TestAdminAexPersonalRatesEndpoint:
         created = create_response.json()
         assert created["userId"] == user.id
         assert created["rate"] == "0.500000"
+        stored = await AexPersonalRateRepository(db).get_by_user_id(user.id)
+        assert stored is not None
+        assert stored.rate == Decimal("0.005000")
 
         rate_id = created["id"]
         update_response = await client.patch(
@@ -560,6 +567,8 @@ class TestAdminAexPersonalRatesEndpoint:
         )
         assert update_response.status_code == 200
         assert update_response.json()["rate"] == "0.600000"
+        await db.refresh(stored)
+        assert stored.rate == Decimal("0.006000")
 
         delete_response = await client.delete(
             f"/api/admin/aex/rates/personal/{rate_id}",
@@ -597,6 +606,9 @@ class TestAdminAexPartnerRatesEndpoint:
         created = create_response.json()
         assert created["userId"] == user.id
         assert created["rate"] == "1.100000"
+        stored = await AexPartnerRateRepository(db).get_by_user_id(user.id)
+        assert stored is not None
+        assert stored.rate == Decimal("0.011000")
 
         rate_id = created["id"]
         update_response = await client.patch(
@@ -606,6 +618,8 @@ class TestAdminAexPartnerRatesEndpoint:
         )
         assert update_response.status_code == 200
         assert update_response.json()["rate"] == "1.200000"
+        await db.refresh(stored)
+        assert stored.rate == Decimal("0.012000")
 
         delete_response = await client.delete(
             f"/api/admin/aex/rates/partner/{rate_id}",

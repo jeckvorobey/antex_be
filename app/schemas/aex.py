@@ -8,6 +8,8 @@ from decimal import Decimal
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from app.services.aex_rate import rate_to_percent
+
 # ── Wallet ───────────────────────────────────────────────────────────
 
 
@@ -126,12 +128,12 @@ class AexAdminRateOut(BaseModel):
 
 
 class AexAdminRateUpdate(BaseModel):
-    rate: Decimal = Field(gt=0)
+    rate: Decimal = Field(gt=0, le=100)
 
 
 class AexAdminRateCreate(BaseModel):
     userId: int
-    rate: Decimal = Field(gt=0)
+    rate: Decimal = Field(gt=0, le=100)
 
 
 class AexAdminRateRowOut(BaseModel):
@@ -263,7 +265,7 @@ def build_admin_operation_out(entry) -> AexAdminOperationOut:
 def build_aex_rate_out(rate) -> AexRateOut:
     return AexRateOut(
         id=rate.id,
-        global_rate=str(rate.global_rate),
+        global_rate=str(rate_to_percent(rate.global_rate)),
         createdAt=rate.createdAt,
         updatedAt=rate.updatedAt,
     )
@@ -273,7 +275,7 @@ def build_aex_personal_rate_out(rate) -> AexPersonalRateOut:
     return AexPersonalRateOut(
         id=rate.id,
         user_id=rate.user_id,
-        rate=str(rate.rate),
+        rate=str(rate_to_percent(rate.rate)),
         createdAt=rate.createdAt,
         updatedAt=rate.updatedAt,
     )
@@ -281,7 +283,7 @@ def build_aex_personal_rate_out(rate) -> AexPersonalRateOut:
 
 def build_admin_rate_out(rate) -> AexAdminRateOut:
     return AexAdminRateOut(
-        rate=str(rate.global_rate),
+        rate=str(rate_to_percent(rate.global_rate)),
         updatedAt=rate.updatedAt,
     )
 
@@ -293,7 +295,7 @@ def build_admin_rate_row_out(rate) -> AexAdminRateRowOut:
         userId=rate.user_id,
         username=user.username if user else None,
         firstName=user.first_name if user else None,
-        rate=str(rate.rate),
+        rate=str(rate_to_percent(rate.rate)),
         createdAt=rate.createdAt,
         updatedAt=rate.updatedAt,
     )

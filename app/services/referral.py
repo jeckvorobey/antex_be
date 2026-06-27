@@ -17,14 +17,15 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.exceptions import AntExException
 from app.models.aex import AexLedgerEntry
 from app.models.user import User
+from app.repositories.rate import RateRepository
 from app.repositories.user import UserRepository
+from app.services.aex_rate import AEX_RATE_QUANTIZER
 from app.telegram import messages
 from app.telegram.i18n import get_user_translator
 
 logger = logging.getLogger(__name__)
 
 REFERRAL_CODE_LENGTH = 8
-REFERRAL_RATE_DEFAULT = Decimal("0.002")
 DEFAULT_REFERRAL_BOT_USERNAME = "antex_bot"
 INVALID_REFERRAL_CODE_MESSAGE = "Неверный реферальный код. Проверте или удалите!"
 
@@ -213,11 +214,13 @@ class ReferralService:
         order_id: int,
         order_amount: Decimal,
         referred_user_id: int,
+        currency_sell: str = "USDT",
+        currency_buy: str | None = None,
     ) -> Decimal:
         """Начислить AEX пригласившему за обмен реферала.
 
         Возвращает начисленную сумму AEX.
-        Esli u referala net priglashennogo - nichego ne delaet.
+        `order_amount` передаётся в валюте продажи заявки.
         """
         user_repo = UserRepository(db)
         referred_user = await user_repo.get_one(referred_user_id)
@@ -234,7 +237,13 @@ class ReferralService:
 
         rate_service = AexRateService()
         rate = await rate_service.get_effective_rate(db, referrer_id)
-        aex_amount = (order_amount * rate).quantize(Decimal("0.000001"))
+        aex_base_amount = await self._convert_order_amount_to_aex_base(
+            db,
+            order_amount=order_amount,
+            currency_sell=currency_sell,
+            currency_buy=currency_buy,
+        )
+        aex_amount = (aex_base_amount * rate).quantize(AEX_RATE_QUANTIZER)
 
         if aex_amount <= 0:
             return Decimal("0")
@@ -260,11 +269,13 @@ class ReferralService:
         )
 
         logger.info(
-            "Credited %s AEX to user %s for referral order %s (rate=%s)",
+            "Credited %s AEX to user %s for referral order %s (rate=%s base=%s %s)",
             aex_amount,
             referrer_id,
             order_id,
             rate,
+            aex_base_amount,
+            currency_sell.upper(),
         )
         return aex_amount
 
@@ -355,6 +366,51 @@ class ReferralService:
             )
         )
         return result.scalar_one_or_none()
+
+    async def _convert_order_amount_to_aex_base(
+        self,
+        db: AsyncSession,
+        *,
+        order_amount: Decimal,
+        currency_sell: str,
+        currency_buy: str | None,
+    ) -> Decimal:
+        """Привести сумму заявки к USDT-базе, от которой начисляется AEX."""
+        if order_amount <= 0:
+            return Decimal("0")
+
+        sell = currency_sell.upper()
+        if sell == "USDT":
+            return order_amount.quantize(AEX_RATE_QUANTIZER)
+
+        if sell != "RUB":
+            raise AntExException(
+                f"Unsupported sell currency for referral bonus: {sell}",
+                code="UNSUPPORTED_REFERRAL_BONUS_CURRENCY",
+                status_code=422,
+            )
+
+        if not currency_buy:
+            raise AntExException(
+                "Currency buy is required for RUB referral bonus conversion",
+                code="REFERRAL_BONUS_CONTEXT_MISSING",
+                status_code=500,
+            )
+
+        buy = currency_buy.upper()
+        rate_repo = RateRepository(db)
+        rub_pair = await rate_repo.find_by_currency(f"RUB{buy}")
+        usdt_pair = await rate_repo.find_by_currency(f"USDT{buy}")
+
+        if rub_pair is None or usdt_pair is None or rub_pair.price <= 0 or usdt_pair.price <= 0:
+            raise AntExException(
+                f"Missing conversion rates for referral bonus base: RUB{buy}/USDT{buy}",
+                code="REFERRAL_BONUS_RATE_UNAVAILABLE",
+                status_code=409,
+            )
+
+        usdt_rub = Decimal(str(usdt_pair.price)) / Decimal(str(rub_pair.price))
+        return (order_amount / usdt_rub).quantize(AEX_RATE_QUANTIZER)
 
     async def _notify_referral_bonus(
         self,
