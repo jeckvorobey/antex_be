@@ -225,14 +225,7 @@ async def test_miniapp_aex_referral_returns_ready_link(
         data["referralLink"] == f"https://t.me/antex_test_bot?startapp=ref_{data['referralCode']}"
     )
     assert data["totalReferrals"] == 1
-    assert data["referrals"] == [
-        {
-            "id": referred.id,
-            "displayName": "Invited",
-            "joinedAt": referred.createdAt.isoformat().replace("+00:00", "Z"),
-            "earnedAex": 12.5,
-        }
-    ]
+    assert "referrals" not in data
 
 
 @pytest.mark.asyncio

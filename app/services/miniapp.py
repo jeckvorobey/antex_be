@@ -30,7 +30,6 @@ from app.schemas.miniapp import (
     MiniappRatesResponse,
     MiniappRatesSection,
     MiniappServiceItem,
-    build_miniapp_aex_referral_item,
     build_miniapp_order_item,
     build_miniapp_profile_summary,
 )
@@ -310,25 +309,13 @@ async def get_miniapp_aex_referral(db, user) -> MiniappAexReferralResponse:
     """Возвращает referral-контракт Mini App с готовой ссылкой для копирования."""
     referral_service = ReferralService()
     referral_code = await referral_service.get_or_create_referral_code(db, user)
-    referrals = await referral_service.get_referral_list(db, user)
-    earnings_by_user_id = await referral_service.get_referral_earnings_by_user_id(
-        db,
-        user,
-        [referral.id for referral in referrals],
-    )
+    total_referrals, _ = await referral_service.get_referral_stats(db, user)
     await db.commit()
 
     return MiniappAexReferralResponse(
         referralCode=referral_code,
         referralLink=build_referral_link(referral_code, settings.telegram_bot_username),
-        referrals=[
-            build_miniapp_aex_referral_item(
-                referral,
-                earnings_by_user_id.get(referral.id, 0.0),
-            )
-            for referral in referrals
-        ],
-        totalReferrals=len(referrals),
+        totalReferrals=total_referrals,
     )
 
 

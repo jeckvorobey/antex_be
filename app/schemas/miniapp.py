@@ -4,7 +4,6 @@
 from __future__ import annotations
 
 from datetime import datetime
-from decimal import Decimal
 from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -148,17 +147,9 @@ class MiniappProfileScreenResponse(BaseModel):
     version: str
 
 
-class MiniappAexReferralItem(BaseModel):
-    id: int
-    displayName: str
-    joinedAt: datetime
-    earnedAex: float
-
-
 class MiniappAexReferralResponse(BaseModel):
     referralCode: str
     referralLink: str
-    referrals: list[MiniappAexReferralItem]
     totalReferrals: int
 
 
@@ -260,23 +251,6 @@ def build_miniapp_profile(user) -> MiniappProfileResponse:
         role=user.role,
         is_premium=user.is_premium,
         city=build_city_out(user.city) if user.city else None,
-    )
-
-
-def build_miniapp_aex_referral_item(
-    user,
-    earned_aex: Decimal | float = 0.0,
-) -> MiniappAexReferralItem:
-    """Строит строку реферала для miniapp AEX referral screen."""
-    display_name = " ".join(part for part in (user.first_name, user.last_name) if part).strip()
-    if not display_name:
-        display_name = user.username or f"User #{user.id}"
-
-    return MiniappAexReferralItem(
-        id=user.id,
-        displayName=display_name,
-        joinedAt=user.createdAt,
-        earnedAex=float(earned_aex),
     )
 
 
