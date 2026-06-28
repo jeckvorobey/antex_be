@@ -464,6 +464,15 @@ async def update_config(body: AppConfigUpdate, db: DbDep, _: AdminUser) -> AppCo
     repo = ConfigRepository(db)
     if body.enabled is not None:
         await repo.set_enabled(body.enabled)
+    body_fields = body.model_fields_set
+    await repo.update_referral_program(
+        referral_percent=body.referral_percent,
+        referral_min_withdraw=body.referral_min_withdraw,
+        referral_max_withdraw=body.referral_max_withdraw,
+        aex_rate=body.aex_rate,
+        update_referral_max_withdraw="referral_max_withdraw" in body_fields
+        or "referralMaxWithdraw" in body_fields,
+    )
     config = await repo.get_or_create()
     await db.commit()
     return AppConfigOut.model_validate(config)

@@ -65,6 +65,12 @@ EXPECTED_SITE_LEAD_COLUMNS = {
     "createdAt",
     "updatedAt",
 }
+EXPECTED_REFERRAL_CONFIG_COLUMNS = {
+    "referral_percent",
+    "referral_min_withdraw",
+    "referral_max_withdraw",
+    "aex_rate",
+}
 
 
 def load_alembic_env_module():
@@ -111,6 +117,7 @@ def test_model_metadata_contains_required_migration_columns() -> None:
     assert "margin" in Base.metadata.tables["Rates"].columns
     assert "country" in Base.metadata.tables["Rates"].columns
     assert "allowance" not in Base.metadata.tables["Configs"].columns
+    assert set(Base.metadata.tables["Configs"].columns.keys()) >= EXPECTED_REFERRAL_CONFIG_COLUMNS
     assert set(Base.metadata.tables["Broadcasts"].columns.keys()) >= EXPECTED_BROADCAST_COLUMNS
     assert set(Base.metadata.tables["Orders"].columns.keys()) >= EXPECTED_ORDER_COLUMNS
     assert set(Base.metadata.tables["SiteLeads"].columns.keys()) >= EXPECTED_SITE_LEAD_COLUMNS

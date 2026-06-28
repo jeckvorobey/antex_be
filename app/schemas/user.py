@@ -9,9 +9,9 @@ from decimal import Decimal
 from pydantic import BaseModel, field_validator
 
 from app.enums.user import get_role_title, is_assignable_user_role, normalize_user_role
-from app.services.aex_rate import DEFAULT_AEX_RATE, normalize_aex_rate, rate_to_percent
 from app.schemas.auth import build_trusted_contact
 from app.schemas.city import CityOut
+from app.services.aex_rate import DEFAULT_AEX_RATE, normalize_aex_rate, rate_to_percent
 
 
 class UserOut(BaseModel):

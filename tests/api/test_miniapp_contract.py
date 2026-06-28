@@ -18,6 +18,7 @@ from app.enums.user import UserRole
 from app.models.admin import Admin
 from app.models.aex import AexLedgerEntry, AexWallet
 from app.models.city import City
+from app.models.config import Config
 from app.models.order import Order
 from app.models.rate import Rate
 from app.models.user import User
@@ -225,7 +226,54 @@ async def test_miniapp_aex_referral_returns_ready_link(
         data["referralLink"] == f"https://t.me/antex_test_bot?startapp=ref_{data['referralCode']}"
     )
     assert data["totalReferrals"] == 1
+    assert data["programConfig"] == {
+        "referralPercent": "0.2",
+        "referralMinWithdraw": "100",
+        "referralMaxWithdraw": None,
+        "aexRate": "1",
+    }
     assert "referrals" not in data
+
+
+@pytest.mark.asyncio
+async def test_admin_config_updates_referral_program_settings_for_miniapp(
+    api_client: tuple[AsyncClient, AsyncSession],
+) -> None:
+    client, db_session = api_client
+    _, _, customer = await seed_exchange_data(db_session)
+    admin = Admin(username="admin", password_hash="unused")
+    db_session.add_all([admin, Config(id=1, enabled=True)])
+    await db_session.flush()
+    admin_token = create_access_token({"sub": str(admin.id), "type": "admin"})
+    user_token = create_access_token({"sub": str(customer.id), "role": customer.role})
+
+    patch_response = await client.patch(
+        "/api/admin/config",
+        json={
+            "referralPercent": "0.35",
+            "referralMinWithdraw": "250",
+            "referralMaxWithdraw": "5000",
+            "aexRate": "1.2",
+        },
+        headers={"Authorization": f"Bearer {admin_token}"},
+    )
+    referral_response = await client.get(
+        "/api/miniapp/aex/referral",
+        headers={"Authorization": f"Bearer {user_token}"},
+    )
+
+    assert patch_response.status_code == 200
+    assert patch_response.json()["referralPercent"] == "0.35"
+    assert patch_response.json()["referralMinWithdraw"] == "250"
+    assert patch_response.json()["referralMaxWithdraw"] == "5000"
+    assert patch_response.json()["aexRate"] == "1.2"
+    assert referral_response.status_code == 200
+    assert referral_response.json()["programConfig"] == {
+        "referralPercent": "0.35",
+        "referralMinWithdraw": "250",
+        "referralMaxWithdraw": "5000",
+        "aexRate": "1.2",
+    }
 
 
 @pytest.mark.asyncio

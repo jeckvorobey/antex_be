@@ -7,6 +7,7 @@ from decimal import Decimal
 
 from app.core.config import settings
 from app.repositories.city import CityRepository
+from app.repositories.config import ConfigRepository
 from app.repositories.order import OrderRepository
 from app.repositories.user import UserRepository
 from app.schemas.city import build_city_out
@@ -29,6 +30,7 @@ from app.schemas.miniapp import (
     MiniappRateCard,
     MiniappRatesResponse,
     MiniappRatesSection,
+    MiniappReferralProgramConfig,
     MiniappServiceItem,
     build_miniapp_order_item,
     build_miniapp_profile_summary,
@@ -310,12 +312,19 @@ async def get_miniapp_aex_referral(db, user) -> MiniappAexReferralResponse:
     referral_service = ReferralService()
     referral_code = await referral_service.get_or_create_referral_code(db, user)
     total_referrals, _ = await referral_service.get_referral_stats(db, user)
+    config = await ConfigRepository(db).get_or_create()
     await db.commit()
 
     return MiniappAexReferralResponse(
         referralCode=referral_code,
         referralLink=build_referral_link(referral_code, settings.telegram_bot_username),
         totalReferrals=total_referrals,
+        programConfig=MiniappReferralProgramConfig(
+            referralPercent=config.referral_percent,
+            referralMinWithdraw=config.referral_min_withdraw,
+            referralMaxWithdraw=config.referral_max_withdraw,
+            aexRate=config.aex_rate,
+        ),
     )
 
 

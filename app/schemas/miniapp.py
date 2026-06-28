@@ -4,9 +4,10 @@
 from __future__ import annotations
 
 from datetime import datetime
+from decimal import Decimal
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_serializer
 
 from app.enums.country import Country
 from app.schemas.city import CityOut
@@ -147,10 +148,33 @@ class MiniappProfileScreenResponse(BaseModel):
     version: str
 
 
+class MiniappReferralProgramConfig(BaseModel):
+    referralPercent: Decimal
+    referralMinWithdraw: Decimal
+    referralMaxWithdraw: Decimal | None
+    aexRate: Decimal
+
+    @field_serializer(
+        "referralPercent",
+        "referralMinWithdraw",
+        "referralMaxWithdraw",
+        "aexRate",
+        when_used="json",
+    )
+    def serialize_decimal(self, value: Decimal | None) -> str | None:
+        if value is None:
+            return None
+        serialized = format(value, "f")
+        if "." in serialized:
+            return serialized.rstrip("0").rstrip(".")
+        return serialized
+
+
 class MiniappAexReferralResponse(BaseModel):
     referralCode: str
     referralLink: str
     totalReferrals: int
+    programConfig: MiniappReferralProgramConfig
 
 
 class MiniappRatesResponse(BaseModel):
