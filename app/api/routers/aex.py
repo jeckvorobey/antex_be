@@ -38,6 +38,7 @@ from app.schemas.aex import (
     build_aex_wallet_out,
 )
 from app.services.aex import AexService
+from app.services.aex_notifications import notify_aex_operation
 from app.services.aex_rate import AexRateService, percent_to_rate, rate_to_percent
 
 router = APIRouter(prefix="/api/aex", tags=["aex"])
@@ -356,6 +357,13 @@ async def admin_credit(
         description=body.description or "Admin credit",
     )
     await db.commit()
+    await notify_aex_operation(
+        db,
+        user_id=body.user_id,
+        operation_type="credit",
+        amount=body.amount,
+        description=body.description,
+    )
     return {"ok": True, "entry_id": entry.id}
 
 
@@ -382,6 +390,13 @@ async def admin_debit(
             ) from exc
         raise
     await db.commit()
+    await notify_aex_operation(
+        db,
+        user_id=body.user_id,
+        operation_type="debit",
+        amount=body.amount,
+        description=body.description,
+    )
     return {"ok": True, "entry_id": entry.id}
 
 
