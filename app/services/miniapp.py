@@ -5,7 +5,10 @@ from __future__ import annotations
 
 from decimal import Decimal
 
+from sqlalchemy import select
+
 from app.core.config import settings
+from app.models.order import Order
 from app.repositories.city import CityRepository
 from app.repositories.config import ConfigRepository
 from app.repositories.order import OrderRepository
@@ -102,6 +105,44 @@ def _map_miniapp_aex_transaction_type(entry) -> str:
     return "adjustment"
 
 
+def _extract_order_id(reference_id: str | None) -> int | None:
+    if not reference_id:
+        return None
+    try:
+        return int(reference_id)
+    except ValueError:
+        return None
+
+
+async def _load_referral_order_numbers(db, entries) -> dict[int, str]:
+    order_ids: set[int] = set()
+    for entry in entries:
+        if entry.reference_type != "referral":
+            continue
+        order_id = _extract_order_id(entry.reference_id)
+        if order_id is not None:
+            order_ids.add(order_id)
+
+    if not order_ids:
+        return {}
+
+    result = await db.execute(
+        select(Order.id, Order.publicNumber).where(Order.id.in_(order_ids)),
+    )
+    return {order_id: public_number for order_id, public_number in result.all()}
+
+
+def _build_miniapp_aex_transaction_description(entry, order_numbers: dict[int, str]) -> str:
+    if entry.reference_type == "referral":
+        order_id = _extract_order_id(entry.reference_id)
+        public_number = order_numbers.get(order_id) if order_id is not None else None
+        if public_number:
+            return f"Реферальное начисление по заявке {public_number}"
+        return "Реферальное начисление"
+
+    return entry.description or ""
+
+
 async def list_miniapp_aex_transactions(
     db,
     user_id: int,
@@ -110,6 +151,7 @@ async def list_miniapp_aex_transactions(
     offset: int = 0,
 ) -> MiniappAexTransactionsResponse:
     entries, total = await AexService().get_operations(db, user_id, limit=limit, offset=offset)
+    referral_order_numbers = await _load_referral_order_numbers(db, entries)
     running_balance = Decimal("0")
     items: list[MiniappAexTransactionItem] = []
     for entry in reversed(entries):
@@ -120,7 +162,10 @@ async def list_miniapp_aex_transactions(
                 type=_map_miniapp_aex_transaction_type(entry),
                 amount=float(entry.amount),
                 balanceAfter=float(running_balance),
-                description=entry.description or "",
+                description=_build_miniapp_aex_transaction_description(
+                    entry,
+                    referral_order_numbers,
+                ),
                 createdAt=entry.createdAt,
             )
         )

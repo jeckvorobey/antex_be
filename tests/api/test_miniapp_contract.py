@@ -324,6 +324,63 @@ async def test_miniapp_aex_transactions_returns_offset_pagination_contract(
 
 
 @pytest.mark.asyncio
+async def test_miniapp_aex_transactions_describes_referral_reward_by_public_order_number(
+    api_client: tuple[AsyncClient, AsyncSession],
+) -> None:
+    client, db_session = api_client
+    _, _, customer = await seed_exchange_data(db_session)
+    referred = User(
+        telegram_id=700004,
+        username="referred",
+        first_name="Referred",
+        referred_by=customer.id,
+    )
+    wallet = AexWallet(user_id=customer.id)
+    db_session.add_all([referred, wallet])
+    await db_session.flush()
+    order = Order(
+        UserId=referred.id,
+        CityId=None,
+        country=Country.THAILAND,
+        currencySell="RUB",
+        amountSell=10000,
+        currencyBuy="THB",
+        amountBuy=4000,
+        rate=0.4,
+        status=int(OrderStatus.COMPLETED),
+        contactTelegram="@referred",
+        methodGet="qrcode",
+        publicNumber="2026060001",
+    )
+    db_session.add(order)
+    await db_session.flush()
+    db_session.add(
+        AexLedgerEntry(
+            wallet_id=wallet.id,
+            amount=100,
+            entry_type="credit",
+            reference_type="referral",
+            reference_id=str(order.id),
+            description=f"Referral bonus for order #{order.id}",
+            createdAt=datetime(2026, 6, 22, 15, 37, tzinfo=UTC),
+        )
+    )
+    await db_session.commit()
+    token = create_access_token({"sub": str(customer.id), "role": customer.role})
+
+    response = await client.get(
+        "/api/miniapp/aex/transactions",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+
+    assert response.status_code == 200
+    item = response.json()["items"][0]
+    assert item["type"] == "referral_reward"
+    assert item["description"] == "Реферальное начисление по заявке 2026060001"
+    assert f"#{order.id}" not in item["description"]
+
+
+@pytest.mark.asyncio
 async def test_miniapp_referral_apply_binds_once(
     api_client: tuple[AsyncClient, AsyncSession],
 ) -> None:

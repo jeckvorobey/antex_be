@@ -8,8 +8,14 @@ Miniapp использует backend-driven namespace `/api/miniapp/*`.
   баннер, сервисы и города для главного экрана.
 - `GET /api/miniapp/aex/referral` возвращает AEX referral payload для страницы
   рефералов: `referralCode`, готовую `referralLink` вида
-  `https://t.me/<bot_username>?startapp=ref_<code>`, список `referrals`
-  (`id`, `displayName`, `joinedAt`, `earnedAex`) и `totalReferrals`.
+  `https://t.me/<bot_username>?startapp=ref_<code>`, `totalReferrals` и
+  `programConfig` (`referralPercent`, `referralMinWithdraw`,
+  `referralMaxWithdraw`, `aexRate`). Персональный список referrals не
+  возвращается.
+- `GET /api/miniapp/aex/transactions` возвращает историю AEX операций в envelope
+  `items`, `total`, `limit`, `offset`, `hasMore`. Для `referral_reward`
+  описание операции возвращается на русском с публичным номером заявки
+  `Order.publicNumber`, без внутреннего `Order.id`.
 - `GET /api/miniapp/exchange` возвращает начальное состояние калькулятора,
   chips, доступные пары и стартовый quote.
 - `GET /api/miniapp/exchange/quote?currencySell=&currencyBuy=&amountSell=`
@@ -29,7 +35,9 @@ Machine-readable коды ошибок miniapp:
 
 ## Admin
 
-- `PATCH /api/admin/config` используется только для изменения `enabled`.
+- `GET/PATCH /api/admin/config` возвращает и обновляет `enabled`, timestamps и
+  настройки referral program: `referralPercent`, `referralMinWithdraw`,
+  `referralMaxWithdraw`, `aexRate`.
 - `GET /api/admin/summary` возвращает метрики dashboard:
   `ordersToday`, `usersTotal`, `rubThbRate`.
 - `GET /api/admin/rates` возвращает административное представление курсов:
