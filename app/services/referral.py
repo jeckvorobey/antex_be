@@ -263,7 +263,6 @@ class ReferralService:
         await self._notify_referral_bonus(
             db,
             referrer_id=referrer_id,
-            referred_user=referred_user,
             order_id=order_id,
             amount=aex_amount,
         )
@@ -417,7 +416,6 @@ class ReferralService:
         db: AsyncSession,
         *,
         referrer_id: int,
-        referred_user: User,
         order_id: int,
         amount: Decimal,
     ) -> None:
@@ -437,9 +435,8 @@ class ReferralService:
             await telegram_bot.bot.send_message(
                 chat_id=referrer.telegram_id,
                 text=messages.referral_bonus_credited(
-                    amount=str(amount),
+                    amount=amount,
                     order_id=order_id,
-                    invited_name=self._format_referred_user(referred_user),
                     translator=translate,
                 ),
             )
@@ -449,12 +446,3 @@ class ReferralService:
                 referrer_id,
                 order_id,
             )
-
-    def _format_referred_user(self, user: User) -> str:
-        """Собрать имя приглашённого для уведомления."""
-        display_name = " ".join(part for part in (user.first_name, user.last_name) if part).strip()
-        if display_name:
-            return display_name
-        if user.username:
-            return f"@{user.username}"
-        return f"User #{user.id}"

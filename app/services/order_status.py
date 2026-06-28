@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+from decimal import Decimal
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -14,8 +15,46 @@ from app.services.order_notifications import (
     build_chat_url_for_user,
     notify_order_status_changed,
 )
+from app.telegram import messages
+from app.telegram.i18n import get_user_translator
 
 logger = logging.getLogger(__name__)
+
+
+async def _notify_referral_reversal(
+    db: AsyncSession,
+    *,
+    referrer_id: int,
+    order_id: int,
+    amount: Decimal,
+) -> None:
+    """Best-effort Telegram notification for referral bonus reversal."""
+    referrer = await UserRepository(db).get_one(referrer_id)
+    if referrer is None or not referrer.telegram_id:
+        return
+
+    from app.telegram import bot as telegram_bot
+
+    if telegram_bot.bot is None:
+        logger.warning("Referral reversal notification skipped: bot is not initialized")
+        return
+
+    try:
+        translate = get_user_translator(referrer)
+        await telegram_bot.bot.send_message(
+            chat_id=referrer.telegram_id,
+            text=messages.referral_bonus_reversed(
+                amount=amount,
+                order_id=order_id,
+                translator=translate,
+            ),
+        )
+    except Exception:
+        logger.exception(
+            "Failed to send referral bonus reversal notification: referrer_id=%s order_id=%s",
+            referrer_id,
+            order_id,
+        )
 
 
 async def update_order_status(
@@ -102,6 +141,12 @@ async def update_order_status(
                             referral_entry.amount,
                             wallet.user_id,
                             order_id,
+                        )
+                        await _notify_referral_reversal(
+                            db,
+                            referrer_id=wallet.user_id,
+                            order_id=order_id,
+                            amount=referral_entry.amount,
                         )
                     else:
                         logger.warning(
