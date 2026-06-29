@@ -94,6 +94,11 @@ uv run python run.py --host 0.0.0.0 --port 8000
 - Swagger: `http://127.0.0.1:8000/docs`
 - Healthcheck: `http://127.0.0.1:8000/health`
 
+Логи пишутся в stdout/stderr для платформенных логов и в ротируемый файл
+`LOG_DIR/api.log` только для `WARNING`/`ERROR`. Основные переменные:
+`LOG_LEVEL`, `LOG_DIR`, `LOG_FILE_MAX_BYTES`, `LOG_FILE_BACKUP_COUNT`.
+В production Docker image задан `HEALTHCHECK` через `curl` на `/health`.
+
 ## Источник курсов
 
 - Основной источник рыночных курсов: `CurrencyBeacon`

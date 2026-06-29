@@ -13,17 +13,34 @@ logger = logging.getLogger(__name__)
 async def notify_site_lead_created(lead: SiteLead, manager) -> None:
     bot = _get_telegram_bot()
     if bot is None:
-        logger.warning("Site lead notification skipped: bot is not initialized")
+        logger.warning("Site lead notification skipped: bot is not initialized lead_id=%s", lead.id)
         return
 
     if manager is None or not getattr(manager, "telegram_id", None):
-        logger.warning("Site lead notification skipped: manager chat is unavailable")
+        logger.warning(
+            "Site lead notification skipped: manager chat is unavailable lead_id=%s "
+            "manager_user_id=%s",
+            lead.id,
+            getattr(manager, "id", None),
+        )
         return
 
+    logger.info(
+        "Sending site lead notification: lead_id=%s manager_user_id=%s manager_telegram_id=%s",
+        lead.id,
+        getattr(manager, "id", None),
+        getattr(manager, "telegram_id", None),
+    )
     await bot.send_message(
         chat_id=manager.telegram_id,
         text=build_site_lead_manager_text(lead),
         reply_markup=None,
+    )
+    logger.info(
+        "Site lead notification sent: lead_id=%s manager_user_id=%s manager_telegram_id=%s",
+        lead.id,
+        getattr(manager, "id", None),
+        getattr(manager, "telegram_id", None),
     )
 
 

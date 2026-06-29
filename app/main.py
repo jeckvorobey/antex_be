@@ -23,10 +23,16 @@ from app.api.routers import (
     users,
 )
 from app.core.config import settings
+from app.core.logging import configure_logging
 from app.core.security_headers import SecurityHeadersMiddleware
 from app.exceptions import AntExException
 
-logging.basicConfig(level=settings.log_level.upper())
+configure_logging(
+    log_dir=settings.log_dir,
+    log_level=settings.log_level,
+    log_file_max_bytes=settings.log_file_max_bytes,
+    log_file_backup_count=settings.log_file_backup_count,
+)
 logger = logging.getLogger(__name__)
 
 

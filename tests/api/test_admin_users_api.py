@@ -8,11 +8,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api import deps
 from app.core.security import create_access_token
-
-from app.enums.country import Country
 from app.enums.user import UserRole
 from app.models.admin import Admin
-from app.models.city import City
 from app.models.user import User
 
 

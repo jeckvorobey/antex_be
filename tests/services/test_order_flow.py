@@ -1,18 +1,21 @@
 from __future__ import annotations
 
+import logging
 from unittest.mock import AsyncMock
 
 import pytest
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.enums.country import Country
 from app.enums.user import UserRole
+from app.exceptions import AntExException
 from app.models.city import City
+from app.models.order import Order
 from app.models.rate import Rate
 from app.models.user import User
 from app.schemas.miniapp import MiniappOrderCreate
 from app.services import order_flow
-from app.exceptions import AntExException
 
 
 @pytest.mark.asyncio
@@ -108,6 +111,56 @@ async def test_create_order_for_user_allows_missing_contact_and_keeps_order_cont
 
 
 @pytest.mark.asyncio
+async def test_create_order_for_user_keeps_saved_order_when_notification_fails(
+    db_session: AsyncSession,
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    city = City(name="Bangkok", country=Country.THAILAND)
+    manager = User(
+        telegram_id=700001,
+        username="manager",
+        first_name="Order",
+        role=int(UserRole.MANAGER),
+    )
+    customer = User(
+        telegram_id=700002,
+        username="customer",
+        first_name="Happy",
+        role=int(UserRole.USER),
+    )
+    rate = Rate(currency="RUBTHB", price=0.41, margin=3.0, country=Country.THAILAND)
+
+    db_session.add_all([city, manager, customer, rate])
+    await db_session.flush()
+    manager.city_id = city.id
+    customer.city_id = city.id
+    await db_session.commit()
+
+    notify_mock = AsyncMock(side_effect=RuntimeError("telegram unavailable"))
+    monkeypatch.setattr(order_flow, "notify_order_created", notify_mock)
+
+    payload = MiniappOrderCreate(
+        country=Country.THAILAND,
+        currencySell="RUB",
+        amountSell=20000,
+        currencyBuy="THB",
+        amountBuy=8000,
+        rate=0.4,
+        methodGet="qrcode",
+    )
+
+    with caplog.at_level(logging.ERROR, logger="app.services.order_flow"):
+        created_order = await order_flow.create_order_for_user(db_session, customer, payload)
+
+    notify_mock.assert_awaited_once()
+    stored_order = await db_session.scalar(select(Order).where(Order.id == created_order.id))
+    assert stored_order is not None
+    assert stored_order.publicNumber == created_order.publicNumber
+    assert "Failed to send order created notifications" in caplog.text
+
+
+@pytest.mark.asyncio
 async def test_min_amount_rejects_below_limit_cash_rub() -> None:
     payload = MiniappOrderCreate(
         country=Country.THAILAND,
@@ -174,3 +227,9 @@ async def test_min_amount_allows_above_limit() -> None:
     )
 
     order_flow._validate_min_amount(payload)
+
+
+def test_get_min_amount_uses_method_and_currency_limits() -> None:
+    assert order_flow.get_min_amount("qrcode", "rub") == 15_000
+    assert order_flow.get_min_amount("cash", "USDT") == 500
+    assert order_flow.get_min_amount("unknown", "RUB") is None

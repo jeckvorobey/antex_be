@@ -1,6 +1,7 @@
 # ruff: noqa: RUF001
 from __future__ import annotations
 
+import logging
 from collections.abc import AsyncIterator
 
 import pytest
@@ -177,6 +178,7 @@ async def test_public_site_lead_post_notifies_manager_after_save(
 async def test_public_site_lead_post_keeps_saved_lead_when_manager_notification_fails(
     site_leads_api_client: tuple[AsyncClient, AsyncSession],
     monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
 ) -> None:
     from app.telegram import bot as telegram_bot
 
@@ -195,16 +197,17 @@ async def test_public_site_lead_post_keeps_saved_lead_when_manager_notification_
     bot.send_error = RuntimeError("telegram unavailable")
     monkeypatch.setattr(telegram_bot, "bot", bot)
 
-    response = await client.post(
-        "/public/site-leads",
-        json={
-            "messenger": "Telegram",
-            "contact": "@client",
-            "topic": "Обмен",
-            "message": "Нужен обмен RUB на USDT",
-            "source": "tets.antex.pro",
-        },
-    )
+    with caplog.at_level(logging.ERROR, logger="app.services.site_leads"):
+        response = await client.post(
+            "/public/site-leads",
+            json={
+                "messenger": "Telegram",
+                "contact": "@client",
+                "topic": "Обмен",
+                "message": "Нужен обмен RUB на USDT",
+                "source": "tets.antex.pro",
+            },
+        )
 
     assert response.status_code == 201
     list_response = await client.get(
@@ -213,3 +216,4 @@ async def test_public_site_lead_post_keeps_saved_lead_when_manager_notification_
     )
     assert list_response.status_code == 200
     assert list_response.json()[0]["contact"] == "@client"
+    assert "Failed to send site lead notification" in caplog.text
