@@ -24,6 +24,11 @@ class _FakeBot:
         self.id = 12345
         self.username = "antex_test_bot"
         self.session = _FakeSession()
+        self.delete_webhook_called = False
+
+    async def delete_webhook(self, *, drop_pending_updates: bool) -> None:
+        del drop_pending_updates
+        self.delete_webhook_called = True
 
 
 class _IdentityLookupBot:
@@ -54,6 +59,11 @@ class _ConflictDispatcher:
         )
 
 
+class _IdleDispatcher:
+    def resolve_used_update_types(self) -> list[str]:
+        return ["message"]
+
+
 @pytest.mark.asyncio
 async def test_polling_conflict_logs_rolling_update_reason_and_retries(
     monkeypatch: pytest.MonkeyPatch,
@@ -79,6 +89,40 @@ async def test_polling_conflict_logs_rolling_update_reason_and_retries(
     assert "rolling update" in caplog.text
     assert "another active polling client" in caplog.text
     assert "attempt=1" in caplog.text
+
+
+@pytest.mark.asyncio
+async def test_start_polling_warns_about_local_reload_risk(
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    fake_bot = _FakeBot()
+    created_tasks: list[asyncio.Task] = []
+    monkeypatch.setattr(telegram_bot, "bot", fake_bot)
+    monkeypatch.setattr(telegram_bot, "dp", _IdleDispatcher())
+    monkeypatch.setattr(telegram_bot, "polling_task", None)
+    monkeypatch.setenv("ANTEX_UVICORN_RELOAD", "1")
+
+    async def _run_forever() -> None:
+        await asyncio.Event().wait()
+
+    monkeypatch.setattr(telegram_bot, "_run_polling_with_retry", _run_forever)
+
+    with caplog.at_level(logging.WARNING, logger="app.telegram.bot"):
+        await telegram_bot.start_polling()
+
+    task = telegram_bot.polling_task
+    assert task is not None
+    created_tasks.append(task)
+    assert "polling" in caplog.text
+    assert "reload" in caplog.text
+    assert "--no-reload" in caplog.text
+
+    for created_task in created_tasks:
+        created_task.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await created_task
+    monkeypatch.setattr(telegram_bot, "polling_task", None)
 
 
 @pytest.mark.asyncio

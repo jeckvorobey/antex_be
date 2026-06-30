@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import os
 import sys
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
@@ -25,12 +26,20 @@ def configure_logging(
     log_level: str,
     log_file_max_bytes: int = 10 * 1024 * 1024,
     log_file_backup_count: int = 5,
+    disable_file_logging: bool | None = None,
 ) -> None:
     """Настраивает console logging и warning/error file logging без дублей."""
     root_logger = logging.getLogger()
     level = _resolve_level(log_level)
+    file_logging_disabled = _is_file_logging_disabled_for_context(disable_file_logging)
     root_logger.setLevel(level)
-    config_fingerprint = (str(Path(log_dir)), level, log_file_max_bytes, log_file_backup_count)
+    config_fingerprint = (
+        str(Path(log_dir)),
+        level,
+        log_file_max_bytes,
+        log_file_backup_count,
+        file_logging_disabled,
+    )
     if (
         getattr(root_logger, _LOGGING_CONFIG_ATTR, None) == config_fingerprint
         and any(getattr(handler, _MANAGED_HANDLER_ATTR, False) for handler in root_logger.handlers)
@@ -50,14 +59,15 @@ def configure_logging(
     _mark_managed(console_handler)
     root_logger.addHandler(console_handler)
 
-    file_handler = _build_file_handler(
-        log_dir=log_dir,
-        formatter=formatter,
-        log_file_max_bytes=log_file_max_bytes,
-        log_file_backup_count=log_file_backup_count,
-    )
-    if file_handler is not None:
-        root_logger.addHandler(file_handler)
+    if not file_logging_disabled:
+        file_handler = _build_file_handler(
+            log_dir=log_dir,
+            formatter=formatter,
+            log_file_max_bytes=log_file_max_bytes,
+            log_file_backup_count=log_file_backup_count,
+        )
+        if file_handler is not None:
+            root_logger.addHandler(file_handler)
 
     _configure_external_loggers(level)
     setattr(root_logger, _LOGGING_CONFIG_ATTR, config_fingerprint)
@@ -66,6 +76,15 @@ def configure_logging(
 def _resolve_level(log_level: str) -> int:
     """Преобразует строковый уровень логирования в значение logging."""
     return getattr(logging, log_level.upper(), logging.INFO)
+
+
+def _is_file_logging_disabled_for_context(disable_file_logging: bool | None) -> bool:
+    """Определяет, нужно ли отключить file handler для текущего процесса."""
+    if disable_file_logging is not None:
+        return disable_file_logging
+    if os.environ.get("ANTEX_ENABLE_TEST_FILE_LOGGING") == "1":
+        return False
+    return "pytest" in sys.modules
 
 
 def _remove_managed_handlers(logger: logging.Logger) -> None:

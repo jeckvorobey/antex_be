@@ -18,20 +18,17 @@ class AiogramBroadcastSender:
     ) -> None:
         from app.telegram import bot as telegram_bot
 
-        bot = telegram_bot.bot
-        if bot is None:
-            bot, _ = await telegram_bot.init_bot()
-
         reply_markup = None
         if button_text and button_url:
             reply_markup = InlineKeyboardMarkup(
                 inline_keyboard=[[InlineKeyboardButton(text=button_text, url=button_url)]]
             )
 
-        await bot.send_message(
-            chat_id=chat_id,
-            text=text,
-            parse_mode=ParseMode.HTML,
-            reply_markup=reply_markup,
-            allow_paid_broadcast=allow_paid_broadcast,
-        )
+        async with telegram_bot.sender_bot() as bot:
+            await bot.send_message(
+                chat_id=chat_id,
+                text=text,
+                parse_mode=ParseMode.HTML,
+                reply_markup=reply_markup,
+                allow_paid_broadcast=allow_paid_broadcast,
+            )

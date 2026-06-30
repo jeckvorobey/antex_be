@@ -4,6 +4,9 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import os
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 from urllib.parse import quote
 
 from aiogram import Bot, Dispatcher
@@ -127,6 +130,7 @@ async def start_polling() -> None:
         identity.get("username"),
         False,
     )
+    _log_local_polling_reload_warning()
     try:
         logger.info("Deleting Telegram webhook before polling start")
         await bot.delete_webhook(drop_pending_updates=False)
@@ -248,6 +252,34 @@ async def stop_bot() -> None:
     bot = None
     _bot_identity_cache = None
     logger.info("Telegram bot stopped")
+
+
+@asynccontextmanager
+async def sender_bot() -> AsyncIterator[Bot]:
+    """Возвращает bot для разовой отправки и закрывает временную session."""
+    if bot is not None:
+        yield bot
+        return
+
+    temporary_bot = _create_bot()
+    try:
+        yield temporary_bot
+    finally:
+        if temporary_bot.session is not None:
+            await temporary_bot.session.close()
+
+
+def _log_local_polling_reload_warning() -> None:
+    """Логирует локальный риск двойного polling при автоперезагрузке."""
+    if settings.app_env == "production":
+        return
+    if os.environ.get("ANTEX_UVICORN_RELOAD") != "1":
+        return
+    logger.warning(
+        "Telegram polling is running with local reload enabled; only one active process per "
+        "bot token can poll Telegram. Use `uv run python run.py --no-reload` for local polling "
+        "or switch to a webhook-safe setup."
+    )
 
 
 async def _get_safe_bot_identity() -> dict[str, int | str | None]:
