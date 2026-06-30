@@ -62,6 +62,7 @@ class UserRepository(BaseRepository[User]):
         )
         return list(result.scalars().all())
 
+
     async def search(self, query: str | None) -> list[User]:
         statement = select(User).options(*self._admin_user_options()).order_by(User.id)
         if query:

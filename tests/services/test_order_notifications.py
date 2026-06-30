@@ -288,7 +288,8 @@ async def test_notify_order_status_changed_adds_write_manager_button_for_process
     reply_markup = cast(Any, bot.edited[0]["reply_markup"])
     user_text = str(user_button["message_text"]).replace("\u2068", "").replace("\u2069", "")
     assert user_text == (
-        "Здравствуйте! По заявке #2026050008 на сумму 5,000 RUB подтверждаю готовность к обмену."
+        "Здравствуйте! По заявке #2026050008 на сумму 5,000 RUB "
+        "подтверждаю готовность к обмену."
     )
     assert reply_markup.inline_keyboard[0][0].text == "💬 Написать в чат"
     assert reply_markup.inline_keyboard[0][0].url == "https://t.me/share/url"

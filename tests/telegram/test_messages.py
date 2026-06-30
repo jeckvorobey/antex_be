@@ -1,3 +1,4 @@
+# ruff: noqa: RUF001
 from __future__ import annotations
 
 import re
@@ -59,7 +60,7 @@ def test_exchange_confirm_summary_uses_human_currency_labels() -> None:
 
     assert "🌍 Страна: Таиланд" in text
     assert "🏙️ Город: Бангкок" in text
-    assert "📈 Курс: 1 RUB = 0.34 THB" in text  # noqa: RUF001
+    assert "📈 Курс: 1 RUB = 0.34 THB" in text
     assert "💸 Отдаёте: 15,000 🇷🇺 RUB" in text
     assert "💰 Получаете: 5,100 🇹🇭 THB" in text
     assert "🧾 Способ получения: 📱 По QR-коду" in text

@@ -1,8 +1,10 @@
+# ruff: noqa: RUF001
 from __future__ import annotations
 
 import os
 from datetime import UTC, datetime
 from types import SimpleNamespace
+from unittest.mock import AsyncMock
 
 from aiogram.exceptions import TelegramBadRequest
 from aiogram.types import User as TgUser
@@ -235,7 +237,7 @@ async def test_enter_amount_preserves_selected_cash_method(monkeypatch) -> None:
         username="customer",
         language_code="ru",
     )
-    message.text = "15000"
+    message.text = "25000"
     state = _FakeState(
         {
             "currency_sell": "RUB",
@@ -254,11 +256,11 @@ async def test_enter_amount_preserves_selected_cash_method(monkeypatch) -> None:
         assert db is fake_db
         assert payload.currency_sell == "RUB"
         assert payload.currency_buy == "VND"
-        assert payload.amount_sell == 15000
+        assert payload.amount_sell == 25000
         return SimpleNamespace(
             currency_sell="RUB",
             currency_buy="VND",
-            amount_sell=15000,
+            amount_sell=25000,
             amount_buy=5100.0,
             rate=0.34,
             rate_text="1 RUB = 0.34 VND",
@@ -340,6 +342,38 @@ async def test_choose_exchange_currency_moves_directly_to_amount(monkeypatch) ->
     assert state._data["currency_sell"] == "RUB"
     assert "Введите сумму" in callback.message.edits[0]["text"]
     assert callback.answers[-1] == {"text": None, "show_alert": False}
+
+
+async def test_choose_exchange_currency_amount_prompt_contains_minimum(monkeypatch) -> None:
+    callback = _FakeCallback(
+        TgUser(
+            id=777023,
+            is_bot=False,
+            first_name="Minimum",
+            username="minimum-user",
+            language_code="ru",
+        ),
+        data="exchange:currency:RUB",
+    )
+    state = _FakeState(
+        {
+            "country": Country.THAILAND.value,
+            "currency_buy": "THB",
+            "method": "qrcode",
+        }
+    )
+
+    async def _fake_get_exchange_pairs(country: str | None = None):
+        assert country == Country.THAILAND.value
+        return [_pair_snapshot("rub-thb", "RUB", "THB", "1 RUB = 0.34 THB")]
+
+    monkeypatch.setattr(exchange_handler, "_get_exchange_pairs", _fake_get_exchange_pairs)
+
+    await exchange_handler.choose_exchange_currency(callback, state)
+
+    text = str(callback.message.edits[0]["text"])
+    assert "Введите сумму" in text
+    assert "\n\n⚠️ Минимальная сумма: <b>15000 RUB</b>" in text
 
 
 async def test_choose_exchange_currency_falls_back_to_direct_pair_rate_for_reversed_display_pairs(
@@ -550,6 +584,40 @@ async def test_fsm_back_from_amount_returns_to_sell_currency_step(monkeypatch) -
         "exchange:currency:RUB",
     ]
     assert callback.answers[-1] == {"text": None, "show_alert": False}
+
+
+async def test_enter_amount_rejects_below_minimum_and_stays_on_amount_step(monkeypatch) -> None:
+    message = _FakeMessage()
+    message.from_user = TgUser(
+        id=777024,
+        is_bot=False,
+        first_name="Minimum",
+        username="minimum-user",
+        language_code="ru",
+    )
+    message.text = "14999"
+    state = _FakeState(
+        {
+            "currency_sell": "RUB",
+            "currency_buy": "THB",
+            "method": "qrcode",
+            "amount_prompt_message_id": 999,
+        }
+    )
+    quote_mock = AsyncMock()
+    monkeypatch.setattr(exchange_handler.ExchangeService, "get_quote", quote_mock)
+
+    await exchange_handler.enter_amount(message, state)
+
+    assert state.state == exchange_handler.ExchangeState.entering_amount.state
+    assert state._data.get("amount_sell") is None
+    assert len(message.answers) == 1
+    assert message.answers[0]["text"] == (
+        "Сумма должна быть не меньше 15000. "
+        "Введите допустимую сумму для данного способа получения."
+    )
+    assert message.answers[0]["reply_markup"] is not None
+    quote_mock.assert_not_called()
 
 
 async def test_confirm_exchange_creates_order_with_default_qrcode(monkeypatch) -> None:

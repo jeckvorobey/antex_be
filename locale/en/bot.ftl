@@ -38,7 +38,10 @@ exchange-step = Step { $current }/{ $total }
 exchange-choose-currency = Choose the currency you want to exchange.
 exchange-choose-buy-currency = Choose what you want to receive for { $currency }:
 exchange-enter-amount = <b>Enter the amount you want to exchange in { $currency }:</b>
+exchange-enter-amount-with-min = <b>Enter the amount you want to exchange in { $currency }:</b>
+    ⚠️ Minimum amount: <b>{ $minAmount } { $minCurrency }</b>
 exchange-amount-invalid = Enter an amount greater than zero.
+exchange-amount-below-minimum = The amount must be at least { $minAmount }. Enter a valid amount for this receive method.
 exchange-choose-method = How would you like to receive { $currency }?
 exchange-rate-unavailable = ⚠️ Exchange rate is temporarily unavailable. Please try again later.
 exchange-confirm-summary-top = 📋 Review your order — step { $current }/{ $total }

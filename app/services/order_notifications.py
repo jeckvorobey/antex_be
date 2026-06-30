@@ -61,10 +61,22 @@ async def send_or_replace_user_status_message(
 async def notify_order_created(order, user, manager) -> None:
     bot = _get_telegram_bot()
     if bot is None:
-        logger.warning("Notification skipped: bot is not initialized")
+        logger.warning(
+            "Order notification skipped: bot is not initialized order_id=%s public_number=%s",
+            getattr(order, "id", None),
+            getattr(order, "publicNumber", None),
+        )
         return
 
     if getattr(user, "telegram_id", None):
+        logger.info(
+            "Sending order notification to user: order_id=%s public_number=%s "
+            "user_id=%s telegram_id=%s",
+            getattr(order, "id", None),
+            getattr(order, "publicNumber", None),
+            getattr(user, "id", None),
+            getattr(user, "telegram_id", None),
+        )
         translate = get_user_translator(user)
         await send_or_replace_user_status_message(
             bot=bot,
@@ -73,9 +85,31 @@ async def notify_order_created(order, user, manager) -> None:
             text=messages.order_created(order.publicNumber, translator=translate),
             reply_markup=order_created_actions(translate),
         )
+        logger.info(
+            "Order notification sent to user: order_id=%s public_number=%s telegram_id=%s",
+            getattr(order, "id", None),
+            getattr(order, "publicNumber", None),
+            getattr(user, "telegram_id", None),
+        )
+    else:
+        logger.warning(
+            "Order user notification skipped: user chat is unavailable order_id=%s "
+            "public_number=%s user_id=%s",
+            getattr(order, "id", None),
+            getattr(order, "publicNumber", None),
+            getattr(user, "id", None),
+        )
 
     if manager is not None and getattr(manager, "telegram_id", None):
         translate = get_translator("ru")
+        logger.info(
+            "Sending order notification to manager: order_id=%s public_number=%s "
+            "manager_user_id=%s manager_telegram_id=%s",
+            getattr(order, "id", None),
+            getattr(order, "publicNumber", None),
+            getattr(manager, "id", None),
+            getattr(manager, "telegram_id", None),
+        )
         await bot.send_message(
             chat_id=manager.telegram_id,
             text=_build_manager_order_text(order, user),
@@ -83,6 +117,22 @@ async def notify_order_created(order, user, manager) -> None:
                 translate,
                 order_id=order.id,
             ),
+        )
+        logger.info(
+            "Order notification sent to manager: order_id=%s public_number=%s "
+            "manager_user_id=%s manager_telegram_id=%s",
+            getattr(order, "id", None),
+            getattr(order, "publicNumber", None),
+            getattr(manager, "id", None),
+            getattr(manager, "telegram_id", None),
+        )
+    else:
+        logger.warning(
+            "Order manager notification skipped: manager chat is unavailable order_id=%s "
+            "public_number=%s manager_user_id=%s",
+            getattr(order, "id", None),
+            getattr(order, "publicNumber", None),
+            getattr(manager, "id", None),
         )
 
 

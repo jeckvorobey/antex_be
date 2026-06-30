@@ -25,8 +25,10 @@ class Settings(BaseSettings):
     cors_allow_headers: list[str] | str = "*"
 
     # Логирование
-    log_dir: str = "./logs"
+    log_dir: str = "/app/logs"
     log_level: str = "INFO"
+    log_file_max_bytes: int = 10 * 1024 * 1024
+    log_file_backup_count: int = 5
 
     # БД
     database_url: str = ""

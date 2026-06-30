@@ -701,6 +701,8 @@ async def test_miniapp_order_is_created_with_preliminary_client_quote(
     api_client: tuple[AsyncClient, AsyncSession],
 ) -> None:
     client, db_session = api_client
+    from app.services import order_flow
+
     _, _, customer = await seed_exchange_data(db_session)
     token = create_access_token({"sub": str(customer.id), "role": customer.role})
 
@@ -729,6 +731,40 @@ async def test_miniapp_order_is_created_with_preliminary_client_quote(
     assert order["contactTelegram"] == "customer"
     assert order["city"] is None
     assert order["publicNumber"] == f"{datetime.now(UTC):%Y%m}0001"
+    order_flow.notify_order_created.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_miniapp_order_keeps_saved_order_when_manager_notification_fails(
+    api_client: tuple[AsyncClient, AsyncSession],
+) -> None:
+    client, db_session = api_client
+    from app.services import order_flow
+
+    order_flow.notify_order_created.side_effect = RuntimeError("telegram unavailable")
+    _, _, customer = await seed_exchange_data(db_session)
+    token = create_access_token({"sub": str(customer.id), "role": customer.role})
+
+    response = await client.post(
+        "/api/miniapp/orders",
+        headers={"Authorization": f"Bearer {token}"},
+        json={
+            "country": "thailand",
+            "currencySell": "rub",
+            "amountSell": 20000,
+            "currencyBuy": "thb",
+            "amountBuy": 123.45,
+            "rate": 9.99,
+            "methodGet": "qrcode",
+        },
+    )
+
+    assert response.status_code == 201
+    order = response.json()
+    stored_order = await db_session.get(Order, order["id"])
+    assert stored_order is not None
+    assert stored_order.publicNumber == order["publicNumber"]
+    order_flow.notify_order_created.assert_awaited_once()
 
 
 @pytest.mark.asyncio
