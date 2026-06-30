@@ -34,6 +34,7 @@ bot: Bot | None = None
 dp: Dispatcher | None = None
 polling_task: asyncio.Task[None] | None = None
 _bot_identity_cache: dict[str, int | str | None] | None = None
+_polling_lock_lost: asyncio.Event | None = None
 
 
 def parse_proxy_value(value: str) -> str:
@@ -157,6 +158,8 @@ async def start_polling() -> None:
 
 
 async def _run_polling_singleton() -> None:
+    global _polling_lock_lost
+
     if bot is None or dp is None:
         raise RuntimeError("Telegram bot is not initialized")
 
@@ -164,6 +167,7 @@ async def _run_polling_singleton() -> None:
     owner = _build_polling_lock_owner(identity)
 
     while True:
+        _polling_lock_lost = asyncio.Event()
         acquired = await _acquire_polling_lock(owner)
         if not acquired:
             logger.warning(
@@ -189,6 +193,7 @@ async def _run_polling_singleton() -> None:
             with suppress(asyncio.CancelledError):
                 await renew_task
             await _release_polling_lock(owner)
+            _polling_lock_lost = None
 
 
 async def _run_polling_with_retry() -> None:
@@ -199,6 +204,10 @@ async def _run_polling_with_retry() -> None:
     attempt = 0
 
     while True:
+        if _polling_lock_lost is not None and _polling_lock_lost.is_set():
+            logger.info("Telegram polling exiting: lock ownership lost")
+            return
+
         try:
             attempt += 1
             allowed_updates = dp.resolve_used_update_types()
@@ -223,6 +232,9 @@ async def _run_polling_with_retry() -> None:
             logger.info("Telegram polling loop cancelled")
             raise
         except TelegramConflictError as exc:
+            if _polling_lock_lost is not None and _polling_lock_lost.is_set():
+                logger.info("Telegram polling exiting: lock ownership lost during conflict")
+                return
             identity = await _get_safe_bot_identity()
             logger.warning(
                 "Telegram polling conflict during rolling update or another active polling "
@@ -236,6 +248,9 @@ async def _run_polling_with_retry() -> None:
             await asyncio.sleep(delay)
             delay = min(delay * 2, MAX_POLLING_RETRY_DELAY)
         except (TelegramNetworkError, ClientError, OSError) as exc:
+            if _polling_lock_lost is not None and _polling_lock_lost.is_set():
+                logger.info("Telegram polling exiting: lock ownership lost during network error")
+                return
             logger.warning("Telegram polling connection failed: %s", exc)
             await bot.session.close()
             await asyncio.sleep(delay)
@@ -280,6 +295,8 @@ async def _renew_polling_lock_loop(owner: str) -> None:
         renewed = await _renew_polling_lock(owner)
         if not renewed:
             logger.warning("Telegram polling lock ownership was lost; polling will stop")
+            if _polling_lock_lost is not None:
+                _polling_lock_lost.set()
             if dp is not None:
                 await dp.stop_polling()
             return
@@ -306,7 +323,10 @@ async def start_webhook() -> None:
 
 
 async def stop_bot() -> None:
-    global bot, dp, polling_task, _bot_identity_cache
+    global bot, dp, polling_task, _bot_identity_cache, _polling_lock_lost
+
+    if _polling_lock_lost is not None:
+        _polling_lock_lost.set()
 
     current_task = polling_task
 
