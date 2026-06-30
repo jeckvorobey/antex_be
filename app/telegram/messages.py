@@ -33,6 +33,11 @@ def _resolve_translator(
     return translator or get_translator(locale)
 
 
+def _strip_fluent_isolates(text: str) -> str:
+    """Удаляет управляющие isolate-символы Fluent из contract-сообщений."""
+    return text.replace("\u2068", "").replace("\u2069", "")
+
+
 def format_currency_label(currency: str) -> str:
     return _CURRENCY_LABELS.get(currency.upper(), currency.upper())
 
@@ -128,18 +133,45 @@ def choose_currency_prompt(
 
 def enter_amount_prompt(
     currency: str,
+    min_amount: int | None = None,
     *,
     translator: Translate | None = None,
     locale: str | None = None,
 ) -> str:
-    return _resolve_translator(translator, locale)(
-        "exchange-enter-amount",
-        currency=format_currency_label(currency),
+    translate = _resolve_translator(translator, locale)
+    if min_amount is None:
+        return translate(
+            "exchange-enter-amount",
+            currency=format_currency_label(currency),
+        )
+
+    text = _strip_fluent_isolates(
+        translate(
+            "exchange-enter-amount-with-min",
+            currency=format_currency_label(currency),
+            minAmount=str(min_amount),
+            minCurrency=currency.upper(),
+        )
     )
+    return text.replace("\n⚠️", "\n\n⚠️", 1)
 
 
 def invalid_amount(*, translator: Translate | None = None, locale: str | None = None) -> str:
     return _resolve_translator(translator, locale)("exchange-amount-invalid")
+
+
+def amount_below_minimum(
+    min_amount: int,
+    *,
+    translator: Translate | None = None,
+    locale: str | None = None,
+) -> str:
+    return _strip_fluent_isolates(
+        _resolve_translator(translator, locale)(
+            "exchange-amount-below-minimum",
+            minAmount=str(min_amount),
+        )
+    )
 
 
 def choose_method_prompt(
@@ -404,8 +436,15 @@ def orders_item(
                 f" → {_format_order_amount(amount_buy)} {format_currency_label(currency_buy)}"
             ),
             f"{translate('orders-item-rate-label')}: {_format_order_rate(rate)}",
-            f"{translate('orders-item-method-label')}: {_format_order_method(method, translate=translate)}",
-            _format_order_list_date(created_at=created_at, updated_at=updated_at, end_time=end_time),
+            (
+                f"{translate('orders-item-method-label')}: "
+                f"{_format_order_method(method, translate=translate)}"
+            ),
+            _format_order_list_date(
+                created_at=created_at,
+                updated_at=updated_at,
+                end_time=end_time,
+            ),
         ]
     )
 

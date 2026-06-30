@@ -88,11 +88,24 @@ uv run python run.py --no-reload
 uv run python run.py --host 0.0.0.0 --port 8000
 ```
 
+Если локально проверяете Telegram bot в `TELEGRAM_MODE=polling`, используйте
+`uv run python run.py --no-reload`. Polling допускает только один активный
+процесс на один bot token; запуск с автоперезагрузкой или второй локальный
+backend может дать конфликт `terminated by other getUpdates request`.
+
 После старта будут доступны:
 
 - API: `http://127.0.0.1:8000`
 - Swagger: `http://127.0.0.1:8000/docs`
 - Healthcheck: `http://127.0.0.1:8000/health`
+
+Логи пишутся в stdout/stderr для платформенных логов и в ротируемый файл
+`LOG_DIR/api.log` только для `WARNING`/`ERROR`. Основные переменные:
+`LOG_LEVEL`, `LOG_DIR`, `LOG_FILE_MAX_BYTES`, `LOG_FILE_BACKUP_COUNT`.
+Во время pytest file logging в рабочий `LOG_DIR/api.log` отключается, поэтому
+mock-ошибки тестов не должны попадать в runtime log. Для проверки самого file
+logging тесты используют временный каталог.
+В production Docker image задан `HEALTHCHECK` через `curl` на `/health`.
 
 ## Источник курсов
 

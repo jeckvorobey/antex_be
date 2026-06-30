@@ -128,6 +128,15 @@ def main() -> None:
 
     cmd = _build_uvicorn_command(config)
     workdir = Path(__file__).resolve().parent
+    if config["reload"]:
+        os.environ["ANTEX_UVICORN_RELOAD"] = "1"
+        if os.getenv("TELEGRAM_MODE", "polling") == "polling":
+            print(
+                "Предупреждение: TELEGRAM_MODE=polling с автоперезагрузкой может вызвать "
+                "конфликт getUpdates. Для проверки бота используйте --no-reload."
+            )
+    else:
+        os.environ.pop("ANTEX_UVICORN_RELOAD", None)
     proc = _start_server(cmd, workdir)
     shutdown_requested = False
 

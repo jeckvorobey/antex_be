@@ -26,7 +26,7 @@ from app.services.exchange import (
     ExchangeQuoteInput,
     ExchangeService,
 )
-from app.services.order_flow import create_order_for_user
+from app.services.order_flow import create_order_for_user, get_min_amount
 from app.telegram import messages
 from app.telegram.i18n import get_user_translator
 from app.telegram.keyboards import (
@@ -457,10 +457,15 @@ async def _show_enter_amount_step(
                     available_methods=quote.available_methods,
                 )
             ]
+    min_amount = get_min_amount(str(data.get("method", "")), str(data["currency_sell"]))
     await _render_step(
         actor=actor,
         current=5,
-        body=messages.enter_amount_prompt(data["currency_sell"], translator=translate),
+        body=messages.enter_amount_prompt(
+            str(data["currency_sell"]),
+            min_amount=min_amount,
+            translator=translate,
+        ),
         reply_markup=amount_controls(translate),
         edit=edit,
         featured_pairs=featured_pairs,
@@ -553,8 +558,27 @@ async def enter_amount(message: Message, state: FSMContext) -> None:
         )
         return
 
-    await state.update_data(amount_sell=amount)
     data = await state.get_data()
+    min_amount = get_min_amount(str(data.get("method", "")), str(data["currency_sell"]))
+    if min_amount is not None and amount < min_amount:
+        logger.info(
+            "Telegram exchange amount rejected below minimum: telegram_id=%s username=%s "
+            "method=%s currency_sell=%s amount=%s min_amount=%s",
+            getattr(message.from_user, "id", None),
+            getattr(message.from_user, "username", None),
+            data.get("method"),
+            data.get("currency_sell"),
+            amount,
+            min_amount,
+        )
+        await state.set_state(ExchangeState.entering_amount)
+        await message.answer(
+            messages.amount_below_minimum(min_amount, translator=translate),
+            reply_markup=amount_controls(translate),
+        )
+        return
+
+    await state.update_data(amount_sell=amount)
     db = await _get_db()
     try:
         async with db:

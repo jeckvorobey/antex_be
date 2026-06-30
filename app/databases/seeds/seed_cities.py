@@ -16,7 +16,7 @@ DEFAULT_CITIES: tuple[tuple[str, Country], ...] = (
     ("Паттайя", Country.THAILAND),
     ("Батуми", Country.GEORGIA),
     ("Начанг", Country.VIETNAM),
-    ("Данаг", Country.VIETNAM),
+    ("Дананг", Country.VIETNAM),
     ("Фукуок", Country.VIETNAM),
 )
 

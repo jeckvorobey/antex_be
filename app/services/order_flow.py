@@ -37,6 +37,19 @@ async def create_order_for_user(
 ) -> object:
     """Создаёт предварительную заявку с клиентским расчётом miniapp."""
     order_repo = OrderRepository(db)
+    logger.info(
+        "Order creation requested: user_id=%s telegram_id=%s country=%s method=%s "
+        "currency_sell=%s currency_buy=%s amount_sell=%s amount_buy=%s rate=%s",
+        getattr(user, "id", None),
+        getattr(user, "telegram_id", None),
+        payload.country,
+        payload.method_get,
+        payload.currency_sell.upper(),
+        payload.currency_buy.upper(),
+        payload.amount_sell,
+        payload.amount_buy,
+        payload.rate,
+    )
 
     open_orders_count = await order_repo.count_open(user.id)
     if open_orders_count >= MAX_ACTIVE_ORDERS_PER_USER:
@@ -51,6 +64,12 @@ async def create_order_for_user(
     _validate_min_amount(payload)
 
     manager = await UserRepository(db).get_manager()
+    logger.info(
+        "Order manager resolved: user_id=%s manager_user_id=%s manager_telegram_id=%s",
+        getattr(user, "id", None),
+        getattr(manager, "id", None),
+        getattr(manager, "telegram_id", None),
+    )
 
     await _validate_rate_pair_exists(db, payload)
     currency_sell = payload.currency_sell.upper()
@@ -75,11 +94,38 @@ async def create_order_for_user(
     )
     await db.commit()
     hydrated = await order_repo.get_one(order.id)
+    logger.info(
+        "Order saved: order_id=%s public_number=%s user_id=%s status=%s",
+        order.id,
+        getattr(order, "publicNumber", None),
+        getattr(user, "id", None),
+        getattr(order, "status", None),
+    )
 
     try:
+        logger.info(
+            "Order notification attempt: order_id=%s public_number=%s manager_user_id=%s "
+            "manager_telegram_id=%s",
+            order.id,
+            getattr(order, "publicNumber", None),
+            getattr(manager, "id", None),
+            getattr(manager, "telegram_id", None),
+        )
         await notify_order_created(hydrated, user, manager)
+        logger.info(
+            "Order notification completed: order_id=%s public_number=%s",
+            order.id,
+            getattr(order, "publicNumber", None),
+        )
     except Exception:
-        logger.exception("Failed to send order created notifications for order %s", order.id)
+        logger.exception(
+            "Failed to send order created notifications: order_id=%s public_number=%s "
+            "manager_user_id=%s manager_telegram_id=%s",
+            order.id,
+            getattr(order, "publicNumber", None),
+            getattr(manager, "id", None),
+            getattr(manager, "telegram_id", None),
+        )
 
     return hydrated
 
@@ -167,8 +213,7 @@ def _validate_quote_country(country: Country, currency_buy: str) -> None:
 def _validate_min_amount(payload: MiniappOrderCreate) -> None:
     currency_sell = payload.currency_sell.upper()
     method = payload.method_get
-    limits = MIN_AMOUNT_BY_METHOD.get(method, {})
-    min_amount = limits.get(currency_sell)
+    min_amount = get_min_amount(method, currency_sell)
     if min_amount and payload.amount_sell < min_amount:
         raise AntExException(
             f"Минимальная сумма для обмена {method} {min_amount}",
@@ -176,3 +221,9 @@ def _validate_min_amount(payload: MiniappOrderCreate) -> None:
             status_code=422,
             params={"minAmount": min_amount, "method": method, "currency": currency_sell},
         )
+
+
+def get_min_amount(method: str, currency: str) -> int | None:
+    """Возвращает минимальную сумму для способа получения и валюты продажи."""
+    limits = MIN_AMOUNT_BY_METHOD.get(method, {})
+    return limits.get(currency.upper())

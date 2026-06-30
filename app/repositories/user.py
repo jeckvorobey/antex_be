@@ -53,7 +53,7 @@ class UserRepository(BaseRepository[User]):
             select(User).options(selectinload(User.city)).order_by(User.id)
         )
         return list(result.scalars().all())
-      
+
 
     async def search(self, query: str | None) -> list[User]:
         if not query:
@@ -95,7 +95,10 @@ class UserRepository(BaseRepository[User]):
 
     async def get_manager_by_city(self, city_id: int) -> User | None:
         result = await self.session.execute(
-            select(User).where(User.city_id == city_id, User.role.in_([int(UserRole.MANAGER), LEGACY_ADMIN_ROLE]))
+            select(User).where(
+                User.city_id == city_id,
+                User.role.in_([int(UserRole.MANAGER), LEGACY_ADMIN_ROLE]),
+            )
         )
         return result.scalar_one_or_none()
 

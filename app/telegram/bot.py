@@ -4,13 +4,16 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import os
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 from urllib.parse import quote
 
 from aiogram import Bot, Dispatcher
 from aiogram.client.default import DefaultBotProperties
 from aiogram.client.session.aiohttp import AiohttpSession
 from aiogram.enums import ParseMode
-from aiogram.exceptions import TelegramNetworkError
+from aiogram.exceptions import TelegramConflictError, TelegramNetworkError
 from aiogram.fsm.storage.redis import RedisStorage
 from aiohttp import ClientError
 
@@ -28,6 +31,7 @@ storage = RedisStorage(redis=redis_client)
 bot: Bot | None = None
 dp: Dispatcher | None = None
 polling_task: asyncio.Task[None] | None = None
+_bot_identity_cache: dict[str, int | str | None] | None = None
 
 
 def parse_proxy_value(value: str) -> str:
@@ -90,7 +94,7 @@ def _log_polling_task_result(task: asyncio.Task[None]) -> None:
 
 
 async def init_bot() -> tuple[Bot, Dispatcher]:
-    global bot, dp
+    global bot, dp, _bot_identity_cache
 
     if bot is not None and dp is not None:
         logger.info("Telegram bot is already initialized")
@@ -101,6 +105,7 @@ async def init_bot() -> tuple[Bot, Dispatcher]:
 
     bot = _create_bot()
     dp = _create_dispatcher()
+    _bot_identity_cache = None
     logger.info(
         "Telegram bot initialized: mode=%s, proxy=%s",
         settings.telegram_mode,
@@ -118,8 +123,29 @@ async def start_polling() -> None:
         logger.info("Telegram polling already running")
         return
 
-    logger.info("Deleting Telegram webhook before polling start")
-    await bot.delete_webhook(drop_pending_updates=False)
+    identity = await _get_safe_bot_identity()
+    logger.info(
+        "Starting Telegram bot in polling mode: bot_id=%s username=%s webhook_active=%s",
+        identity.get("id"),
+        identity.get("username"),
+        False,
+    )
+    _log_local_polling_reload_warning()
+    try:
+        logger.info("Deleting Telegram webhook before polling start")
+        await bot.delete_webhook(drop_pending_updates=False)
+        logger.info(
+            "Telegram webhook deleted before polling: bot_id=%s username=%s",
+            identity.get("id"),
+            identity.get("username"),
+        )
+    except Exception:
+        logger.exception(
+            "Failed to delete Telegram webhook before polling: bot_id=%s username=%s",
+            identity.get("id"),
+            identity.get("username"),
+        )
+        raise
     polling_task = asyncio.create_task(
         _run_polling_with_retry(),
         name="telegram-polling",
@@ -133,11 +159,21 @@ async def _run_polling_with_retry() -> None:
         raise RuntimeError("Telegram bot is not initialized")
 
     delay = DEFAULT_POLLING_RETRY_DELAY
+    attempt = 0
 
     while True:
         try:
+            attempt += 1
             allowed_updates = dp.resolve_used_update_types()
-            logger.info("Telegram polling loop started: allowed_updates=%s", allowed_updates)
+            identity = await _get_safe_bot_identity()
+            logger.info(
+                "Telegram polling loop started: bot_id=%s username=%s attempt=%s "
+                "allowed_updates=%s",
+                identity.get("id"),
+                identity.get("username"),
+                attempt,
+                allowed_updates,
+            )
             await dp.start_polling(
                 bot,
                 allowed_updates=allowed_updates,
@@ -149,6 +185,19 @@ async def _run_polling_with_retry() -> None:
         except asyncio.CancelledError:
             logger.info("Telegram polling loop cancelled")
             raise
+        except TelegramConflictError as exc:
+            identity = await _get_safe_bot_identity()
+            logger.warning(
+                "Telegram polling conflict during rolling update or another active polling "
+                "client: bot_id=%s username=%s attempt=%s retry_delay=%s error=%s",
+                identity.get("id"),
+                identity.get("username"),
+                attempt,
+                delay,
+                exc,
+            )
+            await asyncio.sleep(delay)
+            delay = min(delay * 2, MAX_POLLING_RETRY_DELAY)
         except (TelegramNetworkError, ClientError, OSError) as exc:
             logger.warning("Telegram polling connection failed: %s", exc)
             await bot.session.close()
@@ -171,11 +220,12 @@ async def start_webhook() -> None:
 
 
 async def stop_bot() -> None:
-    global bot, dp, polling_task
+    global bot, dp, polling_task, _bot_identity_cache
 
     current_task = polling_task
 
     if current_task is not None:
+        logger.info("Stopping Telegram polling task")
         if dp is not None and not current_task.done():
             try:
                 await dp.stop_polling()
@@ -183,6 +233,7 @@ async def stop_bot() -> None:
                 logger.warning("Telegram polling was not running during shutdown")
 
         if not current_task.done():
+            logger.info("Cancelling Telegram polling task")
             current_task.cancel()
 
         try:
@@ -193,8 +244,68 @@ async def stop_bot() -> None:
             logger.warning("Telegram polling task had already failed before shutdown")
 
     if bot is not None and bot.session is not None:
+        logger.info("Closing Telegram bot session")
         await bot.session.close()
 
     polling_task = None
     dp = None
     bot = None
+    _bot_identity_cache = None
+    logger.info("Telegram bot stopped")
+
+
+@asynccontextmanager
+async def sender_bot() -> AsyncIterator[Bot]:
+    """Возвращает bot для разовой отправки и закрывает временную session."""
+    if bot is not None:
+        yield bot
+        return
+
+    temporary_bot = _create_bot()
+    try:
+        yield temporary_bot
+    finally:
+        if temporary_bot.session is not None:
+            await temporary_bot.session.close()
+
+
+def _log_local_polling_reload_warning() -> None:
+    """Логирует локальный риск двойного polling при автоперезагрузке."""
+    if settings.app_env == "production":
+        return
+    if os.environ.get("ANTEX_UVICORN_RELOAD") != "1":
+        return
+    logger.warning(
+        "Telegram polling is running with local reload enabled; only one active process per "
+        "bot token can poll Telegram. Use `uv run python run.py --no-reload` for local polling "
+        "or switch to a webhook-safe setup."
+    )
+
+
+async def _get_safe_bot_identity() -> dict[str, int | str | None]:
+    """Возвращает безопасные идентификаторы бота без token и proxy data."""
+    global _bot_identity_cache
+
+    if _bot_identity_cache is not None:
+        return _bot_identity_cache
+
+    if bot is None:
+        return {"id": None, "username": None}
+
+    bot_id = getattr(bot, "id", None)
+    username = getattr(bot, "username", None)
+    if bot_id is not None or username is not None:
+        _bot_identity_cache = {"id": bot_id, "username": username}
+        return _bot_identity_cache
+
+    try:
+        me = await bot.get_me()
+    except Exception as exc:
+        logger.warning(
+            "Failed to load Telegram bot identity: error_type=%s",
+            type(exc).__name__,
+        )
+        return {"id": None, "username": None}
+
+    _bot_identity_cache = {"id": getattr(me, "id", None), "username": getattr(me, "username", None)}
+    return _bot_identity_cache

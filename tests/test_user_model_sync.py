@@ -271,7 +271,7 @@ def test_user_role_helpers_and_serializer() -> None:
     assert user_out.role_name == "Пользователь"
     assert user_out.language_code_app == "ru"
 
-    setattr(fake_user, "role", 1)
+    fake_user.role = 1
     legacy_manager_out = build_user_out(fake_user)
     assert legacy_manager_out.role == 2
     assert legacy_manager_out.role_name == "Менеджер"
