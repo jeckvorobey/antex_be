@@ -92,6 +92,10 @@ uv run python run.py --host 0.0.0.0 --port 8000
 `uv run python run.py --no-reload`. Polling допускает только один активный
 процесс на один bot token; запуск с автоперезагрузкой или второй локальный
 backend может дать конфликт `terminated by other getUpdates request`.
+В production polling защищен Redis-lock: если во время deploy коротко
+поднимается второй backend, он не вызывает `getUpdates`, пока lock удерживает
+активный процесс. Для постоянной работы всё равно держите одну replica на bot
+token.
 
 После старта будут доступны:
 

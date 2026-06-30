@@ -60,8 +60,18 @@ class _ConflictDispatcher:
 
 
 class _IdleDispatcher:
+    def __init__(self) -> None:
+        self.polling_calls = 0
+        self.stopped = False
+
     def resolve_used_update_types(self) -> list[str]:
         return ["message"]
+
+    async def start_polling(self, *_args, **_kwargs) -> None:
+        self.polling_calls += 1
+
+    async def stop_polling(self) -> None:
+        self.stopped = True
 
 
 @pytest.mark.asyncio
@@ -106,7 +116,7 @@ async def test_start_polling_warns_about_local_reload_risk(
     async def _run_forever() -> None:
         await asyncio.Event().wait()
 
-    monkeypatch.setattr(telegram_bot, "_run_polling_with_retry", _run_forever)
+    monkeypatch.setattr(telegram_bot, "_run_polling_singleton", _run_forever)
 
     with caplog.at_level(logging.WARNING, logger="app.telegram.bot"):
         await telegram_bot.start_polling()
@@ -123,6 +133,73 @@ async def test_start_polling_warns_about_local_reload_risk(
         with pytest.raises(asyncio.CancelledError):
             await created_task
     monkeypatch.setattr(telegram_bot, "polling_task", None)
+
+
+@pytest.mark.asyncio
+async def test_polling_waits_without_get_updates_when_redis_lock_is_busy(
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    fake_bot = _FakeBot()
+    dispatcher = _IdleDispatcher()
+    monkeypatch.setattr(telegram_bot, "bot", fake_bot)
+    monkeypatch.setattr(telegram_bot, "dp", dispatcher)
+
+    async def _lock_busy(_owner: str) -> bool:
+        return False
+
+    async def _stop_after_wait(_delay: float) -> None:
+        del _delay
+        raise asyncio.CancelledError
+
+    monkeypatch.setattr(telegram_bot, "_acquire_polling_lock", _lock_busy)
+    monkeypatch.setattr(telegram_bot.asyncio, "sleep", _stop_after_wait)
+
+    with (
+        caplog.at_level(logging.WARNING, logger="app.telegram.bot"),
+        pytest.raises(asyncio.CancelledError),
+    ):
+        await telegram_bot._run_polling_singleton()
+
+    assert dispatcher.polling_calls == 0
+    assert "polling lock" in caplog.text
+
+
+@pytest.mark.asyncio
+async def test_polling_lock_is_renewed_and_released_by_owner(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    fake_bot = _FakeBot()
+    dispatcher = _IdleDispatcher()
+    renewed: list[str] = []
+    released: list[str] = []
+    monkeypatch.setattr(telegram_bot, "bot", fake_bot)
+    monkeypatch.setattr(telegram_bot, "dp", dispatcher)
+
+    async def _lock_acquired(owner: str) -> bool:
+        return True
+
+    async def _renew(owner: str) -> bool:
+        renewed.append(owner)
+        return True
+
+    async def _release(owner: str) -> None:
+        released.append(owner)
+
+    async def _stop_after_renew(_delay: float) -> None:
+        del _delay
+        raise asyncio.CancelledError
+
+    monkeypatch.setattr(telegram_bot, "_acquire_polling_lock", _lock_acquired)
+    monkeypatch.setattr(telegram_bot, "_renew_polling_lock", _renew)
+    monkeypatch.setattr(telegram_bot, "_release_polling_lock", _release)
+    monkeypatch.setattr(telegram_bot.asyncio, "sleep", _stop_after_renew)
+
+    await telegram_bot._run_polling_singleton()
+
+    assert dispatcher.polling_calls == 1
+    assert renewed
+    assert released == renewed[:1]
 
 
 @pytest.mark.asyncio
