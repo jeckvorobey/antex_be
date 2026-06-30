@@ -145,7 +145,7 @@ def enter_amount_prompt(
             currency=format_currency_label(currency),
         )
 
-    return _strip_fluent_isolates(
+    text = _strip_fluent_isolates(
         translate(
             "exchange-enter-amount-with-min",
             currency=format_currency_label(currency),
@@ -153,6 +153,7 @@ def enter_amount_prompt(
             minCurrency=currency.upper(),
         )
     )
+    return text.replace("\n⚠️", "\n\n⚠️", 1)
 
 
 def invalid_amount(*, translator: Translate | None = None, locale: str | None = None) -> str:

@@ -40,7 +40,7 @@ exchange-choose-currency = Выберите валюту, которую хот�
 exchange-choose-buy-currency = Выберите, что хотите получить за { $currency }:
 exchange-enter-amount = <b>Введите сумму, которую хотите обменять в { $currency }:</b>
 exchange-enter-amount-with-min = <b>Введите сумму, которую хотите обменять в { $currency }:</b>
-    Минимальная сумма: { $minAmount } { $minCurrency }
+    ⚠️ Минимальная сумма: <b>{ $minAmount } { $minCurrency }</b>
 exchange-amount-invalid = Укажите сумму числом, больше нуля.
 exchange-amount-below-minimum = Сумма должна быть не меньше { $minAmount }. Введите допустимую сумму для данного способа получения.
 exchange-choose-method = Выберите способ получения { $currency }:

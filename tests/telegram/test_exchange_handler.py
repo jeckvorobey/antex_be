@@ -373,7 +373,7 @@ async def test_choose_exchange_currency_amount_prompt_contains_minimum(monkeypat
 
     text = str(callback.message.edits[0]["text"])
     assert "Введите сумму" in text
-    assert "Минимальная сумма: 15000 RUB" in text
+    assert "\n\n⚠️ Минимальная сумма: <b>15000 RUB</b>" in text
 
 
 async def test_choose_exchange_currency_falls_back_to_direct_pair_rate_for_reversed_display_pairs(
