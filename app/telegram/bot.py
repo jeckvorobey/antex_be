@@ -6,7 +6,7 @@ import asyncio
 import logging
 import os
 from collections.abc import AsyncIterator
-from contextlib import asynccontextmanager
+from contextlib import asynccontextmanager, suppress
 from urllib.parse import quote
 
 from aiogram import Bot, Dispatcher
@@ -25,6 +25,8 @@ from app.telegram.middlewares.logging import LoggingMiddleware
 logger = logging.getLogger(__name__)
 DEFAULT_POLLING_RETRY_DELAY = 1.0
 MAX_POLLING_RETRY_DELAY = 30.0
+POLLING_LOCK_TTL_SECONDS = 30
+POLLING_LOCK_RETRY_DELAY = 5.0
 
 storage = RedisStorage(redis=redis_client)
 
@@ -147,11 +149,46 @@ async def start_polling() -> None:
         )
         raise
     polling_task = asyncio.create_task(
-        _run_polling_with_retry(),
+        _run_polling_singleton(),
         name="telegram-polling",
     )
     polling_task.add_done_callback(_log_polling_task_result)
     logger.info("Telegram polling task created")
+
+
+async def _run_polling_singleton() -> None:
+    if bot is None or dp is None:
+        raise RuntimeError("Telegram bot is not initialized")
+
+    identity = await _get_safe_bot_identity()
+    owner = _build_polling_lock_owner(identity)
+
+    while True:
+        acquired = await _acquire_polling_lock(owner)
+        if not acquired:
+            logger.warning(
+                "Telegram polling lock is already owned by another backend process: "
+                "bot_id=%s username=%s retry_delay=%s",
+                identity.get("id"),
+                identity.get("username"),
+                POLLING_LOCK_RETRY_DELAY,
+            )
+            await asyncio.sleep(POLLING_LOCK_RETRY_DELAY)
+            continue
+
+        await _renew_polling_lock(owner)
+        renew_task = asyncio.create_task(
+            _renew_polling_lock_loop(owner),
+            name="telegram-polling-lock-renew",
+        )
+        try:
+            await _run_polling_with_retry()
+            return
+        finally:
+            renew_task.cancel()
+            with suppress(asyncio.CancelledError):
+                await renew_task
+            await _release_polling_lock(owner)
 
 
 async def _run_polling_with_retry() -> None:
@@ -203,6 +240,55 @@ async def _run_polling_with_retry() -> None:
             await bot.session.close()
             await asyncio.sleep(delay)
             delay = min(delay * 2, MAX_POLLING_RETRY_DELAY)
+
+
+def _polling_lock_key() -> str:
+    """Возвращает Redis key, который ограничивает polling одним владельцем."""
+    return "antex:telegram:polling:lock"
+
+
+def _build_polling_lock_owner(identity: dict[str, int | str | None]) -> str:
+    """Формирует безопасный идентификатор владельца polling lock."""
+    bot_id = identity.get("id") or "unknown"
+    return f"{bot_id}:{os.getpid()}:{id(bot)}"
+
+
+async def _acquire_polling_lock(owner: str) -> bool:
+    """Пытается занять Redis-lock для polling без блокировки event loop."""
+    return bool(
+        await redis_client.set(
+            _polling_lock_key(),
+            owner,
+            ex=POLLING_LOCK_TTL_SECONDS,
+            nx=True,
+        )
+    )
+
+
+async def _renew_polling_lock(owner: str) -> bool:
+    """Продлевает polling lock, только если текущий процесс остается владельцем."""
+    if await redis_client.get(_polling_lock_key()) != owner:
+        return False
+    return bool(await redis_client.expire(_polling_lock_key(), POLLING_LOCK_TTL_SECONDS))
+
+
+async def _renew_polling_lock_loop(owner: str) -> None:
+    """Периодически продлевает polling lock во время активного getUpdates."""
+    delay = max(POLLING_LOCK_TTL_SECONDS / 3, 1)
+    while True:
+        await asyncio.sleep(delay)
+        renewed = await _renew_polling_lock(owner)
+        if not renewed:
+            logger.warning("Telegram polling lock ownership was lost; polling will stop")
+            if dp is not None:
+                await dp.stop_polling()
+            return
+
+
+async def _release_polling_lock(owner: str) -> None:
+    """Освобождает polling lock, если он все еще принадлежит текущему процессу."""
+    if await redis_client.get(_polling_lock_key()) == owner:
+        await redis_client.delete(_polling_lock_key())
 
 
 async def start_webhook() -> None:
