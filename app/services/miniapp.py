@@ -369,6 +369,7 @@ async def get_miniapp_aex_referral(db, user) -> MiniappAexReferralResponse:
             referralMinWithdraw=config.referral_min_withdraw,
             referralMaxWithdraw=config.referral_max_withdraw,
             aexRate=config.aex_rate,
+            aexWithdrawLimit=config.aex_withdraw_limit,
         ),
     )
 

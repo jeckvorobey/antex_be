@@ -470,6 +470,7 @@ async def update_config(body: AppConfigUpdate, db: DbDep, _: AdminUser) -> AppCo
         referral_min_withdraw=body.referral_min_withdraw,
         referral_max_withdraw=body.referral_max_withdraw,
         aex_rate=body.aex_rate,
+        aex_withdraw_limit=body.aex_withdraw_limit,
         update_referral_max_withdraw="referral_max_withdraw" in body_fields
         or "referralMaxWithdraw" in body_fields,
     )

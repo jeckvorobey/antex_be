@@ -18,6 +18,7 @@ class AppConfigOut(BaseModel):
     referral_min_withdraw: Decimal = Field(alias="referralMinWithdraw")
     referral_max_withdraw: Decimal | None = Field(alias="referralMaxWithdraw")
     aex_rate: Decimal = Field(alias="aexRate")
+    aex_withdraw_limit: Decimal = Field(alias="aexWithdrawLimit")
     createdAt: datetime
     updatedAt: datetime
 
@@ -26,6 +27,7 @@ class AppConfigOut(BaseModel):
         "referral_min_withdraw",
         "referral_max_withdraw",
         "aex_rate",
+        "aex_withdraw_limit",
         when_used="json",
     )
     def serialize_decimal(self, value: Decimal | None) -> str | None:
@@ -45,3 +47,4 @@ class AppConfigUpdate(BaseModel):
     referral_min_withdraw: Decimal | None = Field(default=None, alias="referralMinWithdraw", ge=0)
     referral_max_withdraw: Decimal | None = Field(default=None, alias="referralMaxWithdraw", ge=0)
     aex_rate: Decimal | None = Field(default=None, alias="aexRate", gt=0)
+    aex_withdraw_limit: Decimal | None = Field(default=None, alias="aexWithdrawLimit", ge=0)

@@ -818,7 +818,7 @@ async def test_menu_orders_renders_compact_order_history(monkeypatch) -> None:
     assert "Ваши заявки:" in text
     assert "#2026060011: Новая" in text
     assert "1,400 ₮ USDT → 35,738,752.0 🇻🇳 VND" in text
-    assert "Курс: 25527.68" in text  # noqa: RUF001
+    assert "Курс: 25527.68" in text
     assert "Способ получения: Доставка наличных" in text
     assert "13.06.2026 00:45 UTC" in text
     assert callback.answers[-1] == {"text": None, "show_alert": False}

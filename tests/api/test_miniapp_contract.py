@@ -231,6 +231,7 @@ async def test_miniapp_aex_referral_returns_ready_link(
         "referralMinWithdraw": "100",
         "referralMaxWithdraw": None,
         "aexRate": "1",
+        "aexWithdrawLimit": "100",
     }
     assert "referrals" not in data
 
@@ -254,6 +255,7 @@ async def test_admin_config_updates_referral_program_settings_for_miniapp(
             "referralMinWithdraw": "250",
             "referralMaxWithdraw": "5000",
             "aexRate": "1.2",
+            "aexWithdrawLimit": "750",
         },
         headers={"Authorization": f"Bearer {admin_token}"},
     )
@@ -267,13 +269,34 @@ async def test_admin_config_updates_referral_program_settings_for_miniapp(
     assert patch_response.json()["referralMinWithdraw"] == "250"
     assert patch_response.json()["referralMaxWithdraw"] == "5000"
     assert patch_response.json()["aexRate"] == "1.2"
+    assert patch_response.json()["aexWithdrawLimit"] == "750"
     assert referral_response.status_code == 200
     assert referral_response.json()["programConfig"] == {
         "referralPercent": "0.35",
         "referralMinWithdraw": "250",
         "referralMaxWithdraw": "5000",
         "aexRate": "1.2",
+        "aexWithdrawLimit": "750",
     }
+
+
+@pytest.mark.asyncio
+async def test_admin_config_rejects_negative_aex_withdraw_limit(
+    api_client: tuple[AsyncClient, AsyncSession],
+) -> None:
+    client, db_session = api_client
+    admin = Admin(username="admin", password_hash="unused")
+    db_session.add_all([admin, Config(id=1, enabled=True)])
+    await db_session.flush()
+    admin_token = create_access_token({"sub": str(admin.id), "type": "admin"})
+
+    response = await client.patch(
+        "/api/admin/config",
+        json={"aexWithdrawLimit": "-1"},
+        headers={"Authorization": f"Bearer {admin_token}"},
+    )
+
+    assert response.status_code == 422
 
 
 @pytest.mark.asyncio

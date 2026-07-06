@@ -70,6 +70,7 @@ EXPECTED_REFERRAL_CONFIG_COLUMNS = {
     "referral_min_withdraw",
     "referral_max_withdraw",
     "aex_rate",
+    "aex_withdraw_limit",
 }
 
 

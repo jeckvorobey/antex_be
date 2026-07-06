@@ -40,8 +40,10 @@ class ConfigRepository(BaseRepository[Config]):
         referral_min_withdraw: Decimal | None = None,
         referral_max_withdraw: Decimal | None = None,
         aex_rate: Decimal | None = None,
+        aex_withdraw_limit: Decimal | None = None,
         update_referral_max_withdraw: bool = False,
     ) -> Config:
+        """Обновляет глобальные настройки referral/AEX program."""
         config = await self.get_or_create()
         if referral_percent is not None:
             config.referral_percent = referral_percent
@@ -51,5 +53,7 @@ class ConfigRepository(BaseRepository[Config]):
             config.referral_max_withdraw = referral_max_withdraw
         if aex_rate is not None:
             config.aex_rate = aex_rate
+        if aex_withdraw_limit is not None:
+            config.aex_withdraw_limit = aex_withdraw_limit
         await self.session.flush()
         return config

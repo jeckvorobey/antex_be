@@ -31,3 +31,8 @@ class Config(Base, TimestampMixin):
         default=Decimal("1"),
         nullable=False,
     )
+    aex_withdraw_limit: Mapped[Decimal] = mapped_column(
+        Numeric(18, 6),
+        default=Decimal("100"),
+        nullable=False,
+    )

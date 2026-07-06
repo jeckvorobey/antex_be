@@ -153,12 +153,14 @@ class MiniappReferralProgramConfig(BaseModel):
     referralMinWithdraw: Decimal
     referralMaxWithdraw: Decimal | None
     aexRate: Decimal
+    aexWithdrawLimit: Decimal
 
     @field_serializer(
         "referralPercent",
         "referralMinWithdraw",
         "referralMaxWithdraw",
         "aexRate",
+        "aexWithdrawLimit",
         when_used="json",
     )
     def serialize_decimal(self, value: Decimal | None) -> str | None:
