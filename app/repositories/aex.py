@@ -68,6 +68,21 @@ class AexLedgerEntryRepository(BaseRepository[AexLedgerEntry]):
     model = AexLedgerEntry
     _default_order: ClassVar = AexLedgerEntry.id.desc()
 
+    async def get_by_reference(
+        self,
+        *,
+        reference_type: str,
+        reference_id: str,
+    ) -> AexLedgerEntry | None:
+        """Вернуть ledger entry по business reference для идемпотентных операций."""
+        result = await self.session.execute(
+            select(AexLedgerEntry).where(
+                AexLedgerEntry.reference_type == reference_type,
+                AexLedgerEntry.reference_id == reference_id,
+            )
+        )
+        return result.scalar_one_or_none()
+
     async def get_by_wallet(
         self,
         wallet_id: int,

@@ -86,6 +86,26 @@ class AexLedgerEntry(Base, TimestampMixin):
             postgresql_where=text("reference_type = 'referral'"),
             sqlite_where=text("reference_type = 'referral'"),
         ),
+        Index(
+            "uq_aex_ledger_order_withdraw_reference",
+            "reference_type",
+            "reference_id",
+            unique=True,
+            postgresql_where=text(
+                "reference_type IN ("
+                "'order_withdraw_hold', "
+                "'order_withdraw_debit', "
+                "'order_withdraw_release'"
+                ")"
+            ),
+            sqlite_where=text(
+                "reference_type IN ("
+                "'order_withdraw_hold', "
+                "'order_withdraw_debit', "
+                "'order_withdraw_release'"
+                ")"
+            ),
+        ),
     )
 
     wallet: Mapped[AexWallet] = relationship(

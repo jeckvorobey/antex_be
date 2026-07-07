@@ -19,6 +19,8 @@ from app.telegram import messages
 from app.telegram.i18n import get_user_translator
 
 logger = logging.getLogger(__name__)
+AEX_CURRENCY = "AEX"
+_AEX_TERMINAL_STATUSES = frozenset({OrderStatus.COMPLETED, OrderStatus.CANCELLED})
 
 
 async def _notify_referral_reversal(
@@ -76,32 +78,50 @@ async def update_order_status(
     if order.status == int(target_status):
         return order
 
+    _validate_aex_status_transition(order, target_status)
+
     order = await repo.update_status(order_id, int(target_status))
     hydrated = await repo.get_one(order_id)
     if hydrated is None:
         raise AntExException("Order not found", code="ORDER_NOT_FOUND", status_code=404)
 
-    # Начислить AEX рефереру при завершении обмена
     if target_status == OrderStatus.COMPLETED:
-        from decimal import Decimal
-
-        from app.services.referral import ReferralService
-
-        referral_service = ReferralService()
         order_amount = Decimal(str(hydrated.amountSell))
-        await referral_service.credit_referral_bonus(
+        if _is_aex_withdrawal_order(hydrated):
+            from app.services.aex import AexService
+
+            await AexService().debit_order_withdrawal(
+                db,
+                hydrated.UserId,
+                order_amount,
+                order_id=hydrated.id,
+            )
+        else:
+            from app.services.referral import ReferralService
+
+            referral_service = ReferralService()
+            await referral_service.credit_referral_bonus(
+                db,
+                order_id=hydrated.id,
+                order_amount=order_amount,
+                referred_user_id=hydrated.UserId,
+                currency_sell=str(hydrated.currencySell),
+                currency_buy=str(hydrated.currencyBuy),
+            )
+
+    if target_status == OrderStatus.CANCELLED and _is_aex_withdrawal_order(hydrated):
+        from app.services.aex import AexService
+
+        await AexService().release_order_withdrawal(
             db,
+            hydrated.UserId,
+            Decimal(str(hydrated.amountSell)),
             order_id=hydrated.id,
-            order_amount=order_amount,
-            referred_user_id=hydrated.UserId,
-            currency_sell=str(hydrated.currencySell),
-            currency_buy=str(hydrated.currencyBuy),
         )
 
     await db.commit()
 
-    # Списать AEX рефереру при отмене обмена (компенсация)
-    if target_status == OrderStatus.CANCELLED:
+    if target_status == OrderStatus.CANCELLED and not _is_aex_withdrawal_order(hydrated):
         try:
             from sqlalchemy import select
 
@@ -177,3 +197,22 @@ async def update_order_status(
         )
         await db.rollback()
     return hydrated
+
+
+def _is_aex_withdrawal_order(order: object) -> bool:
+    """Проверить, что заявка расходует внутреннюю валюту AEX."""
+    return str(getattr(order, "currencySell", "")).upper() == AEX_CURRENCY
+
+
+def _validate_aex_status_transition(order: object, target_status: OrderStatus) -> None:
+    """Запретить смену финального AEX-статуса без отдельной компенсационной операции."""
+    if not _is_aex_withdrawal_order(order):
+        return
+
+    current_status = OrderStatus(int(order.status))
+    if current_status in _AEX_TERMINAL_STATUSES:
+        raise AntExException(
+            "AEX order final status cannot be changed",
+            code="AEX_ORDER_FINAL_STATUS_LOCKED",
+            status_code=422,
+        )

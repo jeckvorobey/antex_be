@@ -433,3 +433,58 @@ class TestAexServiceGetOperations:
 
         assert entries == []
         assert total == 0
+
+
+class TestAexServiceOrderWithdrawalIdempotency:
+    """TDD: операции вывода AEX идемпотентны по order id."""
+
+    async def test_hold_order_withdrawal_is_idempotent_by_order_id(
+        self, db_session: AsyncSession, user: User, service: AexService
+    ) -> None:
+        await service.credit(db_session, user.id, Decimal("1000"))
+
+        first = await service.hold_order_withdrawal(db_session, user.id, Decimal("400"), order_id=7)
+        second = await service.hold_order_withdrawal(
+            db_session, user.id, Decimal("400"), order_id=7
+        )
+
+        wallet = await service.get_balance(db_session, user.id)
+        assert first.id == second.id
+        assert wallet.balance_available == Decimal("600")
+        assert wallet.balance_reserved == Decimal("400")
+
+    async def test_debit_order_withdrawal_is_idempotent_by_order_id(
+        self, db_session: AsyncSession, user: User, service: AexService
+    ) -> None:
+        await service.credit(db_session, user.id, Decimal("1000"))
+        await service.hold_order_withdrawal(db_session, user.id, Decimal("400"), order_id=7)
+
+        first = await service.debit_order_withdrawal(
+            db_session, user.id, Decimal("400"), order_id=7
+        )
+        second = await service.debit_order_withdrawal(
+            db_session, user.id, Decimal("400"), order_id=7
+        )
+
+        wallet = await service.get_balance(db_session, user.id)
+        assert first.id == second.id
+        assert wallet.balance_available == Decimal("600")
+        assert wallet.balance_reserved == Decimal("0")
+
+    async def test_release_order_withdrawal_is_idempotent_by_order_id(
+        self, db_session: AsyncSession, user: User, service: AexService
+    ) -> None:
+        await service.credit(db_session, user.id, Decimal("1000"))
+        await service.hold_order_withdrawal(db_session, user.id, Decimal("400"), order_id=7)
+
+        first = await service.release_order_withdrawal(
+            db_session, user.id, Decimal("400"), order_id=7
+        )
+        second = await service.release_order_withdrawal(
+            db_session, user.id, Decimal("400"), order_id=7
+        )
+
+        wallet = await service.get_balance(db_session, user.id)
+        assert first.id == second.id
+        assert wallet.balance_available == Decimal("1000")
+        assert wallet.balance_reserved == Decimal("0")

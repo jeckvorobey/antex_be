@@ -16,6 +16,10 @@ from app.exceptions import AntExException
 from app.models.aex import AexLedgerEntry, AexWallet
 from app.repositories.aex import AexLedgerEntryRepository, AexWalletRepository
 
+ORDER_WITHDRAW_HOLD_REFERENCE = "order_withdraw_hold"
+ORDER_WITHDRAW_DEBIT_REFERENCE = "order_withdraw_debit"
+ORDER_WITHDRAW_RELEASE_REFERENCE = "order_withdraw_release"
+
 
 class AexService:
     """Доменный сервис управления AEX-кошельками."""
@@ -189,6 +193,84 @@ class AexService:
             description=description,
         )
 
+    async def hold_order_withdrawal(
+        self,
+        db: AsyncSession,
+        user_id: int,
+        amount: Decimal,
+        *,
+        order_id: int,
+    ) -> AexLedgerEntry:
+        """Идемпотентно зарезервировать AEX для заявки на вывод."""
+        existing = await self._get_entry_by_reference(
+            db,
+            reference_type=ORDER_WITHDRAW_HOLD_REFERENCE,
+            reference_id=str(order_id),
+        )
+        if existing is not None:
+            return existing
+
+        return await self.hold(
+            db,
+            user_id,
+            amount,
+            reference_type=ORDER_WITHDRAW_HOLD_REFERENCE,
+            reference_id=str(order_id),
+            description=f"AEX withdrawal hold for order #{order_id}",
+        )
+
+    async def debit_order_withdrawal(
+        self,
+        db: AsyncSession,
+        user_id: int,
+        amount: Decimal,
+        *,
+        order_id: int,
+    ) -> AexLedgerEntry:
+        """Идемпотентно списать зарезервированный AEX после завершения заявки."""
+        existing = await self._get_entry_by_reference(
+            db,
+            reference_type=ORDER_WITHDRAW_DEBIT_REFERENCE,
+            reference_id=str(order_id),
+        )
+        if existing is not None:
+            return existing
+
+        return await self.debit_reserved(
+            db,
+            user_id,
+            amount,
+            reference_type=ORDER_WITHDRAW_DEBIT_REFERENCE,
+            reference_id=str(order_id),
+            description=f"AEX withdrawal debit for completed order #{order_id}",
+        )
+
+    async def release_order_withdrawal(
+        self,
+        db: AsyncSession,
+        user_id: int,
+        amount: Decimal,
+        *,
+        order_id: int,
+    ) -> AexLedgerEntry:
+        """Идемпотентно освободить AEX-резерв после отмены заявки."""
+        existing = await self._get_entry_by_reference(
+            db,
+            reference_type=ORDER_WITHDRAW_RELEASE_REFERENCE,
+            reference_id=str(order_id),
+        )
+        if existing is not None:
+            return existing
+
+        return await self.release(
+            db,
+            user_id,
+            amount,
+            reference_type=ORDER_WITHDRAW_RELEASE_REFERENCE,
+            reference_id=str(order_id),
+            description=f"AEX withdrawal release for cancelled order #{order_id}",
+        )
+
     async def get_operations(
         self,
         db: AsyncSession,
@@ -292,6 +374,19 @@ class AexService:
             reference_type=reference_type,
             reference_id=reference_id,
             description=description,
+        )
+
+    async def _get_entry_by_reference(
+        self,
+        db: AsyncSession,
+        *,
+        reference_type: str,
+        reference_id: str,
+    ) -> AexLedgerEntry | None:
+        """Найти ledger entry по business reference."""
+        return await AexLedgerEntryRepository(db).get_by_reference(
+            reference_type=reference_type,
+            reference_id=reference_id,
         )
 
     @staticmethod

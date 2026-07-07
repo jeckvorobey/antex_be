@@ -15,6 +15,7 @@ from app.core.security import create_access_token
 from app.enums.country import Country
 from app.enums.order import OrderStatus
 from app.enums.user import UserRole
+from app.exceptions import AntExException
 from app.models.admin import Admin
 from app.models.aex import AexLedgerEntry, AexWallet
 from app.models.city import City
@@ -82,6 +83,17 @@ async def seed_exchange_data(db_session: AsyncSession) -> tuple[City, User, User
     customer.city_id = city.id
     await db_session.flush()
     return city, manager, customer
+
+
+async def credit_aex_wallet(
+    db_session: AsyncSession,
+    user_id: int,
+    amount: int,
+) -> AexWallet:
+    wallet = AexWallet(user_id=user_id, balance_available=amount, balance_reserved=0)
+    db_session.add(wallet)
+    await db_session.flush()
+    return wallet
 
 
 @pytest.mark.asyncio
@@ -788,6 +800,455 @@ async def test_miniapp_order_keeps_saved_order_when_manager_notification_fails(
     assert stored_order is not None
     assert stored_order.publicNumber == order["publicNumber"]
     order_flow.notify_order_created.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_miniapp_order_accepts_aex_withdrawal_via_usdt_based_pair(
+    api_client: tuple[AsyncClient, AsyncSession],
+) -> None:
+    client, db_session = api_client
+    _, _, customer = await seed_exchange_data(db_session)
+    await credit_aex_wallet(db_session, customer.id, 1000)
+    token = create_access_token({"sub": str(customer.id), "role": customer.role})
+
+    response = await client.post(
+        "/api/miniapp/orders",
+        headers={"Authorization": f"Bearer {token}"},
+        json={
+            "country": "thailand",
+            "currencySell": "AEX",
+            "amountSell": 400,
+            "currencyBuy": "THB",
+            "amountBuy": 14480,
+            "rate": 36.2,
+            "methodGet": "qrcode",
+        },
+    )
+
+    assert response.status_code == 201
+    order = response.json()
+    assert order["currencySell"] == "AEX"
+    assert order["currencyBuy"] == "THB"
+
+    wallet = await db_session.scalar(select(AexWallet).where(AexWallet.user_id == customer.id))
+    assert wallet is not None
+    assert wallet.balance_available == 600
+    assert wallet.balance_reserved == 400
+
+    entries = (
+        await db_session.execute(
+            select(AexLedgerEntry).where(AexLedgerEntry.wallet_id == wallet.id)
+        )
+    ).scalars().all()
+    assert [(entry.entry_type, entry.amount, entry.reference_type) for entry in entries] == [
+        ("hold", 400, "order_withdraw_hold")
+    ]
+
+
+@pytest.mark.asyncio
+async def test_miniapp_aex_order_rejects_missing_usdt_based_pair_without_mutation(
+    api_client: tuple[AsyncClient, AsyncSession],
+) -> None:
+    client, db_session = api_client
+    _, _, customer = await seed_exchange_data(db_session)
+    await credit_aex_wallet(db_session, customer.id, 1000)
+    token = create_access_token({"sub": str(customer.id), "role": customer.role})
+
+    response = await client.post(
+        "/api/miniapp/orders",
+        headers={"Authorization": f"Bearer {token}"},
+        json={
+            "country": "thailand",
+            "currencySell": "AEX",
+            "amountSell": 400,
+            "currencyBuy": "EUR",
+            "amountBuy": 100,
+            "rate": 0.01,
+            "methodGet": "qrcode",
+        },
+    )
+
+    assert response.status_code == 422
+    assert response.json()["code"] == "RATE_PAIR_UNAVAILABLE"
+    assert await db_session.scalar(select(func.count(Order.id))) == 0
+    assert await db_session.scalar(select(func.count(AexWallet.id))) == 1
+    assert await db_session.scalar(select(func.count(AexLedgerEntry.id))) == 0
+
+
+@pytest.mark.asyncio
+async def test_miniapp_aex_order_rejects_missing_usdt_based_pair_before_wallet_lookup(
+    api_client: tuple[AsyncClient, AsyncSession],
+) -> None:
+    client, db_session = api_client
+    _, _, customer = await seed_exchange_data(db_session)
+    token = create_access_token({"sub": str(customer.id), "role": customer.role})
+
+    response = await client.post(
+        "/api/miniapp/orders",
+        headers={"Authorization": f"Bearer {token}"},
+        json={
+            "country": "thailand",
+            "currencySell": "AEX",
+            "amountSell": 400,
+            "currencyBuy": "EUR",
+            "amountBuy": 100,
+            "rate": 0.01,
+            "methodGet": "qrcode",
+        },
+    )
+
+    assert response.status_code == 422
+    assert response.json()["code"] == "RATE_PAIR_UNAVAILABLE"
+    assert await db_session.scalar(select(func.count(Order.id))) == 0
+    assert await db_session.scalar(select(func.count(AexWallet.id))) == 0
+    assert await db_session.scalar(select(func.count(AexLedgerEntry.id))) == 0
+
+
+@pytest.mark.asyncio
+async def test_miniapp_aex_order_uses_usdt_minimum_amount(
+    api_client: tuple[AsyncClient, AsyncSession],
+) -> None:
+    client, db_session = api_client
+    _, _, customer = await seed_exchange_data(db_session)
+    await credit_aex_wallet(db_session, customer.id, 1000)
+    token = create_access_token({"sub": str(customer.id), "role": customer.role})
+
+    response = await client.post(
+        "/api/miniapp/orders",
+        headers={"Authorization": f"Bearer {token}"},
+        json={
+            "country": "thailand",
+            "currencySell": "AEX",
+            "amountSell": 299,
+            "currencyBuy": "THB",
+            "amountBuy": 10823.8,
+            "rate": 36.2,
+            "methodGet": "qrcode",
+        },
+    )
+
+    assert response.status_code == 422
+    assert response.json()["code"] == "MIN_AMOUNT"
+    assert response.json()["params"] == {
+        "minAmount": 300,
+        "method": "qrcode",
+        "currency": "AEX",
+    }
+    assert await db_session.scalar(select(func.count(Order.id))) == 0
+    assert await db_session.scalar(select(func.count(AexLedgerEntry.id))) == 0
+
+
+@pytest.mark.asyncio
+async def test_miniapp_aex_order_rejects_amount_above_available_balance(
+    api_client: tuple[AsyncClient, AsyncSession],
+) -> None:
+    client, db_session = api_client
+    _, _, customer = await seed_exchange_data(db_session)
+    await credit_aex_wallet(db_session, customer.id, 350)
+    token = create_access_token({"sub": str(customer.id), "role": customer.role})
+
+    response = await client.post(
+        "/api/miniapp/orders",
+        headers={"Authorization": f"Bearer {token}"},
+        json={
+            "country": "thailand",
+            "currencySell": "AEX",
+            "amountSell": 400,
+            "currencyBuy": "THB",
+            "amountBuy": 14480,
+            "rate": 36.2,
+            "methodGet": "qrcode",
+        },
+    )
+
+    assert response.status_code == 422
+    assert response.json()["code"] == "AEX_INSUFFICIENT_BALANCE"
+    assert await db_session.scalar(select(func.count(Order.id))) == 0
+    assert await db_session.scalar(select(func.count(AexLedgerEntry.id))) == 0
+
+
+@pytest.mark.asyncio
+async def test_miniapp_aex_order_rejects_when_withdraw_limit_not_reached(
+    api_client: tuple[AsyncClient, AsyncSession],
+) -> None:
+    client, db_session = api_client
+    _, _, customer = await seed_exchange_data(db_session)
+    await credit_aex_wallet(db_session, customer.id, 50)
+    token = create_access_token({"sub": str(customer.id), "role": customer.role})
+
+    response = await client.post(
+        "/api/miniapp/orders",
+        headers={"Authorization": f"Bearer {token}"},
+        json={
+            "country": "thailand",
+            "currencySell": "AEX",
+            "amountSell": 300,
+            "currencyBuy": "THB",
+            "amountBuy": 10860,
+            "rate": 36.2,
+            "methodGet": "qrcode",
+        },
+    )
+
+    assert response.status_code == 422
+    assert response.json()["code"] == "AEX_WITHDRAW_LIMIT_NOT_REACHED"
+    assert await db_session.scalar(select(func.count(Order.id))) == 0
+    assert await db_session.scalar(select(func.count(AexLedgerEntry.id))) == 0
+
+
+@pytest.mark.asyncio
+async def test_miniapp_aex_order_rolls_back_order_when_hold_fails(
+    api_client: tuple[AsyncClient, AsyncSession],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    client, db_session = api_client
+    from app.services import order_flow
+
+    _, _, customer = await seed_exchange_data(db_session)
+    await credit_aex_wallet(db_session, customer.id, 1000)
+    token = create_access_token({"sub": str(customer.id), "role": customer.role})
+    from app.services.aex import AexService
+
+    class _FailingAexService(AexService):
+        async def hold_order_withdrawal(self, *args, **kwargs):
+            raise RuntimeError("hold failed")
+
+    monkeypatch.setattr(order_flow, "AexService", _FailingAexService, raising=False)
+
+    with pytest.raises(RuntimeError, match="hold failed"):
+        await client.post(
+            "/api/miniapp/orders",
+            headers={"Authorization": f"Bearer {token}"},
+            json={
+                "country": "thailand",
+                "currencySell": "AEX",
+                "amountSell": 400,
+                "currencyBuy": "THB",
+                "amountBuy": 14480,
+                "rate": 36.2,
+                "methodGet": "qrcode",
+            },
+        )
+
+    await db_session.rollback()
+    assert await db_session.scalar(select(func.count(Order.id))) == 0
+    assert await db_session.scalar(select(func.count(AexLedgerEntry.id))) == 0
+
+
+@pytest.mark.asyncio
+async def test_completed_aex_order_debits_reserved_balance(
+    api_client: tuple[AsyncClient, AsyncSession],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    client, db_session = api_client
+    from app.services import order_status
+    from app.services.order_status import update_order_status
+
+    _, _, customer = await seed_exchange_data(db_session)
+    await credit_aex_wallet(db_session, customer.id, 1000)
+    token = create_access_token({"sub": str(customer.id), "role": customer.role})
+    monkeypatch.setattr(order_status, "notify_order_status_changed", AsyncMock())
+
+    response = await client.post(
+        "/api/miniapp/orders",
+        headers={"Authorization": f"Bearer {token}"},
+        json={
+            "country": "thailand",
+            "currencySell": "AEX",
+            "amountSell": 400,
+            "currencyBuy": "THB",
+            "amountBuy": 14480,
+            "rate": 36.2,
+            "methodGet": "qrcode",
+        },
+    )
+    order_id = response.json()["id"]
+
+    updated = await update_order_status(db_session, order_id=order_id, status=OrderStatus.COMPLETED)
+
+    wallet = await db_session.scalar(select(AexWallet).where(AexWallet.user_id == customer.id))
+    assert updated.status == int(OrderStatus.COMPLETED)
+    assert wallet is not None
+    assert wallet.balance_available == 600
+    assert wallet.balance_reserved == 0
+    entries = (
+        await db_session.execute(
+            select(AexLedgerEntry.entry_type, AexLedgerEntry.reference_type).where(
+                AexLedgerEntry.wallet_id == wallet.id
+            )
+        )
+    ).all()
+    assert entries == [("hold", "order_withdraw_hold"), ("debit", "order_withdraw_debit")]
+
+
+@pytest.mark.asyncio
+async def test_cancelled_aex_order_releases_reserved_balance(
+    api_client: tuple[AsyncClient, AsyncSession],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    client, db_session = api_client
+    from app.services import order_status
+    from app.services.order_status import update_order_status
+
+    _, _, customer = await seed_exchange_data(db_session)
+    await credit_aex_wallet(db_session, customer.id, 1000)
+    token = create_access_token({"sub": str(customer.id), "role": customer.role})
+    monkeypatch.setattr(order_status, "notify_order_status_changed", AsyncMock())
+
+    response = await client.post(
+        "/api/miniapp/orders",
+        headers={"Authorization": f"Bearer {token}"},
+        json={
+            "country": "thailand",
+            "currencySell": "AEX",
+            "amountSell": 400,
+            "currencyBuy": "THB",
+            "amountBuy": 14480,
+            "rate": 36.2,
+            "methodGet": "qrcode",
+        },
+    )
+    order_id = response.json()["id"]
+
+    updated = await update_order_status(db_session, order_id=order_id, status=OrderStatus.CANCELLED)
+
+    wallet = await db_session.scalar(select(AexWallet).where(AexWallet.user_id == customer.id))
+    assert updated.status == int(OrderStatus.CANCELLED)
+    assert wallet is not None
+    assert wallet.balance_available == 1000
+    assert wallet.balance_reserved == 0
+    entries = (
+        await db_session.execute(
+            select(AexLedgerEntry.entry_type, AexLedgerEntry.reference_type).where(
+                AexLedgerEntry.wallet_id == wallet.id
+            )
+        )
+    ).all()
+    assert entries == [("hold", "order_withdraw_hold"), ("release", "order_withdraw_release")]
+
+
+@pytest.mark.asyncio
+async def test_aex_order_status_retry_does_not_mutate_balance_twice(
+    api_client: tuple[AsyncClient, AsyncSession],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    client, db_session = api_client
+    from app.services import order_status
+    from app.services.order_status import update_order_status
+
+    _, _, customer = await seed_exchange_data(db_session)
+    await credit_aex_wallet(db_session, customer.id, 1000)
+    token = create_access_token({"sub": str(customer.id), "role": customer.role})
+    monkeypatch.setattr(order_status, "notify_order_status_changed", AsyncMock())
+
+    response = await client.post(
+        "/api/miniapp/orders",
+        headers={"Authorization": f"Bearer {token}"},
+        json={
+            "country": "thailand",
+            "currencySell": "AEX",
+            "amountSell": 400,
+            "currencyBuy": "THB",
+            "amountBuy": 14480,
+            "rate": 36.2,
+            "methodGet": "qrcode",
+        },
+    )
+    order_id = response.json()["id"]
+
+    await update_order_status(db_session, order_id=order_id, status=OrderStatus.COMPLETED)
+    await update_order_status(db_session, order_id=order_id, status=OrderStatus.COMPLETED)
+
+    wallet = await db_session.scalar(select(AexWallet).where(AexWallet.user_id == customer.id))
+    assert wallet is not None
+    assert wallet.balance_available == 600
+    assert wallet.balance_reserved == 0
+    assert await db_session.scalar(select(func.count(AexLedgerEntry.id))) == 2
+
+
+@pytest.mark.asyncio
+async def test_completed_aex_order_rejects_later_cancellation_without_balance_mutation(
+    api_client: tuple[AsyncClient, AsyncSession],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    client, db_session = api_client
+    from app.services import order_status
+    from app.services.order_status import update_order_status
+
+    _, _, customer = await seed_exchange_data(db_session)
+    await credit_aex_wallet(db_session, customer.id, 1000)
+    token = create_access_token({"sub": str(customer.id), "role": customer.role})
+    monkeypatch.setattr(order_status, "notify_order_status_changed", AsyncMock())
+
+    response = await client.post(
+        "/api/miniapp/orders",
+        headers={"Authorization": f"Bearer {token}"},
+        json={
+            "country": "thailand",
+            "currencySell": "AEX",
+            "amountSell": 400,
+            "currencyBuy": "THB",
+            "amountBuy": 14480,
+            "rate": 36.2,
+            "methodGet": "qrcode",
+        },
+    )
+    order_id = response.json()["id"]
+    await update_order_status(db_session, order_id=order_id, status=OrderStatus.COMPLETED)
+
+    with pytest.raises(AntExException) as exc_info:
+        await update_order_status(db_session, order_id=order_id, status=OrderStatus.CANCELLED)
+
+    wallet = await db_session.scalar(select(AexWallet).where(AexWallet.user_id == customer.id))
+    order = await db_session.get(Order, order_id)
+    assert exc_info.value.code == "AEX_ORDER_FINAL_STATUS_LOCKED"
+    assert order is not None
+    assert order.status == int(OrderStatus.COMPLETED)
+    assert wallet is not None
+    assert wallet.balance_available == 600
+    assert wallet.balance_reserved == 0
+    assert await db_session.scalar(select(func.count(AexLedgerEntry.id))) == 2
+
+
+@pytest.mark.asyncio
+async def test_completed_aex_order_does_not_credit_referral_bonus(
+    api_client: tuple[AsyncClient, AsyncSession],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    client, db_session = api_client
+    from app.services import order_status
+    from app.services.order_status import update_order_status
+
+    _, _, customer = await seed_exchange_data(db_session)
+    referrer = User(telegram_id=700003, username="referrer", first_name="Referrer")
+    db_session.add(referrer)
+    await db_session.flush()
+    customer.referred_by = referrer.id
+    await credit_aex_wallet(db_session, customer.id, 1000)
+    token = create_access_token({"sub": str(customer.id), "role": customer.role})
+    monkeypatch.setattr(order_status, "notify_order_status_changed", AsyncMock())
+
+    response = await client.post(
+        "/api/miniapp/orders",
+        headers={"Authorization": f"Bearer {token}"},
+        json={
+            "country": "thailand",
+            "currencySell": "AEX",
+            "amountSell": 400,
+            "currencyBuy": "THB",
+            "amountBuy": 14480,
+            "rate": 36.2,
+            "methodGet": "qrcode",
+        },
+    )
+    order_id = response.json()["id"]
+
+    await update_order_status(db_session, order_id=order_id, status=OrderStatus.COMPLETED)
+
+    referral_entries_count = await db_session.scalar(
+        select(func.count(AexLedgerEntry.id)).where(AexLedgerEntry.reference_type == "referral")
+    )
+    assert referral_entries_count == 0
 
 
 @pytest.mark.asyncio
