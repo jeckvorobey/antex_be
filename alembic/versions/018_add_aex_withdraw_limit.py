@@ -1,4 +1,4 @@
-"""Add AEX withdraw limit to config.
+"""Add ATXG withdraw limit to config.
 
 Revision ID: 018
 Revises: 017
@@ -18,7 +18,7 @@ depends_on = None
 
 
 def upgrade() -> None:
-    """Добавляет глобальный лимит вывода AEX в singleton config."""
+    """Добавляет глобальный лимит вывода ATXG в singleton config."""
     op.add_column(
         "Configs",
         sa.Column(
@@ -31,5 +31,5 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    """Удаляет глобальный лимит вывода AEX."""
+    """Удаляет глобальный лимит вывода ATXG."""
     op.drop_column("Configs", "aex_withdraw_limit")

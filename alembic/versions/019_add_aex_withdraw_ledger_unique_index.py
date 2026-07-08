@@ -1,4 +1,4 @@
-"""Add unique AEX withdraw ledger reference index.
+"""Add unique ATXG withdraw ledger reference index.
 
 Revision ID: 019
 Revises: 018

@@ -1,4 +1,4 @@
-"""Add AEX referral system tables.
+"""Add ATXG referral system tables.
 
 Revision ID: 014
 Revises: 013

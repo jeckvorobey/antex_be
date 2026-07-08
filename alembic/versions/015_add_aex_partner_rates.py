@@ -1,4 +1,4 @@
-"""Add AEX partner rates table.
+"""Add ATXG partner rates table.
 
 Revision ID: 015
 Revises: 014
