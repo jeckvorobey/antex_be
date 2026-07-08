@@ -21,6 +21,7 @@ class AexWalletOut(BaseModel):
     balance_available: str
     balance_reserved: str
     balance_total: str
+    is_exchange_available: bool
     createdAt: datetime
     updatedAt: datetime
 
@@ -202,13 +203,14 @@ class AdminReferralReferredByRequest(BaseModel):
 # ── Builders ─────────────────────────────────────────────────────────
 
 
-def build_aex_wallet_out(wallet) -> AexWalletOut:
+def build_aex_wallet_out(wallet, *, is_exchange_available: bool) -> AexWalletOut:
     return AexWalletOut(
         id=wallet.id,
         user_id=wallet.user_id,
         balance_available=str(wallet.balance_available),
         balance_reserved=str(wallet.balance_reserved),
         balance_total=str(wallet.balance_available + wallet.balance_reserved),
+        is_exchange_available=is_exchange_available,
         createdAt=wallet.createdAt,
         updatedAt=wallet.updatedAt,
     )

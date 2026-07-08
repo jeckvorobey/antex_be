@@ -14,6 +14,7 @@ from app.repositories.aex import (
     AexRateRepository,
     AexWalletRepository,
 )
+from app.repositories.config import ConfigRepository
 from app.schemas.aex import (
     AexAdminCreditRequest,
     AexAdminDebitRequest,
@@ -55,7 +56,11 @@ rate_service = AexRateService()
 async def get_wallet(db: DbDep, user: CurrentUser) -> AexWalletOut:
     """Получить баланс AEX текущего пользователя."""
     wallet = await aex_service.get_or_create_wallet(db, user.id)
-    return build_aex_wallet_out(wallet)
+    config = await ConfigRepository(db).get_or_create()
+    return build_aex_wallet_out(
+        wallet,
+        is_exchange_available=wallet.balance_available >= config.aex_withdraw_limit,
+    )
 
 
 @router.get("/operations", response_model=AexOperationsResponse)

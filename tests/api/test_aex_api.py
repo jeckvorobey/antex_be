@@ -14,6 +14,7 @@ from app.api import deps
 from app.core.security import create_access_token
 from app.models.admin import Admin
 from app.models.aex import AexPartnerRate, AexPersonalRate, AexRate
+from app.models.config import Config
 from app.models.user import User
 from app.repositories.aex import AexPartnerRateRepository, AexPersonalRateRepository
 
@@ -66,6 +67,29 @@ class TestAexWalletEndpoint:
         assert Decimal(data["balance_available"]) == Decimal("0")
         assert Decimal(data["balance_reserved"]) == Decimal("0")
         assert Decimal(data["balance_total"]) == Decimal("0")
+        assert data["is_exchange_available"] is False
+
+    async def test_get_wallet_exposes_backend_exchange_flag(
+        self, aex_api_client: tuple[AsyncClient, AsyncSession]
+    ) -> None:
+        client, db = aex_api_client
+        user = User(telegram_id=1001, username="wflag")
+        db.add_all([user, Config(id=1, enabled=True, aex_withdraw_limit=Decimal("100"))])
+        await db.flush()
+        await db.refresh(user)
+
+        from app.services.aex import AexService
+
+        await AexService().credit(db, user.id, Decimal("120"))
+        await db.commit()
+
+        response = await client.get(
+            "/api/aex/wallet",
+            headers={"Authorization": f"Bearer {_user_token(user.id)}"},
+        )
+
+        assert response.status_code == 200
+        assert response.json()["is_exchange_available"] is True
 
     async def test_get_wallet_requires_auth(
         self, aex_api_client: tuple[AsyncClient, AsyncSession]

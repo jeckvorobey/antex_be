@@ -25,6 +25,10 @@ from app.models.rate import Rate
 from app.models.user import User
 
 
+def _strip_bidi_marks(text: str) -> str:
+    return text.replace("\u2068", "").replace("\u2069", "")
+
+
 @pytest.fixture
 async def api_client(
     db_session: AsyncSession,
@@ -411,8 +415,148 @@ async def test_miniapp_aex_transactions_describes_referral_reward_by_public_orde
     assert response.status_code == 200
     item = response.json()["items"][0]
     assert item["type"] == "referral_reward"
-    assert item["description"] == "Реферальное начисление по заявке 2026060001"
+    assert _strip_bidi_marks(item["description"]) == "Реферальное начисление по заявке 2026060001"
     assert f"#{order.id}" not in item["description"]
+
+
+@pytest.mark.asyncio
+async def test_miniapp_aex_transactions_maps_withdraw_lifecycle(
+    api_client: tuple[AsyncClient, AsyncSession],
+) -> None:
+    client, db_session = api_client
+    _, _, customer = await seed_exchange_data(db_session)
+    wallet = AexWallet(user_id=customer.id)
+    db_session.add(wallet)
+    await db_session.flush()
+    order = Order(
+        UserId=customer.id,
+        CityId=None,
+        country=Country.THAILAND,
+        currencySell="AEX",
+        amountSell=200,
+        currencyBuy="THB",
+        amountBuy=7240,
+        rate=36.2,
+        status=int(OrderStatus.COMPLETED),
+        contactTelegram="@customer",
+        methodGet="qrcode",
+        publicNumber="2026070007",
+    )
+    db_session.add(order)
+    await db_session.flush()
+    db_session.add_all(
+        [
+            AexLedgerEntry(
+                wallet_id=wallet.id,
+                amount=100,
+                entry_type="credit",
+                reference_type="referral",
+                reference_id=None,
+                description="Referral reward",
+                createdAt=datetime(2026, 7, 1, 10, 0, tzinfo=UTC),
+            ),
+            AexLedgerEntry(
+                wallet_id=wallet.id,
+                amount=50,
+                entry_type="hold",
+                reference_type="order_withdraw_hold",
+                reference_id=str(order.id),
+                description="Reserved for withdrawal",
+                createdAt=datetime(2026, 7, 1, 11, 0, tzinfo=UTC),
+            ),
+            AexLedgerEntry(
+                wallet_id=wallet.id,
+                amount=-30,
+                entry_type="debit",
+                reference_type="order_withdraw_debit",
+                reference_id=str(order.id),
+                description="Debited for withdrawal",
+                createdAt=datetime(2026, 7, 1, 12, 0, tzinfo=UTC),
+            ),
+            AexLedgerEntry(
+                wallet_id=wallet.id,
+                amount=20,
+                entry_type="release",
+                reference_type="order_withdraw_release",
+                reference_id=str(order.id),
+                description="Released withdrawal reserve",
+                createdAt=datetime(2026, 7, 1, 13, 0, tzinfo=UTC),
+            ),
+        ]
+    )
+    await db_session.commit()
+    token = create_access_token({"sub": str(customer.id), "role": customer.role})
+
+    response = await client.get(
+        "/api/miniapp/aex/transactions",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+
+    assert response.status_code == 200
+    items = response.json()["items"]
+    assert [(item["type"], item["balanceAfter"]) for item in items] == [
+        ("refund", 70),
+        ("debited", 70),
+        ("reserved", 100),
+        ("referral_reward", 100),
+    ]
+    assert [_strip_bidi_marks(item["description"]) for item in items] == [
+        "Возврат по заявке 2026070007",
+        "Списано по заявке 2026070007",
+        "Зарезервировано по заявке 2026070007",
+        "Реферальное начисление",
+    ]
+
+
+@pytest.mark.asyncio
+async def test_miniapp_aex_transactions_respect_english_locale(
+    api_client: tuple[AsyncClient, AsyncSession],
+) -> None:
+    client, db_session = api_client
+    _, _, customer = await seed_exchange_data(db_session)
+    customer.language_code_app = "en"
+    wallet = AexWallet(user_id=customer.id)
+    db_session.add(wallet)
+    await db_session.flush()
+    order = Order(
+        UserId=customer.id,
+        CityId=None,
+        country=Country.THAILAND,
+        currencySell="RUB",
+        amountSell=10000,
+        currencyBuy="THB",
+        amountBuy=4000,
+        rate=0.4,
+        status=int(OrderStatus.COMPLETED),
+        contactTelegram="@customer",
+        methodGet="qrcode",
+        publicNumber="2026070008",
+    )
+    db_session.add(order)
+    await db_session.flush()
+    db_session.add(
+        AexLedgerEntry(
+            wallet_id=wallet.id,
+            amount=25,
+            entry_type="hold",
+            reference_type="order_withdraw_hold",
+            reference_id=str(order.id),
+            description="Reserved for withdrawal",
+            createdAt=datetime(2026, 7, 1, 11, 0, tzinfo=UTC),
+        )
+    )
+    await db_session.commit()
+    token = create_access_token({"sub": str(customer.id), "role": customer.role})
+
+    response = await client.get(
+        "/api/miniapp/aex/transactions",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+
+    assert response.status_code == 200
+    item = response.json()["items"][0]
+    assert item["type"] == "reserved"
+    assert _strip_bidi_marks(item["description"]) == "Reserved for order 2026070008"
 
 
 @pytest.mark.asyncio

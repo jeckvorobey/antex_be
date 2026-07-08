@@ -39,7 +39,12 @@ from app.schemas.miniapp import (
     build_miniapp_profile_summary,
 )
 from app.schemas.rate import build_rate_out
-from app.services.aex import AexService
+from app.services.aex import (
+    ORDER_WITHDRAW_DEBIT_REFERENCE,
+    ORDER_WITHDRAW_HOLD_REFERENCE,
+    ORDER_WITHDRAW_RELEASE_REFERENCE,
+    AexService,
+)
 from app.services.exchange import (
     COUNTRY_CURRENCY,
     COUNTRY_PRIORITY,
@@ -51,6 +56,7 @@ from app.services.exchange import (
 )
 from app.services.order_notifications import build_chat_url_for_user
 from app.services.referral import ReferralService, build_referral_link
+from app.telegram.i18n import get_translator
 
 DEFAULT_AMOUNT_SELL = 5000
 DEFAULT_PAIR = ("RUB", "THB")
@@ -100,6 +106,12 @@ def _map_miniapp_aex_transaction_type(entry) -> str:
         return "referral_reward"
     if entry.reference_type == "transfer":
         return "withdrawal"
+    if entry.reference_type == ORDER_WITHDRAW_HOLD_REFERENCE:
+        return "reserved"
+    if entry.reference_type == ORDER_WITHDRAW_DEBIT_REFERENCE:
+        return "debited"
+    if entry.reference_type == ORDER_WITHDRAW_RELEASE_REFERENCE:
+        return "refund"
     if entry.entry_type == "credit":
         return "bonus"
     return "adjustment"
@@ -117,7 +129,12 @@ def _extract_order_id(reference_id: str | None) -> int | None:
 async def _load_referral_order_numbers(db, entries) -> dict[int, str]:
     order_ids: set[int] = set()
     for entry in entries:
-        if entry.reference_type != "referral":
+        if entry.reference_type not in {
+            "referral",
+            ORDER_WITHDRAW_HOLD_REFERENCE,
+            ORDER_WITHDRAW_DEBIT_REFERENCE,
+            ORDER_WITHDRAW_RELEASE_REFERENCE,
+        }:
             continue
         order_id = _extract_order_id(entry.reference_id)
         if order_id is not None:
@@ -132,13 +149,32 @@ async def _load_referral_order_numbers(db, entries) -> dict[int, str]:
     return {order_id: public_number for order_id, public_number in result.all()}
 
 
-def _build_miniapp_aex_transaction_description(entry, order_numbers: dict[int, str]) -> str:
+def _build_miniapp_aex_transaction_description(
+    entry,
+    order_numbers: dict[int, str],
+    *,
+    locale: str | None = None,
+) -> str:
+    translate = get_translator(locale)
+    order_id = _extract_order_id(entry.reference_id)
+    public_number = order_numbers.get(order_id) if order_id is not None else None
+
     if entry.reference_type == "referral":
-        order_id = _extract_order_id(entry.reference_id)
-        public_number = order_numbers.get(order_id) if order_id is not None else None
         if public_number:
-            return f"Реферальное начисление по заявке {public_number}"
-        return "Реферальное начисление"
+            return translate("miniapp-aex-referral-reward-with-order", order_number=public_number)
+        return translate("miniapp-aex-referral-reward")
+    if entry.reference_type == ORDER_WITHDRAW_HOLD_REFERENCE:
+        if public_number:
+            return translate("miniapp-aex-withdraw-hold-with-order", order_number=public_number)
+        return translate("miniapp-aex-withdraw-hold")
+    if entry.reference_type == ORDER_WITHDRAW_DEBIT_REFERENCE:
+        if public_number:
+            return translate("miniapp-aex-withdraw-debit-with-order", order_number=public_number)
+        return translate("miniapp-aex-withdraw-debit")
+    if entry.reference_type == ORDER_WITHDRAW_RELEASE_REFERENCE:
+        if public_number:
+            return translate("miniapp-aex-withdraw-release-with-order", order_number=public_number)
+        return translate("miniapp-aex-withdraw-release")
 
     return entry.description or ""
 
@@ -147,6 +183,7 @@ async def list_miniapp_aex_transactions(
     db,
     user_id: int,
     *,
+    locale: str | None = None,
     limit: int = 20,
     offset: int = 0,
 ) -> MiniappAexTransactionsResponse:
@@ -155,7 +192,8 @@ async def list_miniapp_aex_transactions(
     running_balance = Decimal("0")
     items: list[MiniappAexTransactionItem] = []
     for entry in reversed(entries):
-        running_balance += entry.amount
+        if entry.entry_type not in {"hold", "release"}:
+            running_balance += entry.amount
         items.append(
             MiniappAexTransactionItem(
                 id=entry.id,
@@ -165,6 +203,7 @@ async def list_miniapp_aex_transactions(
                 description=_build_miniapp_aex_transaction_description(
                     entry,
                     referral_order_numbers,
+                    locale=locale,
                 ),
                 createdAt=entry.createdAt,
             )

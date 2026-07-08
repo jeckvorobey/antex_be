@@ -109,7 +109,13 @@ async def get_aex_transactions(
     limit: int = Query(default=20, ge=1, le=100),
     offset: int = Query(default=0, ge=0),
 ) -> MiniappAexTransactionsResponse:
-    return await list_miniapp_aex_transactions(db, user.id, limit=limit, offset=offset)
+    return await list_miniapp_aex_transactions(
+        db,
+        user.id,
+        locale=user.language_code_app or user.language_code,
+        limit=limit,
+        offset=offset,
+    )
 
 
 @router.post("/aex/referral/apply", response_model=ReferralApplyResponse)
