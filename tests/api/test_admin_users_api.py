@@ -110,6 +110,60 @@ async def test_admin_list_users_search_no_results(
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("query", "expected_username"),
+    [
+        ("multi_username", "multi_username"),
+        ("MultiFirst", "multi_username"),
+        ("MultiLast", "multi_username"),
+        ("880020", "multi_username"),
+        ("+660020", "phone_search"),
+    ],
+)
+async def test_admin_list_users_searches_identity_fields(
+    admin_users_api_client: tuple[AsyncClient, AsyncSession],
+    query: str,
+    expected_username: str,
+) -> None:
+    client, db_session = admin_users_api_client
+    admin = Admin(username="admin", password_hash="unused")
+    target = User(
+        telegram_id=880020,
+        username="multi_username",
+        first_name="MultiFirst",
+        last_name="MultiLast",
+        role=int(UserRole.USER),
+    )
+    phone_target = User(
+        telegram_id=880021,
+        username="phone_search",
+        first_name="Phone",
+        phone="+660020",
+        role=int(UserRole.USER),
+    )
+    other = User(
+        telegram_id=880022,
+        username="other_identity",
+        first_name="Other",
+        role=int(UserRole.USER),
+    )
+    db_session.add_all([admin, target, phone_target, other])
+    await db_session.flush()
+    token = create_access_token({"sub": str(admin.id), "type": "admin"})
+
+    response = await client.get(
+        "/api/admin/users",
+        params={"search": query},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["total"] == 1
+    assert data["items"][0]["username"] == expected_username
+
+
+@pytest.mark.asyncio
 async def test_admin_list_users_includes_referral_and_aex_columns(
     admin_users_api_client: tuple[AsyncClient, AsyncSession],
 ) -> None:

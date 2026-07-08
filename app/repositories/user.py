@@ -71,6 +71,7 @@ class UserRepository(BaseRepository[User]):
                 User.username.ilike(pattern),
                 User.first_name.ilike(pattern),
                 User.last_name.ilike(pattern),
+                User.phone.ilike(pattern),
             ]
 
             if query.isdigit():
@@ -97,6 +98,7 @@ class UserRepository(BaseRepository[User]):
                 User.username.ilike(pattern),
                 User.first_name.ilike(pattern),
                 User.last_name.ilike(pattern),
+                User.phone.ilike(pattern),
             ]
             if query.isdigit():
                 conditions.append(User.id == int(query))
