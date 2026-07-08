@@ -238,7 +238,12 @@ async def test_notify_order_status_changed_adds_summary_for_completed_order(
     assert "💸 Отдаёте: 1,500 ₮ USDT" in text
     assert "💰 Получаете: 47,250 🇹🇭 THB" in text
     assert "🧾 Способ получения: Доставка наличных" in text
-    assert "Спасибо, что воспользовались нашим сервисом!" in text
+    assert (
+        "Спасибо, что воспользовались нашим сервисом!\n\n"
+        "Мы ценим обратную связь. За видео-отзыв (кружок) предоставляем "
+        "<b>бонус 5$ к следующему обмену 💰</b>\n\n"
+        "⭐ Будем рады вашему отзыву. Это помогает нам становиться лучше."
+    ) in text
     reply_markup = cast(Any, bot.edited[0]["reply_markup"])
     assert reply_markup.inline_keyboard[0][0].text == "⭐ Оставить отзыв"
     assert reply_markup.inline_keyboard[1][0].text == "🏠 Главное меню"
