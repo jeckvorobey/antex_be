@@ -1,4 +1,4 @@
-"""Telegram-уведомления по операциям AEX (credit/debit)."""
+"""Telegram-уведомления по операциям ATXG (credit/debit)."""
 
 from __future__ import annotations
 
@@ -20,7 +20,7 @@ async def notify_aex_operation(
     amount: Decimal,
     description: str | None = None,
 ) -> None:
-    """Best-effort Telegram-уведомление пользователю после credit/debit AEX.
+    """Best-effort Telegram-уведомление пользователю после credit/debit ATXG.
 
     Args:
         db: AsyncSession (для загрузки пользователя)
@@ -32,7 +32,7 @@ async def notify_aex_operation(
     user = await UserRepository(db).get_one(user_id)
     if user is None or not user.telegram_id:
         logger.debug(
-            "AEX notification skipped: user %s not found or has no telegram_id",
+            "ATXG notification skipped: user %s not found or has no telegram_id",
             user_id,
         )
         return
@@ -40,7 +40,7 @@ async def notify_aex_operation(
     from app.telegram import bot as telegram_bot
 
     if telegram_bot.bot is None:
-        logger.warning("AEX notification skipped: bot is not initialized")
+        logger.warning("ATXG notification skipped: bot is not initialized")
         return
 
     text = _build_aex_notification_text(
@@ -56,7 +56,7 @@ async def notify_aex_operation(
         )
     except Exception:
         logger.exception(
-            "Failed to send AEX notification: user_id=%s operation=%s",
+            "Failed to send ATXG notification: user_id=%s operation=%s",
             user_id,
             operation_type,
         )
@@ -71,15 +71,15 @@ def _build_aex_notification_text(
     """Построить текст уведомления для Telegram."""
     if operation_type == "credit":
         emoji = "💰"
-        label = "Начисление AEX"
+        label = "Начисление ATXG"
     else:
         emoji = "💸"
-        label = "Списание AEX"
+        label = "Списание ATXG"
 
     lines = [
         f"{emoji} {label}",
         "",
-        f"Сумма: {amount} AEX",
+        f"Сумма: {amount} ATXG",
     ]
 
     if description:

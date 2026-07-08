@@ -1,4 +1,4 @@
-"""Модели AEX (внутренняя валюта) и реферальной системы."""
+"""Модели ATXG (внутренняя валюта) и реферальной системы."""
 
 from __future__ import annotations
 
@@ -15,7 +15,7 @@ if TYPE_CHECKING:
 
 
 class AexWallet(Base, TimestampMixin):
-    """Кошелёк AEX пользователя."""
+    """Кошелёк ATXG пользователя."""
 
     __tablename__ = "AexWallets"
 
@@ -47,7 +47,7 @@ class AexWallet(Base, TimestampMixin):
 
 
 class AexLedgerEntry(Base, TimestampMixin):
-    """Запись в журнале операций AEX."""
+    """Запись в журнале операций ATXG."""
 
     __tablename__ = "AexLedgerEntries"
 
@@ -115,7 +115,7 @@ class AexLedgerEntry(Base, TimestampMixin):
 
 
 class AexRate(Base, TimestampMixin):
-    """Глобальная ставка начисления AEX."""
+    """Глобальная ставка начисления ATXG."""
 
     __tablename__ = "AexRates"
 
@@ -129,7 +129,7 @@ class AexRate(Base, TimestampMixin):
 
 
 class AexPersonalRate(Base, TimestampMixin):
-    """Персональная ставка начисления AEX для пользователя."""
+    """Персональная ставка начисления ATXG для пользователя."""
 
     __tablename__ = "AexPersonalRates"
 
@@ -149,7 +149,7 @@ class AexPersonalRate(Base, TimestampMixin):
 
 
 class AexPartnerRate(Base, TimestampMixin):
-    """Партнёрская ставка начисления AEX для пользователя."""
+    """Партнёрская ставка начисления ATXG для пользователя."""
 
     __tablename__ = "AexPartnerRates"
 

@@ -1,4 +1,4 @@
-"""Схемы AEX (внутренняя валюта)."""
+"""Схемы ATXG (внутренняя валюта)."""
 # ruff: noqa: N815
 
 from __future__ import annotations

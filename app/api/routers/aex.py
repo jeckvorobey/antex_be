@@ -1,4 +1,4 @@
-"""Роутер AEX (внутренняя валюта)."""
+"""Роутер ATXG (внутренняя валюта)."""
 
 from __future__ import annotations
 
@@ -54,7 +54,7 @@ rate_service = AexRateService()
 
 @router.get("/wallet", response_model=AexWalletOut)
 async def get_wallet(db: DbDep, user: CurrentUser) -> AexWalletOut:
-    """Получить баланс AEX текущего пользователя."""
+    """Получить баланс ATXG текущего пользователя."""
     wallet = await aex_service.get_or_create_wallet(db, user.id)
     config = await ConfigRepository(db).get_or_create()
     return build_aex_wallet_out(
@@ -70,7 +70,7 @@ async def get_operations(
     limit: int = Query(default=50, ge=1, le=100),
     cursor: int | None = Query(default=None, ge=1),
 ) -> AexOperationsResponse:
-    """Получить историю операций AEX (cursor-based pagination)."""
+    """Получить историю операций ATXG (cursor-based pagination)."""
     entries, next_cursor = await aex_service.get_operations_cursor(
         db, user.id, limit=limit, cursor=cursor
     )
@@ -87,13 +87,13 @@ async def transfer_aex(
     db: DbDep,
     user: CurrentUser,
 ) -> dict[str, object]:
-    """Продажа AEX (AEX -> X). Hold + создание заявки на обмен."""
+    """Продажа ATXG (ATXG -> X). Hold + создание заявки на обмен."""
     entry = await aex_service.hold(
         db,
         user.id,
         body.amount,
         reference_type="transfer",
-        description="AEX transfer hold",
+        description="ATXG transfer hold",
     )
     await db.commit()
     return {"ok": True, "entry_id": entry.id, "amount": str(body.amount)}
@@ -104,7 +104,7 @@ async def transfer_aex(
 
 @admin_router.get("/rates", response_model=list[AexRateOut])
 async def list_rates(db: DbDep, _: AdminUser) -> list[AexRateOut]:
-    """Список ставок AEX (глобальная + персональные)."""
+    """Список ставок ATXG (глобальная + персональные)."""
     global_rate = await rate_service.get_global_rate(db)
     personal_rates, _ = await AexPersonalRateRepository(db).get_all_with_users()
     result = [build_aex_rate_out(global_rate)]
@@ -122,7 +122,7 @@ async def list_rates(db: DbDep, _: AdminUser) -> list[AexRateOut]:
 
 @admin_router.get("/rate", response_model=AexAdminRateOut)
 async def get_admin_rate(db: DbDep, _: AdminUser) -> AexAdminRateOut:
-    """Получить глобальную ставку AEX для админки."""
+    """Получить глобальную ставку ATXG для админки."""
     rate = await rate_service.get_global_rate(db)
     return build_admin_rate_out(rate)
 
@@ -133,7 +133,7 @@ async def update_admin_rate(
     db: DbDep,
     _: AdminUser,
 ) -> AexAdminRateOut:
-    """Обновить глобальную ставку AEX для админки."""
+    """Обновить глобальную ставку ATXG для админки."""
     rate = await rate_service.update_global_rate(db, percent_to_rate(body.rate))
     await db.commit()
     return build_admin_rate_out(rate)
@@ -146,7 +146,7 @@ async def list_personal_rates(
     limit: int = Query(default=50, ge=1, le=100),
     offset: int = Query(default=0, ge=0),
 ) -> PaginatedAexRateRowsResponse:
-    """Список персональных ставок AEX."""
+    """Список персональных ставок ATXG."""
     rates, total = await AexPersonalRateRepository(db).get_all_with_users(
         limit=limit,
         offset=offset,
@@ -165,7 +165,7 @@ async def create_personal_rate(
     db: DbDep,
     _: AdminUser,
 ) -> AexAdminRateRowOut:
-    """Создать персональную ставку AEX."""
+    """Создать персональную ставку ATXG."""
     rate = await rate_service.set_personal_rate(db, body.userId, percent_to_rate(body.rate))
     await db.commit()
     return build_admin_rate_row_out(rate)
@@ -178,7 +178,7 @@ async def update_personal_rate(
     db: DbDep,
     _: AdminUser,
 ) -> AexAdminRateRowOut:
-    """Обновить персональную ставку AEX."""
+    """Обновить персональную ставку ATXG."""
     repo = AexPersonalRateRepository(db)
     rate = await repo.get_by_id(rate_id)
     if rate is None:
@@ -194,7 +194,7 @@ async def delete_personal_rate(
     db: DbDep,
     _: AdminUser,
 ) -> dict[str, bool]:
-    """Удалить персональную ставку AEX."""
+    """Удалить персональную ставку ATXG."""
     repo = AexPersonalRateRepository(db)
     rate = await repo.get_by_id(rate_id)
     if rate is None:
@@ -211,7 +211,7 @@ async def list_partner_rates(
     limit: int = Query(default=50, ge=1, le=100),
     offset: int = Query(default=0, ge=0),
 ) -> PaginatedAexRateRowsResponse:
-    """Список партнёрских ставок AEX."""
+    """Список партнёрских ставок ATXG."""
     rates, total = await AexPartnerRateRepository(db).get_all_with_users(limit=limit, offset=offset)
     return PaginatedAexRateRowsResponse(
         items=[build_admin_rate_row_out(rate) for rate in rates],
@@ -227,7 +227,7 @@ async def create_partner_rate(
     db: DbDep,
     _: AdminUser,
 ) -> AexAdminRateRowOut:
-    """Создать партнёрскую ставку AEX."""
+    """Создать партнёрскую ставку ATXG."""
     rate = await rate_service.set_partner_rate(db, body.userId, percent_to_rate(body.rate))
     await db.commit()
     return build_admin_rate_row_out(rate)
@@ -240,7 +240,7 @@ async def update_partner_rate(
     db: DbDep,
     _: AdminUser,
 ) -> AexAdminRateRowOut:
-    """Обновить партнёрскую ставку AEX."""
+    """Обновить партнёрскую ставку ATXG."""
     repo = AexPartnerRateRepository(db)
     rate = await repo.get_by_id(rate_id)
     if rate is None:
@@ -256,7 +256,7 @@ async def delete_partner_rate(
     db: DbDep,
     _: AdminUser,
 ) -> dict[str, bool]:
-    """Удалить партнёрскую ставку AEX."""
+    """Удалить партнёрскую ставку ATXG."""
     repo = AexPartnerRateRepository(db)
     rate = await repo.get_by_id(rate_id)
     if rate is None:
@@ -273,7 +273,7 @@ async def update_rate(
     db: DbDep,
     _: AdminUser,
 ) -> AexRateOut:
-    """Обновить глобальную ставку AEX."""
+    """Обновить глобальную ставку ATXG."""
     repo = AexRateRepository(db)
     rate = await repo.get_by_id(rate_id)
     if not rate:
@@ -291,7 +291,7 @@ async def list_wallets(
     offset: int = Query(default=0, ge=0),
     search: str | None = Query(default=None),
 ) -> PaginatedAexWalletsResponse:
-    """Список всех AEX-кошельков."""
+    """Список всех ATXG-кошельков."""
     wallets, total = await AexWalletRepository(db).get_all_with_users(
         limit=limit,
         offset=offset,
@@ -316,7 +316,7 @@ async def list_all_operations(
     date_from: str | None = Query(default=None, alias="dateFrom"),
     date_to: str | None = Query(default=None, alias="dateTo"),
 ) -> PaginatedAexOperationsResponse:
-    """Журнал всех операций AEX."""
+    """Журнал всех операций ATXG."""
     repo = AexLedgerEntryRepository(db)
     parsed_date_from = (
         None
@@ -353,7 +353,7 @@ async def admin_credit(
     db: DbDep,
     _: AdminUser,
 ) -> dict[str, object]:
-    """Ручное начисление AEX."""
+    """Ручное начисление ATXG."""
     entry = await aex_service.credit(
         db,
         body.user_id,
@@ -378,7 +378,7 @@ async def admin_debit(
     db: DbDep,
     _: AdminUser,
 ) -> dict[str, object]:
-    """Ручное списание AEX."""
+    """Ручное списание ATXG."""
     try:
         entry = await aex_service.debit(
             db,
@@ -391,7 +391,7 @@ async def admin_debit(
         if getattr(exc, "code", None) == "INSUFFICIENT_FUNDS":
             raise HTTPException(
                 status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-                detail="Insufficient AEX balance",
+                detail="Insufficient ATXG balance",
             ) from exc
         raise
     await db.commit()

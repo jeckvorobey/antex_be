@@ -1,4 +1,4 @@
-"""Enums для AEX (внутренняя валюта)."""
+"""Enums для ATXG (внутренняя валюта)."""
 
 from __future__ import annotations
 
@@ -6,7 +6,7 @@ from enum import StrEnum
 
 
 class AexLedgerEntryType(StrEnum):
-    """Типы проводок в журнале AEX."""
+    """Типы проводок в журнале ATXG."""
 
     CREDIT = "credit"
     DEBIT = "debit"
@@ -15,7 +15,7 @@ class AexLedgerEntryType(StrEnum):
 
 
 class AexOperationType(StrEnum):
-    """Типы операций AEX (для обратной совместимости)."""
+    """Типы операций ATXG (для обратной совместимости)."""
 
     REFERRAL_BONUS = "referral_bonus"
     ADMIN_CREDIT = "admin_credit"

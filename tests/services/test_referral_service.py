@@ -264,7 +264,7 @@ class TestReferralStats:
         code = await service.get_or_create_referral_code(db_session, referrer)
         await service.bind_referral(db_session, referred, code)
 
-        # Начислить AEX рефереру за реферала
+        # Начислить ATXG рефереру за реферала
         aex_service = AexService()
         await aex_service.credit(
             db_session,

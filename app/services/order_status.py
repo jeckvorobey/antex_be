@@ -19,8 +19,8 @@ from app.telegram import messages
 from app.telegram.i18n import get_user_translator
 
 logger = logging.getLogger(__name__)
-AEX_CURRENCY = "AEX"
-_AEX_TERMINAL_STATUSES = frozenset({OrderStatus.COMPLETED, OrderStatus.CANCELLED})
+TOKEN_CURRENCY = "ATXG"
+_TOKEN_TERMINAL_STATUSES = frozenset({OrderStatus.COMPLETED, OrderStatus.CANCELLED})
 
 
 async def _notify_referral_reversal(
@@ -157,7 +157,7 @@ async def update_order_status(
                         )
                         await db.commit()
                         logger.info(
-                            "Reversed %s AEX from user %s for cancelled order %s",
+                            "Reversed %s ATXG from user %s for cancelled order %s",
                             referral_entry.amount,
                             wallet.user_id,
                             order_id,
@@ -170,7 +170,7 @@ async def update_order_status(
                         )
                     else:
                         logger.warning(
-                            "Insufficient AEX balance for reversal:"
+                            "Insufficient ATXG balance for reversal:"
                             " user=%s has=%s needs=%s order=%s",
                             wallet.user_id,
                             wallet.balance_available,
@@ -179,7 +179,7 @@ async def update_order_status(
                         )
         except Exception:
             logger.exception(
-                "Failed to reverse AEX referral bonus for cancelled order_id=%s",
+                "Failed to reverse ATXG referral bonus for cancelled order_id=%s",
                 order_id,
             )
 
@@ -200,19 +200,19 @@ async def update_order_status(
 
 
 def _is_aex_withdrawal_order(order: object) -> bool:
-    """Проверить, что заявка расходует внутреннюю валюту AEX."""
-    return str(getattr(order, "currencySell", "")).upper() == AEX_CURRENCY
+    """Проверить, что заявка расходует внутренний токен."""
+    return str(getattr(order, "currencySell", "")).upper() == TOKEN_CURRENCY
 
 
 def _validate_aex_status_transition(order: object, target_status: OrderStatus) -> None:
-    """Запретить смену финального AEX-статуса без отдельной компенсационной операции."""
+    """Запретить смену финального ATXG-статуса без отдельной компенсационной операции."""
     if not _is_aex_withdrawal_order(order):
         return
 
     current_status = OrderStatus(int(order.status))
-    if current_status in _AEX_TERMINAL_STATUSES:
+    if current_status in _TOKEN_TERMINAL_STATUSES:
         raise AntExException(
-            "AEX order final status cannot be changed",
-            code="AEX_ORDER_FINAL_STATUS_LOCKED",
+            "ATXG order final status cannot be changed",
+            code="ATXG_ORDER_FINAL_STATUS_LOCKED",
             status_code=422,
         )

@@ -2,7 +2,7 @@
 """Сервис реферальной системы.
 
 Генерация referral-кода, валидация deep-link, связывание пользователей,
-начисление AEX за обмены рефералов.
+начисление ATXG за обмены рефералов.
 """
 
 from __future__ import annotations
@@ -19,7 +19,7 @@ from app.models.aex import AexLedgerEntry
 from app.models.user import User
 from app.repositories.rate import RateRepository
 from app.repositories.user import UserRepository
-from app.services.aex_rate import AEX_RATE_QUANTIZER
+from app.services.aex_rate import ATXG_RATE_QUANTIZER
 from app.telegram import messages
 from app.telegram.i18n import get_user_translator
 
@@ -147,11 +147,11 @@ class ReferralService:
         db: AsyncSession,
         user: User,
     ) -> tuple[int, Decimal]:
-        """Получить статистику рефералов: (количество, общий заработок AEX)."""
+        """Получить статистику рефералов: (количество, общий заработок ATXG)."""
         repo = UserRepository(db)
         total_referrals = await repo.count_referrals(user.id)
 
-        # Подсчитать общий заработок через AEX ledger
+        # Подсчитать общий заработок через ATXG ledger
         from app.repositories.aex import AexWalletRepository
 
         wallet = await AexWalletRepository(db).get_by_user_id(user.id)
@@ -180,7 +180,7 @@ class ReferralService:
         user: User,
         referral_user_ids: list[int],
     ) -> dict[int, Decimal]:
-        """Вернуть сумму AEX-начислений по каждому приглашённому пользователю."""
+        """Вернуть сумму ATXG-начислений по каждому приглашённому пользователю."""
         if not referral_user_ids:
             return {}
 
@@ -217,9 +217,9 @@ class ReferralService:
         currency_sell: str = "USDT",
         currency_buy: str | None = None,
     ) -> Decimal:
-        """Начислить AEX пригласившему за обмен реферала.
+        """Начислить ATXG пригласившему за обмен реферала.
 
-        Возвращает начисленную сумму AEX.
+        Возвращает начисленную сумму ATXG.
         `order_amount` передаётся в валюте продажи заявки.
         """
         user_repo = UserRepository(db)
@@ -243,12 +243,12 @@ class ReferralService:
             currency_sell=currency_sell,
             currency_buy=currency_buy,
         )
-        aex_amount = (aex_base_amount * rate).quantize(AEX_RATE_QUANTIZER)
+        aex_amount = (aex_base_amount * rate).quantize(ATXG_RATE_QUANTIZER)
 
         if aex_amount <= 0:
             return Decimal("0")
 
-        # Начислить AEX
+        # Начислить ATXG
         from app.services.aex import AexService
 
         aex_service = AexService()
@@ -268,7 +268,7 @@ class ReferralService:
         )
 
         logger.info(
-            "Credited %s AEX to user %s for referral order %s (rate=%s base=%s %s)",
+            "Credited %s ATXG to user %s for referral order %s (rate=%s base=%s %s)",
             aex_amount,
             referrer_id,
             order_id,
@@ -374,13 +374,13 @@ class ReferralService:
         currency_sell: str,
         currency_buy: str | None,
     ) -> Decimal:
-        """Привести сумму заявки к USDT-базе, от которой начисляется AEX."""
+        """Привести сумму заявки к USDT-базе, от которой начисляется ATXG."""
         if order_amount <= 0:
             return Decimal("0")
 
         sell = currency_sell.upper()
         if sell == "USDT":
-            return order_amount.quantize(AEX_RATE_QUANTIZER)
+            return order_amount.quantize(ATXG_RATE_QUANTIZER)
 
         if sell != "RUB":
             raise AntExException(
@@ -409,7 +409,7 @@ class ReferralService:
             )
 
         usdt_rub = Decimal(str(usdt_pair.price)) / Decimal(str(rub_pair.price))
-        return (order_amount / usdt_rub).quantize(AEX_RATE_QUANTIZER)
+        return (order_amount / usdt_rub).quantize(ATXG_RATE_QUANTIZER)
 
     async def _notify_referral_bonus(
         self,

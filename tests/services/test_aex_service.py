@@ -14,7 +14,7 @@ from app.services.aex import AexService
 
 @pytest.fixture
 async def user(db_session: AsyncSession) -> User:
-    user = User(telegram_id=100, username="aex_user", first_name="AEX")
+    user = User(telegram_id=100, username="aex_user", first_name="ATXG")
     db_session.add(user)
     await db_session.flush()
     await db_session.refresh(user)
@@ -103,7 +103,7 @@ class TestAexServiceDebit:
     ) -> None:
         await service.credit(db_session, user.id, Decimal("10"))
 
-        with pytest.raises(AntExException, match="Insufficient AEX balance"):
+        with pytest.raises(AntExException, match="Insufficient ATXG balance"):
             await service.debit(db_session, user.id, Decimal("20"))
 
     async def test_debit_rejects_zero_amount(
@@ -142,7 +142,7 @@ class TestAexServiceHoldRelease:
     ) -> None:
         await service.credit(db_session, user.id, Decimal("10"))
 
-        with pytest.raises(AntExException, match="Insufficient AEX balance"):
+        with pytest.raises(AntExException, match="Insufficient ATXG balance"):
             await service.hold(db_session, user.id, Decimal("20"))
 
     async def test_release_rejects_insufficient_reserved(
@@ -235,7 +235,7 @@ class TestAexServiceDoubleReserve:
         await service.credit(db_session, user.id, Decimal("100"))
         await service.hold(db_session, user.id, Decimal("80"))
 
-        with pytest.raises(AntExException, match="Insufficient AEX balance"):
+        with pytest.raises(AntExException, match="Insufficient ATXG balance"):
             await service.hold(db_session, user.id, Decimal("30"))
 
     async def test_hold_after_partial_release(
@@ -436,7 +436,7 @@ class TestAexServiceGetOperations:
 
 
 class TestAexServiceOrderWithdrawalIdempotency:
-    """TDD: операции вывода AEX идемпотентны по order id."""
+    """TDD: операции вывода ATXG идемпотентны по order id."""
 
     async def test_hold_order_withdrawal_is_idempotent_by_order_id(
         self, db_session: AsyncSession, user: User, service: AexService

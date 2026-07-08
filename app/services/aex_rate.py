@@ -1,4 +1,4 @@
-"""Сервис управления ставками AEX.
+"""Сервис управления ставками ATXG.
 
 Глобальная ставка + персональные ставки.
 """
@@ -17,35 +17,35 @@ from app.repositories.aex import (
     AexRateRepository,
 )
 
-DEFAULT_AEX_RATE = Decimal("0.002")
-AEX_RATE_QUANTIZER = Decimal("0.000001")
-AEX_PERCENT_MULTIPLIER = Decimal("100")
+DEFAULT_ATXG_RATE = Decimal("0.002")
+ATXG_RATE_QUANTIZER = Decimal("0.000001")
+ATXG_PERCENT_MULTIPLIER = Decimal("100")
 
 
 def normalize_aex_rate(rate: Decimal) -> Decimal:
-    """Нормализовать долю ставки AEX для хранения и ответов."""
-    return rate.quantize(AEX_RATE_QUANTIZER)
+    """Нормализовать долю ставки ATXG для хранения и ответов."""
+    return rate.quantize(ATXG_RATE_QUANTIZER)
 
 
 def rate_to_percent(rate: Decimal) -> Decimal:
     """Преобразовать внутреннюю долю ставки в процент для UI/admin API."""
-    return (rate * AEX_PERCENT_MULTIPLIER).quantize(AEX_RATE_QUANTIZER)
+    return (rate * ATXG_PERCENT_MULTIPLIER).quantize(ATXG_RATE_QUANTIZER)
 
 
 def percent_to_rate(percent: Decimal) -> Decimal:
     """Преобразовать пользовательский процент в внутреннюю долю ставки."""
-    return normalize_aex_rate(percent / AEX_PERCENT_MULTIPLIER)
+    return normalize_aex_rate(percent / ATXG_PERCENT_MULTIPLIER)
 
 
 class AexRateService:
-    """Доменный сервис управления ставками AEX."""
+    """Доменный сервис управления ставками ATXG."""
 
     async def get_global_rate(self, db: AsyncSession) -> AexRate:
         """Получить текущую глобальную ставку."""
         repo = AexRateRepository(db)
         rate = await repo.get_current()
         if rate is None:
-            rate = await repo.create(global_rate=DEFAULT_AEX_RATE)
+            rate = await repo.create(global_rate=DEFAULT_ATXG_RATE)
         return rate
 
     async def update_global_rate(

@@ -8,6 +8,7 @@ from app.api.deps import DbDep, MiniappUser
 from app.schemas.aex import ReferralApplyRequest, ReferralApplyResponse
 from app.schemas.miniapp import (
     MiniappAexReferralResponse,
+    MiniappAexReferralsResponse,
     MiniappAexTransactionsResponse,
     MiniappCitiesResponse,
     MiniappExchangeScreenResponse,
@@ -26,6 +27,7 @@ from app.services.miniapp import (
     get_miniapp_exchange,
     get_miniapp_home,
     get_miniapp_profile_screen,
+    list_miniapp_aex_referrals,
     list_miniapp_aex_transactions,
     list_miniapp_cities,
     list_miniapp_orders,
@@ -100,6 +102,16 @@ async def get_profile(db: DbDep, user: MiniappUser) -> MiniappProfileScreenRespo
 @router.get("/aex/referral", response_model=MiniappAexReferralResponse)
 async def get_aex_referral(db: DbDep, user: MiniappUser) -> MiniappAexReferralResponse:
     return await get_miniapp_aex_referral(db, user)
+
+
+@router.get("/aex/referrals", response_model=MiniappAexReferralsResponse)
+async def get_aex_referrals(
+    db: DbDep,
+    user: MiniappUser,
+    limit: int = Query(default=20, ge=1, le=100),
+    offset: int = Query(default=0, ge=0),
+) -> MiniappAexReferralsResponse:
+    return await list_miniapp_aex_referrals(db, user, limit=limit, offset=offset)
 
 
 @router.get("/aex/transactions", response_model=MiniappAexTransactionsResponse)

@@ -24,8 +24,8 @@ from app.services.order_numbers import OrderNumberService
 
 logger = logging.getLogger(__name__)
 MAX_ACTIVE_ORDERS_PER_USER = 10
-AEX_CURRENCY = "AEX"
-AEX_RATE_BASE_CURRENCY = "USDT"
+TOKEN_CURRENCY = "ATXG"
+TOKEN_RATE_BASE_CURRENCY = "USDT"
 
 MIN_AMOUNT_BY_METHOD: dict[str, dict[str, int]] = {
     MethodGet.CASH: {"RUB": 25_000, "USDT": 500},
@@ -68,7 +68,7 @@ async def create_order_for_user(
     _validate_country_and_method(payload, city)
     _validate_min_amount(payload)
     await _validate_rate_pair_exists(db, payload)
-    currency_sell = payload.currency_sell.upper()
+    currency_sell = _normalize_token_currency(payload.currency_sell)
     currency_buy = payload.currency_buy.upper()
     _validate_quote_country(payload.country, currency_buy)
     await _validate_aex_withdrawal_balance(db, user.id, payload)
@@ -248,8 +248,8 @@ def get_min_amount(method: str, currency: str) -> int | None:
 def _normalize_min_amount_currency(currency: str) -> str:
     """Вернуть валюту, по которой нужно искать лимит минимальной суммы."""
     normalized = currency.upper()
-    if normalized == AEX_CURRENCY:
-        return AEX_RATE_BASE_CURRENCY
+    if normalized == TOKEN_CURRENCY:
+        return TOKEN_RATE_BASE_CURRENCY
     return normalized
 
 
@@ -257,12 +257,12 @@ def _resolve_rate_pair_key(
     exchange_service: ExchangeService,
     payload: MiniappOrderCreate,
 ) -> str | None:
-    """Вернуть ключ пары в `Rates` для заявки, включая AEX через USDT-базу."""
+    """Вернуть ключ пары в `Rates` для заявки, включая ATXG через USDT-базу."""
     if _is_aex_withdrawal(payload):
         buy = payload.currency_buy.upper()
         if buy not in CANONICAL_BUY_CURRENCIES:
             return None
-        return f"{AEX_RATE_BASE_CURRENCY}{buy}"
+        return f"{TOKEN_RATE_BASE_CURRENCY}{buy}"
 
     pair = exchange_service.normalize_pair(payload.currency_sell, payload.currency_buy)
     if pair is None:
@@ -271,8 +271,15 @@ def _resolve_rate_pair_key(
 
 
 def _is_aex_withdrawal(payload: MiniappOrderCreate) -> bool:
-    """Проверить, что заявка выводит внутреннюю валюту AEX."""
-    return payload.currency_sell.upper() == AEX_CURRENCY
+    """Проверить, что заявка выводит внутренний токен."""
+    return payload.currency_sell.upper() == TOKEN_CURRENCY
+
+
+def _normalize_token_currency(currency: str) -> str:
+    normalized = currency.upper()
+    if normalized == TOKEN_CURRENCY:
+        return TOKEN_CURRENCY
+    return normalized
 
 
 async def _validate_aex_withdrawal_balance(
@@ -280,7 +287,7 @@ async def _validate_aex_withdrawal_balance(
     user_id: int,
     payload: MiniappOrderCreate,
 ) -> None:
-    """Проверить лимит и доступный баланс перед резервированием AEX."""
+    """Проверить лимит и доступный баланс перед резервированием ATXG."""
     if not _is_aex_withdrawal(payload):
         return
 
@@ -290,24 +297,24 @@ async def _validate_aex_withdrawal_balance(
 
     if wallet.balance_available < config.aex_withdraw_limit:
         raise AntExException(
-            "AEX withdraw limit is not reached",
-            code="AEX_WITHDRAW_LIMIT_NOT_REACHED",
+            "ATXG withdraw limit is not reached",
+            code="ATXG_WITHDRAW_LIMIT_NOT_REACHED",
             status_code=422,
             params={
                 "minAmount": str(config.aex_withdraw_limit),
                 "available": str(wallet.balance_available),
-                "currency": AEX_CURRENCY,
+                "currency": TOKEN_CURRENCY,
             },
         )
 
     if wallet.balance_available < amount:
         raise AntExException(
-            "Insufficient AEX balance",
-            code="AEX_INSUFFICIENT_BALANCE",
+            "Insufficient ATXG balance",
+            code="ATXG_INSUFFICIENT_BALANCE",
             status_code=422,
             params={
                 "available": str(wallet.balance_available),
                 "amount": str(amount),
-                "currency": AEX_CURRENCY,
+                "currency": TOKEN_CURRENCY,
             },
         )

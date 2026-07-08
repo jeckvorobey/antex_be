@@ -1,4 +1,4 @@
-"""TDD тесты для API AEX и реферальной системы."""
+"""TDD тесты для API ATXG и реферальной системы."""
 
 from __future__ import annotations
 
@@ -43,7 +43,7 @@ def _admin_token(admin_id: int) -> str:
     return create_access_token({"sub": str(admin_id), "type": "admin"})
 
 
-# ─── User AEX API ────────────────────────────────────────────────────────────
+# ─── User ATXG API ────────────────────────────────────────────────────────────
 
 
 class TestAexWalletEndpoint:
@@ -490,7 +490,7 @@ class TestReferralStatsEndpoint:
         assert data["total_earned"] == "0"
 
 
-# ─── Admin AEX API ───────────────────────────────────────────────────────────
+# ─── Admin ATXG API ───────────────────────────────────────────────────────────
 
 
 class TestAdminAexRatesEndpoint:

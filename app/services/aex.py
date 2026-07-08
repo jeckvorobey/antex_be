@@ -1,4 +1,4 @@
-"""Сервис AEX — управление кошельками и операциями.
+"""Сервис ATXG — управление кошельками и операциями.
 # ruff: noqa: RUF002
 
 All balance operations are atomic: SELECT FOR UPDATE + transaction.
@@ -22,7 +22,7 @@ ORDER_WITHDRAW_RELEASE_REFERENCE = "order_withdraw_release"
 
 
 class AexService:
-    """Доменный сервис управления AEX-кошельками."""
+    """Доменный сервис управления ATXG-кошельками."""
 
     async def get_or_create_wallet(
         self,
@@ -54,7 +54,7 @@ class AexService:
         reference_id: str | None = None,
         description: str | None = None,
     ) -> AexLedgerEntry:
-        """Начислить AEX на available-баланс."""
+        """Начислить ATXG на available-баланс."""
         if amount <= 0:
             raise self._invalid_amount_error()
 
@@ -81,7 +81,7 @@ class AexService:
         reference_id: str | None = None,
         description: str | None = None,
     ) -> AexLedgerEntry:
-        """Списать AEX s available-баланса."""
+        """Списать ATXG s available-баланса."""
         if amount <= 0:
             raise self._invalid_amount_error()
 
@@ -111,7 +111,7 @@ class AexService:
         reference_id: str | None = None,
         description: str | None = None,
     ) -> AexLedgerEntry:
-        """Заморозить AEX (перевести из available в reserved)."""
+        """Заморозить ATXG (перевести из available в reserved)."""
         if amount <= 0:
             raise self._invalid_amount_error()
 
@@ -142,7 +142,7 @@ class AexService:
         reference_id: str | None = None,
         description: str | None = None,
     ) -> AexLedgerEntry:
-        """Разморозить AEX (перевести из reserved в available)."""
+        """Разморозить ATXG (перевести из reserved в available)."""
         if amount <= 0:
             raise self._invalid_amount_error()
 
@@ -173,7 +173,7 @@ class AexService:
         reference_id: str | None = None,
         description: str | None = None,
     ) -> AexLedgerEntry:
-        """Списать AEX из reserved-баланса (завершение sale после hold)."""
+        """Списать ATXG из reserved-баланса (завершение sale после hold)."""
         if amount <= 0:
             raise self._invalid_amount_error()
 
@@ -201,7 +201,7 @@ class AexService:
         *,
         order_id: int,
     ) -> AexLedgerEntry:
-        """Идемпотентно зарезервировать AEX для заявки на вывод."""
+        """Идемпотентно зарезервировать ATXG для заявки на вывод."""
         existing = await self._get_entry_by_reference(
             db,
             reference_type=ORDER_WITHDRAW_HOLD_REFERENCE,
@@ -216,7 +216,7 @@ class AexService:
             amount,
             reference_type=ORDER_WITHDRAW_HOLD_REFERENCE,
             reference_id=str(order_id),
-            description=f"AEX withdrawal hold for order #{order_id}",
+            description=f"ATXG withdrawal hold for order #{order_id}",
         )
 
     async def debit_order_withdrawal(
@@ -227,7 +227,7 @@ class AexService:
         *,
         order_id: int,
     ) -> AexLedgerEntry:
-        """Идемпотентно списать зарезервированный AEX после завершения заявки."""
+        """Идемпотентно списать зарезервированный ATXG после завершения заявки."""
         existing = await self._get_entry_by_reference(
             db,
             reference_type=ORDER_WITHDRAW_DEBIT_REFERENCE,
@@ -242,7 +242,7 @@ class AexService:
             amount,
             reference_type=ORDER_WITHDRAW_DEBIT_REFERENCE,
             reference_id=str(order_id),
-            description=f"AEX withdrawal debit for completed order #{order_id}",
+            description=f"ATXG withdrawal debit for completed order #{order_id}",
         )
 
     async def release_order_withdrawal(
@@ -253,7 +253,7 @@ class AexService:
         *,
         order_id: int,
     ) -> AexLedgerEntry:
-        """Идемпотентно освободить AEX-резерв после отмены заявки."""
+        """Идемпотентно освободить ATXG-резерв после отмены заявки."""
         existing = await self._get_entry_by_reference(
             db,
             reference_type=ORDER_WITHDRAW_RELEASE_REFERENCE,
@@ -268,7 +268,7 @@ class AexService:
             amount,
             reference_type=ORDER_WITHDRAW_RELEASE_REFERENCE,
             reference_id=str(order_id),
-            description=f"AEX withdrawal release for cancelled order #{order_id}",
+            description=f"ATXG withdrawal release for cancelled order #{order_id}",
         )
 
     async def get_operations(
@@ -400,7 +400,7 @@ class AexService:
     @staticmethod
     def _insufficient_funds_error() -> AntExException:
         return AntExException(
-            "Insufficient AEX balance",
+            "Insufficient ATXG balance",
             code="INSUFFICIENT_FUNDS",
             status_code=422,
         )

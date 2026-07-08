@@ -1,4 +1,4 @@
-"""Тесты реферальной программы AEX."""
+"""Тесты реферальной программы ATXG."""
 
 from __future__ import annotations
 
@@ -125,7 +125,7 @@ class TestAexWalletRepository:
         assert wallet1.id == wallet2.id
 
 
-# ── AEX Service: Credit/Debit ────────────────────────────────────────
+# ── ATXG Service: Credit/Debit ────────────────────────────────────────
 
 
 @pytest.mark.asyncio
@@ -210,7 +210,7 @@ class TestAexServiceOperations:
         assert len(entries) == 2
 
 
-# ── AEX Rate Service ─────────────────────────────────────────────────
+# ── ATXG Rate Service ─────────────────────────────────────────────────
 
 
 @pytest.mark.asyncio

@@ -179,6 +179,33 @@ class MiniappAexReferralResponse(BaseModel):
     programConfig: MiniappReferralProgramConfig
 
 
+class MiniappAexReferralUserItem(BaseModel):
+    id: int
+    displayName: str
+    username: str | None
+    photoUrl: str | None
+    joinedAt: datetime
+    rewardPercent: Decimal
+
+    @field_serializer("rewardPercent", when_used="json")
+    def serialize_reward_percent(self, value: Decimal) -> str:
+        return _serialize_decimal(value)
+
+
+class MiniappAexReferralsResponse(BaseModel):
+    items: list[MiniappAexReferralUserItem]
+    limit: int
+    offset: int
+    total: int
+    hasMore: bool
+    totalAccrued: Decimal
+    rewardPercent: Decimal
+
+    @field_serializer("totalAccrued", "rewardPercent", when_used="json")
+    def serialize_decimal_fields(self, value: Decimal) -> str:
+        return _serialize_decimal(value)
+
+
 class MiniappRatesResponse(BaseModel):
     items: list[RateOut]
 
@@ -246,6 +273,13 @@ class MiniappAexTransactionsResponse(BaseModel):
 class MiniappOrderCreatedResponse(BaseModel):
     success: bool = True
     orderId: int
+
+
+def _serialize_decimal(value: Decimal) -> str:
+    serialized = format(value, "f")
+    if "." in serialized:
+        return serialized.rstrip("0").rstrip(".")
+    return serialized
 
 
 def build_miniapp_profile_summary(user) -> MiniappProfileSummary:

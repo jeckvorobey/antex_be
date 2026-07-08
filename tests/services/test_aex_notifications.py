@@ -1,4 +1,4 @@
-"""Тесты для AEX Telegram-уведомлений."""
+"""Тесты для ATXG Telegram-уведомлений."""
 
 from __future__ import annotations
 
@@ -22,9 +22,9 @@ class TestBuildAexNotificationText:
             amount=Decimal("100.50"),
             description="Бонус за регистрацию",
         )
-        assert "Начисление AEX" in text
+        assert "Начисление ATXG" in text
         assert "💰" in text
-        assert "100.50 AEX" in text
+        assert "100.50 ATXG" in text
         assert "Бонус за регистрацию" in text
 
     def test_debit_notification_text(self) -> None:
@@ -33,9 +33,9 @@ class TestBuildAexNotificationText:
             amount=Decimal("50"),
             description="Списание по запросу",
         )
-        assert "Списание AEX" in text
+        assert "Списание ATXG" in text
         assert "💸" in text
-        assert "50 AEX" in text
+        assert "50 ATXG" in text
         assert "Списание по запросу" in text
 
     def test_notification_without_description(self) -> None:
@@ -43,8 +43,8 @@ class TestBuildAexNotificationText:
             operation_type="credit",
             amount=Decimal("100"),
         )
-        assert "Начисление AEX" in text
-        assert "100 AEX" in text
+        assert "Начисление ATXG" in text
+        assert "100 ATXG" in text
         assert "Описание" not in text
 
 
@@ -85,7 +85,7 @@ class TestNotifyAexOperation:
             mock_bot.send_message.assert_called_once()
             call_kwargs = mock_bot.send_message.call_args
             assert call_kwargs.kwargs["chat_id"] == 123456789
-            assert "Начисление AEX" in call_kwargs.kwargs["text"]
+            assert "Начисление ATXG" in call_kwargs.kwargs["text"]
 
     async def test_sends_debit_notification(
         self, mock_db: AsyncMock, mock_user: MagicMock
@@ -110,7 +110,7 @@ class TestNotifyAexOperation:
 
             mock_bot.send_message.assert_called_once()
             call_kwargs = mock_bot.send_message.call_args
-            assert "Списание AEX" in call_kwargs.kwargs["text"]
+            assert "Списание ATXG" in call_kwargs.kwargs["text"]
 
     async def test_skips_when_user_not_found(self, mock_db: AsyncMock) -> None:
         with patch(

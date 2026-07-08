@@ -43,7 +43,7 @@ class ConfigRepository(BaseRepository[Config]):
         aex_withdraw_limit: Decimal | None = None,
         update_referral_max_withdraw: bool = False,
     ) -> Config:
-        """Обновляет глобальные настройки referral/AEX program."""
+        """Обновляет глобальные настройки referral/ATXG program."""
         config = await self.get_or_create()
         if referral_percent is not None:
             config.referral_percent = referral_percent

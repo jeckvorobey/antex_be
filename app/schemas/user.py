@@ -11,7 +11,7 @@ from pydantic import BaseModel, field_validator
 from app.enums.user import get_role_title, is_assignable_user_role, normalize_user_role
 from app.schemas.auth import build_trusted_contact
 from app.schemas.city import CityOut
-from app.services.aex_rate import DEFAULT_AEX_RATE, normalize_aex_rate, rate_to_percent
+from app.services.aex_rate import DEFAULT_ATXG_RATE, normalize_aex_rate, rate_to_percent
 
 
 class UserOut(BaseModel):
@@ -80,7 +80,7 @@ def build_user_out(user, *, referral_rate: Decimal | None = None) -> UserOut:
     if effective_referral_rate is None:
         personal_rate = user.__dict__.get("aex_personal_rate")
         effective_referral_rate = (
-            personal_rate.rate if personal_rate is not None else DEFAULT_AEX_RATE
+            personal_rate.rate if personal_rate is not None else DEFAULT_ATXG_RATE
         )
     aex_balance = _resolve_aex_balance(user)
 

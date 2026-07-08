@@ -1,4 +1,4 @@
-"""Репозитории AEX."""
+"""Репозитории ATXG."""
 
 from __future__ import annotations
 
@@ -13,7 +13,7 @@ from app.repositories.base import BaseRepository
 
 
 class AexWalletRepository(BaseRepository[AexWallet]):
-    """Репозиторий кошельков AEX."""
+    """Репозиторий кошельков ATXG."""
 
     model = AexWallet
 
@@ -63,7 +63,7 @@ class AexWalletRepository(BaseRepository[AexWallet]):
 
 
 class AexLedgerEntryRepository(BaseRepository[AexLedgerEntry]):
-    """Репозиторий записей журнала AEX."""
+    """Репозиторий записей журнала ATXG."""
 
     model = AexLedgerEntry
     _default_order: ClassVar = AexLedgerEntry.id.desc()
@@ -176,7 +176,7 @@ class AexLedgerEntryRepository(BaseRepository[AexLedgerEntry]):
 
 
 class AexRateRepository(BaseRepository[AexRate]):
-    """Репозиторий глобальных ставок AEX."""
+    """Репозиторий глобальных ставок ATXG."""
 
     model = AexRate
 
@@ -186,7 +186,7 @@ class AexRateRepository(BaseRepository[AexRate]):
 
 
 class AexPersonalRateRepository(BaseRepository[AexPersonalRate]):
-    """Репозиторий персональных ставок AEX."""
+    """Репозиторий персональных ставок ATXG."""
 
     model = AexPersonalRate
 
@@ -217,7 +217,7 @@ class AexPersonalRateRepository(BaseRepository[AexPersonalRate]):
 
 
 class AexPartnerRateRepository(BaseRepository[AexPartnerRate]):
-    """Репозиторий партнёрских ставок AEX."""
+    """Репозиторий партнёрских ставок ATXG."""
 
     model = AexPartnerRate
 

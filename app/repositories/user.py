@@ -168,6 +168,27 @@ class UserRepository(BaseRepository[User]):
         )
         return list(result.scalars().all())
 
+    async def get_referrals_paginated(
+        self,
+        user_id: int,
+        *,
+        limit: int,
+        offset: int,
+    ) -> tuple[list[User], int]:
+        statement = (
+            select(User)
+            .where(User.referred_by == user_id)
+            .options(selectinload(User.city))
+            .order_by(User.id)
+            .limit(limit)
+            .offset(offset)
+        )
+        count_statement = select(func.count(User.id)).where(User.referred_by == user_id)
+
+        result = await self.session.execute(statement)
+        total_result = await self.session.execute(count_statement)
+        return list(result.scalars().all()), total_result.scalar_one()
+
     async def count_referrals(self, user_id: int) -> int:
         result = await self.session.execute(
             select(func.count(User.id)).where(User.referred_by == user_id)

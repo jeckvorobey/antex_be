@@ -16,6 +16,8 @@ from app.repositories.user import UserRepository
 from app.schemas.city import build_city_out
 from app.schemas.miniapp import (
     MiniappAexReferralResponse,
+    MiniappAexReferralsResponse,
+    MiniappAexReferralUserItem,
     MiniappAexTransactionItem,
     MiniappAexTransactionsResponse,
     MiniappBanner,
@@ -45,6 +47,7 @@ from app.services.aex import (
     ORDER_WITHDRAW_RELEASE_REFERENCE,
     AexService,
 )
+from app.services.aex_rate import AexRateService, rate_to_percent
 from app.services.exchange import (
     COUNTRY_CURRENCY,
     COUNTRY_PRIORITY,
@@ -411,6 +414,49 @@ async def get_miniapp_aex_referral(db, user) -> MiniappAexReferralResponse:
             aexWithdrawLimit=config.aex_withdraw_limit,
         ),
     )
+
+
+async def list_miniapp_aex_referrals(
+    db,
+    user,
+    *,
+    limit: int = 20,
+    offset: int = 0,
+) -> MiniappAexReferralsResponse:
+    """Возвращает безопасный список приглашенных рефералов текущего пользователя."""
+    user_repo = UserRepository(db)
+    referrals, total = await user_repo.get_referrals_paginated(user.id, limit=limit, offset=offset)
+    _, total_accrued = await ReferralService().get_referral_stats(db, user)
+    reward_percent = rate_to_percent(await AexRateService().get_effective_rate(db, user.id))
+
+    return MiniappAexReferralsResponse(
+        items=[
+            MiniappAexReferralUserItem(
+                id=referral.id,
+                displayName=_build_referral_display_name(referral),
+                username=referral.username,
+                photoUrl=referral.photo_url,
+                joinedAt=referral.createdAt,
+                rewardPercent=reward_percent,
+            )
+            for referral in referrals
+        ],
+        limit=limit,
+        offset=offset,
+        total=total,
+        hasMore=offset + len(referrals) < total,
+        totalAccrued=total_accrued,
+        rewardPercent=reward_percent,
+    )
+
+
+def _build_referral_display_name(user) -> str:
+    display_name = " ".join(part for part in (user.first_name, user.last_name) if part).strip()
+    if display_name:
+        return display_name
+    if user.username:
+        return f"@{user.username}"
+    return "Пользователь AntEx"
 
 
 def _build_rate_cards(snapshots: list[ExchangePairSnapshot]) -> list[MiniappRateCard]:

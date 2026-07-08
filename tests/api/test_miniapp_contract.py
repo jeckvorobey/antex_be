@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from collections.abc import AsyncIterator
 from datetime import UTC, datetime
+from decimal import Decimal
 from unittest.mock import AsyncMock
 
 import pytest
@@ -17,7 +18,7 @@ from app.enums.order import OrderStatus
 from app.enums.user import UserRole
 from app.exceptions import AntExException
 from app.models.admin import Admin
-from app.models.aex import AexLedgerEntry, AexWallet
+from app.models.aex import AexLedgerEntry, AexPersonalRate, AexWallet
 from app.models.city import City
 from app.models.config import Config
 from app.models.order import Order
@@ -253,6 +254,102 @@ async def test_miniapp_aex_referral_returns_ready_link(
 
 
 @pytest.mark.asyncio
+async def test_miniapp_aex_referrals_returns_paginated_safe_list(
+    api_client: tuple[AsyncClient, AsyncSession],
+) -> None:
+    client, db_session = api_client
+    _, _, customer = await seed_exchange_data(db_session)
+    first = User(
+        telegram_id=700011,
+        username="first_ref",
+        first_name="First",
+        last_name="Referral",
+        phone="+79990000001",
+        referred_by=customer.id,
+        photo_url="https://t.me/i/userpic/320/first.jpg",
+    )
+    second = User(
+        telegram_id=700012,
+        username=None,
+        first_name="Second",
+        last_name=None,
+        phone="+79990000002",
+        referred_by=customer.id,
+    )
+    other_referrer = User(telegram_id=700013, username="other_referrer")
+    db_session.add(other_referrer)
+    await db_session.flush()
+    unrelated = User(
+        telegram_id=700014,
+        username="unrelated_ref",
+        first_name="Other",
+        referred_by=other_referrer.id,
+    )
+    wallet = AexWallet(user_id=customer.id)
+    db_session.add_all([first, second, unrelated, wallet])
+    await db_session.flush()
+    db_session.add_all(
+        [
+            AexPersonalRate(user_id=customer.id, rate=Decimal("0.015")),
+            AexLedgerEntry(
+                wallet_id=wallet.id,
+                amount=Decimal("12.50"),
+                entry_type="credit",
+                reference_type="referral",
+                reference_id="101",
+                description="Referral bonus",
+            ),
+            AexLedgerEntry(
+                wallet_id=wallet.id,
+                amount=Decimal("2.25"),
+                entry_type="credit",
+                reference_type="referral",
+                reference_id="102",
+                description="Referral bonus",
+            ),
+            AexLedgerEntry(
+                wallet_id=wallet.id,
+                amount=Decimal("-1.00"),
+                entry_type="debit",
+                reference_type="transfer",
+                reference_id="103",
+                description="Withdraw",
+            ),
+        ]
+    )
+    await db_session.flush()
+    token = create_access_token({"sub": str(customer.id), "role": customer.role})
+
+    response = await client.get(
+        "/api/miniapp/aex/referrals?limit=1&offset=0",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["limit"] == 1
+    assert data["offset"] == 0
+    assert data["total"] == 2
+    assert data["hasMore"] is True
+    assert data["totalAccrued"] == "14.75"
+    assert data["rewardPercent"] == "1.5"
+    assert len(data["items"]) == 1
+    item = data["items"][0]
+    assert item["id"] == first.id
+    assert item["displayName"] == "First Referral"
+    assert item["username"] == "first_ref"
+    assert item["photoUrl"] == "https://t.me/i/userpic/320/first.jpg"
+    assert item["rewardPercent"] == "1.5"
+    assert item["joinedAt"] is not None
+    assert "phone" not in item
+    assert "telegram_id" not in item
+    assert "telegramId" not in item
+    assert "earnedAex" not in item
+    assert "totalEarned" not in item
+    assert unrelated.id not in {referral["id"] for referral in data["items"]}
+
+
+@pytest.mark.asyncio
 async def test_admin_config_updates_referral_program_settings_for_miniapp(
     api_client: tuple[AsyncClient, AsyncSession],
 ) -> None:
@@ -432,7 +529,7 @@ async def test_miniapp_aex_transactions_maps_withdraw_lifecycle(
         UserId=customer.id,
         CityId=None,
         country=Country.THAILAND,
-        currencySell="AEX",
+        currencySell="ATXG",
         amountSell=200,
         currencyBuy="THB",
         amountBuy=7240,
@@ -947,7 +1044,7 @@ async def test_miniapp_order_keeps_saved_order_when_manager_notification_fails(
 
 
 @pytest.mark.asyncio
-async def test_miniapp_order_accepts_aex_withdrawal_via_usdt_based_pair(
+async def test_miniapp_order_accepts_atxg_withdrawal_via_usdt_based_pair(
     api_client: tuple[AsyncClient, AsyncSession],
 ) -> None:
     client, db_session = api_client
@@ -960,7 +1057,7 @@ async def test_miniapp_order_accepts_aex_withdrawal_via_usdt_based_pair(
         headers={"Authorization": f"Bearer {token}"},
         json={
             "country": "thailand",
-            "currencySell": "AEX",
+            "currencySell": "ATXG",
             "amountSell": 400,
             "currencyBuy": "THB",
             "amountBuy": 14480,
@@ -971,7 +1068,7 @@ async def test_miniapp_order_accepts_aex_withdrawal_via_usdt_based_pair(
 
     assert response.status_code == 201
     order = response.json()
-    assert order["currencySell"] == "AEX"
+    assert order["currencySell"] == "ATXG"
     assert order["currencyBuy"] == "THB"
 
     wallet = await db_session.scalar(select(AexWallet).where(AexWallet.user_id == customer.id))
@@ -1003,7 +1100,7 @@ async def test_miniapp_aex_order_rejects_missing_usdt_based_pair_without_mutatio
         headers={"Authorization": f"Bearer {token}"},
         json={
             "country": "thailand",
-            "currencySell": "AEX",
+            "currencySell": "ATXG",
             "amountSell": 400,
             "currencyBuy": "EUR",
             "amountBuy": 100,
@@ -1032,7 +1129,7 @@ async def test_miniapp_aex_order_rejects_missing_usdt_based_pair_before_wallet_l
         headers={"Authorization": f"Bearer {token}"},
         json={
             "country": "thailand",
-            "currencySell": "AEX",
+            "currencySell": "ATXG",
             "amountSell": 400,
             "currencyBuy": "EUR",
             "amountBuy": 100,
@@ -1062,7 +1159,7 @@ async def test_miniapp_aex_order_uses_usdt_minimum_amount(
         headers={"Authorization": f"Bearer {token}"},
         json={
             "country": "thailand",
-            "currencySell": "AEX",
+            "currencySell": "ATXG",
             "amountSell": 299,
             "currencyBuy": "THB",
             "amountBuy": 10823.8,
@@ -1076,7 +1173,7 @@ async def test_miniapp_aex_order_uses_usdt_minimum_amount(
     assert response.json()["params"] == {
         "minAmount": 300,
         "method": "qrcode",
-        "currency": "AEX",
+        "currency": "ATXG",
     }
     assert await db_session.scalar(select(func.count(Order.id))) == 0
     assert await db_session.scalar(select(func.count(AexLedgerEntry.id))) == 0
@@ -1096,7 +1193,7 @@ async def test_miniapp_aex_order_rejects_amount_above_available_balance(
         headers={"Authorization": f"Bearer {token}"},
         json={
             "country": "thailand",
-            "currencySell": "AEX",
+            "currencySell": "ATXG",
             "amountSell": 400,
             "currencyBuy": "THB",
             "amountBuy": 14480,
@@ -1106,7 +1203,7 @@ async def test_miniapp_aex_order_rejects_amount_above_available_balance(
     )
 
     assert response.status_code == 422
-    assert response.json()["code"] == "AEX_INSUFFICIENT_BALANCE"
+    assert response.json()["code"] == "ATXG_INSUFFICIENT_BALANCE"
     assert await db_session.scalar(select(func.count(Order.id))) == 0
     assert await db_session.scalar(select(func.count(AexLedgerEntry.id))) == 0
 
@@ -1125,7 +1222,7 @@ async def test_miniapp_aex_order_rejects_when_withdraw_limit_not_reached(
         headers={"Authorization": f"Bearer {token}"},
         json={
             "country": "thailand",
-            "currencySell": "AEX",
+            "currencySell": "ATXG",
             "amountSell": 300,
             "currencyBuy": "THB",
             "amountBuy": 10860,
@@ -1135,7 +1232,7 @@ async def test_miniapp_aex_order_rejects_when_withdraw_limit_not_reached(
     )
 
     assert response.status_code == 422
-    assert response.json()["code"] == "AEX_WITHDRAW_LIMIT_NOT_REACHED"
+    assert response.json()["code"] == "ATXG_WITHDRAW_LIMIT_NOT_REACHED"
     assert await db_session.scalar(select(func.count(Order.id))) == 0
     assert await db_session.scalar(select(func.count(AexLedgerEntry.id))) == 0
 
@@ -1165,7 +1262,7 @@ async def test_miniapp_aex_order_rolls_back_order_when_hold_fails(
             headers={"Authorization": f"Bearer {token}"},
             json={
                 "country": "thailand",
-                "currencySell": "AEX",
+                "currencySell": "ATXG",
                 "amountSell": 400,
                 "currencyBuy": "THB",
                 "amountBuy": 14480,
@@ -1198,7 +1295,7 @@ async def test_completed_aex_order_debits_reserved_balance(
         headers={"Authorization": f"Bearer {token}"},
         json={
             "country": "thailand",
-            "currencySell": "AEX",
+            "currencySell": "ATXG",
             "amountSell": 400,
             "currencyBuy": "THB",
             "amountBuy": 14480,
@@ -1244,7 +1341,7 @@ async def test_cancelled_aex_order_releases_reserved_balance(
         headers={"Authorization": f"Bearer {token}"},
         json={
             "country": "thailand",
-            "currencySell": "AEX",
+            "currencySell": "ATXG",
             "amountSell": 400,
             "currencyBuy": "THB",
             "amountBuy": 14480,
@@ -1290,7 +1387,7 @@ async def test_aex_order_status_retry_does_not_mutate_balance_twice(
         headers={"Authorization": f"Bearer {token}"},
         json={
             "country": "thailand",
-            "currencySell": "AEX",
+            "currencySell": "ATXG",
             "amountSell": 400,
             "currencyBuy": "THB",
             "amountBuy": 14480,
@@ -1329,7 +1426,7 @@ async def test_completed_aex_order_rejects_later_cancellation_without_balance_mu
         headers={"Authorization": f"Bearer {token}"},
         json={
             "country": "thailand",
-            "currencySell": "AEX",
+            "currencySell": "ATXG",
             "amountSell": 400,
             "currencyBuy": "THB",
             "amountBuy": 14480,
@@ -1345,7 +1442,7 @@ async def test_completed_aex_order_rejects_later_cancellation_without_balance_mu
 
     wallet = await db_session.scalar(select(AexWallet).where(AexWallet.user_id == customer.id))
     order = await db_session.get(Order, order_id)
-    assert exc_info.value.code == "AEX_ORDER_FINAL_STATUS_LOCKED"
+    assert exc_info.value.code == "ATXG_ORDER_FINAL_STATUS_LOCKED"
     assert order is not None
     assert order.status == int(OrderStatus.COMPLETED)
     assert wallet is not None
@@ -1377,7 +1474,7 @@ async def test_completed_aex_order_does_not_credit_referral_bonus(
         headers={"Authorization": f"Bearer {token}"},
         json={
             "country": "thailand",
-            "currencySell": "AEX",
+            "currencySell": "ATXG",
             "amountSell": 400,
             "currencyBuy": "THB",
             "amountBuy": 14480,

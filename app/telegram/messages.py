@@ -26,7 +26,7 @@ _CURRENCY_RATE_EMOJIS = {
 _CURRENCY_BUTTON_LABELS = {
     "USDT": "₮ USDT",
 }
-_AEX_AMOUNT_QUANTIZER = Decimal("0.01")
+_ATXG_AMOUNT_QUANTIZER = Decimal("0.01")
 
 
 def _resolve_translator(
@@ -202,7 +202,7 @@ def _format_number(value: int | float) -> str:
 
 
 def _format_aex_amount(value: Decimal | int | float | str) -> str:
-    amount = Decimal(str(value)).quantize(_AEX_AMOUNT_QUANTIZER)
+    amount = Decimal(str(value)).quantize(_ATXG_AMOUNT_QUANTIZER)
     return f"{amount:.2f}"
 
 
@@ -323,7 +323,7 @@ def referral_bonus_credited(
     translator: Translate | None = None,
     locale: str | None = None,
 ) -> str:
-    """Текст уведомления рефереру о начислении AEX."""
+    """Текст уведомления рефереру о начислении ATXG."""
     translate = cast(Any, _resolve_translator(translator, locale))
     return translate(
         "referral-bonus-credited",
@@ -339,7 +339,7 @@ def referral_bonus_reversed(
     translator: Translate | None = None,
     locale: str | None = None,
 ) -> str:
-    """Текст уведомления о списании AEX при отмене заявки."""
+    """Текст уведомления о списании ATXG при отмене заявки."""
     translate = cast(Any, _resolve_translator(translator, locale))
     return translate(
         "referral-bonus-reversed",

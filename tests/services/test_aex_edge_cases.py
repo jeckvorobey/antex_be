@@ -1,4 +1,4 @@
-"""Edge case тесты реферальной системы AEX.
+"""Edge case тесты реферальной системы ATXG.
 
 Покрывает:
 1. Edge cases привязки (пустой код, whitespace, цепочки)
@@ -109,12 +109,12 @@ class TestReferralBindingEdgeCases:
         assert exc_info.value.code == "INVALID_REFERRAL_CODE"
 
 
-# ── 2. AEX Calculation Edge Cases ───────────────────────────────────
+# ── 2. ATXG Calculation Edge Cases ───────────────────────────────────
 
 
 @pytest.mark.asyncio
 class TestAexCalculationEdgeCases:
-    """Граничные значения расчётов AEX."""
+    """Граничные значения расчётов ATXG."""
 
     async def test_referral_bonus_zero_order_amount(self, db_session: AsyncSession) -> None:
         """Заказ на 0 → бонус 0 (не начисляется)."""
