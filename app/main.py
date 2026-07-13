@@ -16,6 +16,7 @@ from app.api.routers import (
     admin,
     auth,
     broadcasts,
+    marketing,
     miniapp,
     orders,
     public,
@@ -156,6 +157,7 @@ app.include_router(orders.router)
 app.include_router(miniapp.router)
 app.include_router(admin.router)
 app.include_router(broadcasts.router)
+app.include_router(marketing.router)
 app.include_router(public.router)
 app.include_router(telegram.router)
 

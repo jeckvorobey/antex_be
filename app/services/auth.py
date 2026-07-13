@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import logging
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -10,6 +11,9 @@ from app.core.security import create_access_token, validate_telegram_init_data
 from app.exceptions import AntExException
 from app.repositories.user import UserRepository
 from app.schemas.auth import TokenResponse, TrustedContactResponse, build_trusted_contact
+
+logger = logging.getLogger(__name__)
+MARKETING_START_PARAM_PREFIX = "market_"
 
 
 async def telegram_auth(db: AsyncSession, init_data: str) -> TokenResponse:
@@ -38,6 +42,22 @@ async def telegram_auth(db: AsyncSession, init_data: str) -> TokenResponse:
         is_bot=user_data.get("is_bot", False),
         is_premium=user_data.get("is_premium", False),
     )
+
+    start_param = parsed.get("start_param")
+    if isinstance(start_param, str) and start_param.startswith(MARKETING_START_PARAM_PREFIX):
+        from app.modules.marketing.service import MarketingService
+
+        code = start_param.removeprefix(MARKETING_START_PARAM_PREFIX)
+        try:
+            await MarketingService(db).attribute_user(user.id, code)
+        except AntExException as exc:
+            logger.info(
+                "Marketing attribution skipped: code=%s user_id=%s",
+                exc.code,
+                user.id,
+            )
+        except Exception:
+            logger.exception("Marketing attribution failed for user_id=%s", user.id)
 
     token = create_access_token({"sub": str(user.id), "role": user.role})
     return TokenResponse(access_token=token)

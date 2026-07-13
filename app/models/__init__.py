@@ -3,6 +3,7 @@
 from app.models.admin import Admin
 from app.models.city import City
 from app.models.config import Config
+from app.models.marketing import MarketingAttribution, MarketingCampaign, MarketingDailyMetric
 from app.models.order import Order
 from app.models.order_number_counter import OrderNumberCounter
 from app.models.rate import Rate
@@ -15,6 +16,9 @@ __all__ = [
     "Broadcast",
     "City",
     "Config",
+    "MarketingAttribution",
+    "MarketingCampaign",
+    "MarketingDailyMetric",
     "Order",
     "OrderNumberCounter",
     "Rate",

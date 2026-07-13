@@ -1,9 +1,11 @@
 from __future__ import annotations
 
 from aiogram.types import User as TgUser
+from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 
 from app.enums.user import UserRole, get_role_title, has_admin_access, has_operator_access
+from app.models.marketing import MarketingAttribution, MarketingCampaign
 from app.models.user import User
 from app.repositories.user import UserRepository
 from app.schemas.user import build_user_out
@@ -180,6 +182,84 @@ async def test_telegram_auth_persists_updates_and_clears_photo_url(
     cleared_user = await UserRepository(db_session).get_one(1)
     assert cleared_user is not None
     assert cleared_user.photo_url is None
+
+
+async def test_telegram_auth_applies_trusted_market_start_param(monkeypatch, db_session) -> None:
+    campaign = MarketingCampaign(
+        code="BDF7J9J8JH",
+        name="Telegram Ads",
+        provider="telegram_ads",
+        status="active",
+    )
+    db_session.add(campaign)
+    await db_session.flush()
+    monkeypatch.setattr(
+        "app.services.auth.validate_telegram_init_data",
+        lambda _: {
+            "user": '{"id": 9191, "username": "market_user", "first_name": "Market"}',
+            "start_param": "market_BDF7J9J8JH",
+        },
+    )
+    monkeypatch.setattr("app.services.auth.create_access_token", lambda _: "token")
+
+    response = await telegram_auth(db_session, "signed-init-data")
+    attribution = (await db_session.execute(select(MarketingAttribution))).scalar_one()
+
+    assert response.access_token == "token"
+    assert attribution.campaign_id == campaign.id
+
+
+async def test_telegram_auth_ignores_invalid_archived_and_ref_start_params(
+    monkeypatch,
+    db_session,
+) -> None:
+    archived = MarketingCampaign(
+        code="ARCHIVED00",
+        name="Archive",
+        provider="telegram_ads",
+        status="archived",
+    )
+    db_session.add(archived)
+    await db_session.flush()
+    monkeypatch.setattr("app.services.auth.create_access_token", lambda _: "token")
+
+    for telegram_id, start_param in enumerate(
+        ("market_UNKNOWN000", "market_ARCHIVED00", "market_bad-code", "ref_ABCDEFGH"),
+        start=9200,
+    ):
+        monkeypatch.setattr(
+            "app.services.auth.validate_telegram_init_data",
+            lambda _, telegram_id=telegram_id, start_param=start_param: {
+                "user": f'{{"id": {telegram_id}, "first_name": "Safe"}}',
+                "start_param": start_param,
+            },
+        )
+        assert (await telegram_auth(db_session, "signed-init-data")).access_token == "token"
+
+    assert (await db_session.execute(select(MarketingAttribution))).scalars().all() == []
+
+
+async def test_telegram_auth_does_not_accept_url_only_marketing_parameter(
+    monkeypatch,
+    db_session,
+) -> None:
+    campaign = MarketingCampaign(
+        code="URLONLY000",
+        name="Unsafe",
+        provider="telegram_ads",
+        status="active",
+    )
+    db_session.add(campaign)
+    await db_session.flush()
+    monkeypatch.setattr(
+        "app.services.auth.validate_telegram_init_data",
+        lambda _: {"user": '{"id": 9300, "first_name": "No URL"}'},
+    )
+    monkeypatch.setattr("app.services.auth.create_access_token", lambda _: "token")
+
+    await telegram_auth(db_session, "market_URLONLY000")
+
+    assert (await db_session.execute(select(MarketingAttribution))).scalars().all() == []
 
 
 async def test_users_username_is_unique(db_session) -> None:
