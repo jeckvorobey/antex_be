@@ -17,6 +17,7 @@ from app.api.routers import (
     aex,
     auth,
     broadcasts,
+    marketing,
     miniapp,
     orders,
     public,
@@ -161,6 +162,7 @@ app.include_router(aex.router)
 app.include_router(aex.admin_router)
 app.include_router(referral.router)
 app.include_router(broadcasts.router)
+app.include_router(marketing.router)
 app.include_router(public.router)
 app.include_router(telegram.router)
 

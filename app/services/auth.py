@@ -15,10 +15,11 @@ from app.services.referral import ReferralService
 
 REFERRAL_START_PARAM_PREFIX = "ref_"
 logger = logging.getLogger(__name__)
+MARKETING_START_PARAM_PREFIX = "market_"
 
 
 async def telegram_auth(db: AsyncSession, init_data: str) -> TokenResponse:
-    """Авторизовать Mini App пользователя и применить referral start_param."""
+    """Авторизовать Mini App пользователя и применить referral/marketing start_param."""
     parsed = validate_telegram_init_data(init_data)
     if not parsed:
         raise AntExException("Invalid Telegram initData", code="INVALID_INIT_DATA", status_code=401)
@@ -55,6 +56,22 @@ async def telegram_auth(db: AsyncSession, init_data: str) -> TokenResponse:
                 referral_code,
                 exc.code,
             )
+
+    start_param = parsed.get("start_param")
+    if isinstance(start_param, str) and start_param.startswith(MARKETING_START_PARAM_PREFIX):
+        from app.modules.marketing.service import MarketingService
+
+        code = start_param.removeprefix(MARKETING_START_PARAM_PREFIX)
+        try:
+            await MarketingService(db).attribute_user(user.id, code)
+        except AntExException as exc:
+            logger.info(
+                "Marketing attribution skipped: code=%s user_id=%s",
+                exc.code,
+                user.id,
+            )
+        except Exception:
+            logger.exception("Marketing attribution failed for user_id=%s", user.id)
 
     token = create_access_token({"sub": str(user.id), "role": user.role})
     return TokenResponse(access_token=token)
