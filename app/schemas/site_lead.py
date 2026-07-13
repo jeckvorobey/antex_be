@@ -37,5 +37,12 @@ class SiteLeadOut(BaseModel):
     updated_at: datetime = Field(alias="updatedAt")
 
 
+class PaginatedSiteLeadsResponse(BaseModel):
+    items: list[SiteLeadOut]
+    total: int
+    limit: int
+    offset: int
+
+
 def build_site_lead_out(lead: SiteLead) -> SiteLeadOut:
     return SiteLeadOut.model_validate(lead)

@@ -4,12 +4,14 @@
 from __future__ import annotations
 
 from datetime import datetime
+from decimal import Decimal
 
 from pydantic import BaseModel, field_validator
 
 from app.enums.user import get_role_title, is_assignable_user_role, normalize_user_role
 from app.schemas.auth import build_trusted_contact
 from app.schemas.city import CityOut
+from app.services.aex_rate import DEFAULT_ATXG_RATE, normalize_aex_rate, rate_to_percent
 
 
 class UserOut(BaseModel):
@@ -31,6 +33,12 @@ class UserOut(BaseModel):
     trusted_contact: str | None
     trusted_contact_source: str | None
     trusted_contact_ready: bool
+    referral_code: str | None = None
+    referred_by: int | None = None
+    referral_rate: str = "0.002000"
+    referral_rate_percent: str = "0.200000"
+    aex_balance: str = "0"
+    balance: str = "0"
     createdAt: datetime
     updatedAt: datetime
 
@@ -49,9 +57,32 @@ class UserUpdate(BaseModel):
         return normalize_user_role(value)
 
 
-def build_user_out(user) -> UserOut:
+def _format_referral_rate(rate: Decimal) -> str:
+    return str(normalize_aex_rate(rate))
+
+
+def _format_referral_rate_percent(rate: Decimal) -> str:
+    return str(rate_to_percent(rate))
+
+
+def _resolve_aex_balance(user) -> str:
+    wallet = user.__dict__.get("aex_wallet")
+    if wallet is None:
+        return "0"
+    return str(wallet.balance_available)
+
+
+def build_user_out(user, *, referral_rate: Decimal | None = None) -> UserOut:
     from app.schemas.city import build_city_out
+
     trusted_contact = build_trusted_contact(user)
+    effective_referral_rate = referral_rate
+    if effective_referral_rate is None:
+        personal_rate = user.__dict__.get("aex_personal_rate")
+        effective_referral_rate = (
+            personal_rate.rate if personal_rate is not None else DEFAULT_ATXG_RATE
+        )
+    aex_balance = _resolve_aex_balance(user)
 
     return UserOut(
         id=user.id,
@@ -72,6 +103,12 @@ def build_user_out(user) -> UserOut:
         trusted_contact=trusted_contact.contact,
         trusted_contact_source=trusted_contact.source,
         trusted_contact_ready=trusted_contact.ready,
+        referral_code=getattr(user, "referral_code", None),
+        referred_by=getattr(user, "referred_by", None),
+        referral_rate=_format_referral_rate(effective_referral_rate),
+        referral_rate_percent=_format_referral_rate_percent(effective_referral_rate),
+        aex_balance=aex_balance,
+        balance=aex_balance,
         createdAt=user.createdAt,
         updatedAt=user.updatedAt,
     )

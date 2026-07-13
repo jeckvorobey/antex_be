@@ -262,6 +262,79 @@ async def test_telegram_auth_does_not_accept_url_only_marketing_parameter(
     assert (await db_session.execute(select(MarketingAttribution))).scalars().all() == []
 
 
+async def test_telegram_auth_binds_existing_user_from_referral_start_param(
+    monkeypatch,
+    db_session,
+) -> None:
+    referrer = User(telegram_id=2001, username="auth_referrer", referral_code="A7kP2mX9")
+    existing_user = User(telegram_id=2002, username="auth_referred")
+    db_session.add_all([referrer, existing_user])
+    await db_session.flush()
+
+    monkeypatch.setattr(
+        "app.services.auth.validate_telegram_init_data",
+        lambda _: {
+            "start_param": "ref_A7kP2mX9",
+            "user": (
+                '{"id": 2002, "username": "auth_referred", "first_name": "Linked", '
+                '"last_name": "User", "language_code": "ru", "is_bot": false, '
+                '"is_premium": false}'
+            ),
+        },
+    )
+    monkeypatch.setattr(
+        "app.services.auth.create_access_token",
+        lambda data: f"token-{data['sub']}",
+    )
+
+    await telegram_auth(db_session, "init-data")
+
+    await db_session.refresh(existing_user)
+    assert existing_user.referred_by == referrer.id
+
+
+async def test_telegram_auth_does_not_rewrite_existing_referral_from_start_param(
+    monkeypatch,
+    db_session,
+) -> None:
+    original_referrer = User(
+        telegram_id=2011,
+        username="auth_referrer_one",
+        referral_code="A7kP2mX9",
+    )
+    new_referrer = User(
+        telegram_id=2012,
+        username="auth_referrer_two",
+        referral_code="hF84LmQz",
+    )
+    existing_user = User(telegram_id=2013, username="auth_already_referred")
+    db_session.add_all([original_referrer, new_referrer, existing_user])
+    await db_session.flush()
+    existing_user.referred_by = original_referrer.id
+    await db_session.flush()
+
+    monkeypatch.setattr(
+        "app.services.auth.validate_telegram_init_data",
+        lambda _: {
+            "start_param": "ref_hF84LmQz",
+            "user": (
+                '{"id": 2013, "username": "auth_already_referred", '
+                '"first_name": "Linked", "last_name": "User", "language_code": "ru", '
+                '"is_bot": false, "is_premium": false}'
+            ),
+        },
+    )
+    monkeypatch.setattr(
+        "app.services.auth.create_access_token",
+        lambda data: f"token-{data['sub']}",
+    )
+
+    await telegram_auth(db_session, "init-data")
+
+    await db_session.refresh(existing_user)
+    assert existing_user.referred_by == original_referrer.id
+
+
 async def test_users_username_is_unique(db_session) -> None:
     first_user = User(
         telegram_id=1001,

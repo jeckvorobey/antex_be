@@ -186,7 +186,10 @@ async def test_operator_cancel_confirm_marks_order_cancelled(monkeypatch) -> Non
     await operator_handler.operator_cancel_confirm(callback)
 
     assert callback.answers[-1] == {"text": "Заявка отменена", "show_alert": True, "url": None}
-    assert callback.message.edits[0]["reply_markup"].inline_keyboard[0][0].url == "https://t.me/customer"
+    assert (
+        callback.message.edits[0]["reply_markup"].inline_keyboard[0][0].url
+        == "https://t.me/customer"
+    )
     assert "Заявка #2026050002" in callback.message.edits[0]["text"]
     assert "Статус: Отменена" in callback.message.edits[0]["text"]
 
@@ -268,7 +271,10 @@ async def test_operator_close_marks_order_completed(monkeypatch) -> None:
     await operator_handler.operator_close(callback)
 
     assert callback.answers[-1] == {"text": None, "show_alert": False, "url": None}
-    assert callback.message.edits[0]["reply_markup"].inline_keyboard[0][0].url == "https://t.me/customer"
+    assert (
+        callback.message.edits[0]["reply_markup"].inline_keyboard[0][0].url
+        == "https://t.me/customer"
+    )
     text = str(callback.message.edits[0]["text"])
     assert "✅ Заявка #2026050002 завершена" in text
     assert "🌍 Страна: Грузия" in text

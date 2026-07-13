@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from collections.abc import AsyncIterator
 from datetime import UTC, datetime
+from decimal import Decimal
 from unittest.mock import AsyncMock
 
 import pytest
@@ -15,11 +16,18 @@ from app.core.security import create_access_token
 from app.enums.country import Country
 from app.enums.order import OrderStatus
 from app.enums.user import UserRole
+from app.exceptions import AntExException
 from app.models.admin import Admin
+from app.models.aex import AexLedgerEntry, AexPersonalRate, AexWallet
 from app.models.city import City
+from app.models.config import Config
 from app.models.order import Order
 from app.models.rate import Rate
 from app.models.user import User
+
+
+def _strip_bidi_marks(text: str) -> str:
+    return text.replace("\u2068", "").replace("\u2069", "")
 
 
 @pytest.fixture
@@ -80,6 +88,17 @@ async def seed_exchange_data(db_session: AsyncSession) -> tuple[City, User, User
     customer.city_id = city.id
     await db_session.flush()
     return city, manager, customer
+
+
+async def credit_aex_wallet(
+    db_session: AsyncSession,
+    user_id: int,
+    amount: int,
+) -> AexWallet:
+    wallet = AexWallet(user_id=user_id, balance_available=amount, balance_reserved=0)
+    db_session.add(wallet)
+    await db_session.flush()
+    return wallet
 
 
 @pytest.mark.asyncio
@@ -162,6 +181,534 @@ async def test_miniapp_home_and_exchange_are_backend_driven(
     assert {"rub-gel", "rub-vnd", "usdt-gel", "usdt-vnd"} <= {
         pair["id"] for pair in exchange["pairs"]
     }
+
+
+@pytest.mark.asyncio
+async def test_miniapp_aex_referral_returns_ready_link(
+    api_client: tuple[AsyncClient, AsyncSession],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from app.core.config import settings
+
+    client, db_session = api_client
+    _, _, customer = await seed_exchange_data(db_session)
+    referred = User(
+        telegram_id=700003,
+        username="invited",
+        first_name="Invited",
+        referred_by=customer.id,
+    )
+    db_session.add(referred)
+    await db_session.flush()
+    order = Order(
+        UserId=referred.id,
+        CityId=None,
+        country=Country.THAILAND,
+        currencySell="RUB",
+        amountSell=1000,
+        currencyBuy="THB",
+        amountBuy=400,
+        rate=0.4,
+        status=int(OrderStatus.COMPLETED),
+        contactTelegram="@invited",
+        methodGet="qrcode",
+        publicNumber="RF0001",
+    )
+    wallet = AexWallet(user_id=customer.id)
+    db_session.add_all([order, wallet])
+    await db_session.flush()
+    db_session.add(
+        AexLedgerEntry(
+            wallet_id=wallet.id,
+            amount=12.5,
+            entry_type="credit",
+            reference_type="referral",
+            reference_id=str(order.id),
+            description="Referral bonus for order",
+        )
+    )
+    await db_session.flush()
+    token = create_access_token({"sub": str(customer.id), "role": customer.role})
+    monkeypatch.setattr(settings, "telegram_bot_username", "antex_test_bot")
+
+    response = await client.get(
+        "/api/miniapp/aex/referral",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+
+    assert response.status_code == 200
+    data = response.json()
+    assert len(data["referralCode"]) == 8
+    assert (
+        data["referralLink"] == f"https://t.me/antex_test_bot?startapp=ref_{data['referralCode']}"
+    )
+    assert data["totalReferrals"] == 1
+    assert data["programConfig"] == {
+        "referralPercent": "0.2",
+        "referralMinWithdraw": "100",
+        "referralMaxWithdraw": None,
+        "aexRate": "1",
+        "aexWithdrawLimit": "100",
+    }
+    assert "referrals" not in data
+
+
+@pytest.mark.asyncio
+async def test_miniapp_aex_referrals_returns_paginated_safe_list(
+    api_client: tuple[AsyncClient, AsyncSession],
+) -> None:
+    client, db_session = api_client
+    _, _, customer = await seed_exchange_data(db_session)
+    first = User(
+        telegram_id=700011,
+        username="first_ref",
+        first_name="First",
+        last_name="Referral",
+        phone="+79990000001",
+        referred_by=customer.id,
+        photo_url="https://t.me/i/userpic/320/first.jpg",
+    )
+    second = User(
+        telegram_id=700012,
+        username=None,
+        first_name="Second",
+        last_name=None,
+        phone="+79990000002",
+        referred_by=customer.id,
+    )
+    other_referrer = User(telegram_id=700013, username="other_referrer")
+    db_session.add(other_referrer)
+    await db_session.flush()
+    unrelated = User(
+        telegram_id=700014,
+        username="unrelated_ref",
+        first_name="Other",
+        referred_by=other_referrer.id,
+    )
+    wallet = AexWallet(user_id=customer.id)
+    db_session.add_all([first, second, unrelated, wallet])
+    await db_session.flush()
+    db_session.add_all(
+        [
+            AexPersonalRate(user_id=customer.id, rate=Decimal("0.015")),
+            AexLedgerEntry(
+                wallet_id=wallet.id,
+                amount=Decimal("12.50"),
+                entry_type="credit",
+                reference_type="referral",
+                reference_id="101",
+                description="Referral bonus",
+            ),
+            AexLedgerEntry(
+                wallet_id=wallet.id,
+                amount=Decimal("2.25"),
+                entry_type="credit",
+                reference_type="referral",
+                reference_id="102",
+                description="Referral bonus",
+            ),
+            AexLedgerEntry(
+                wallet_id=wallet.id,
+                amount=Decimal("-1.00"),
+                entry_type="debit",
+                reference_type="transfer",
+                reference_id="103",
+                description="Withdraw",
+            ),
+        ]
+    )
+    await db_session.flush()
+    token = create_access_token({"sub": str(customer.id), "role": customer.role})
+
+    response = await client.get(
+        "/api/miniapp/aex/referrals?limit=1&offset=0",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["limit"] == 1
+    assert data["offset"] == 0
+    assert data["total"] == 2
+    assert data["hasMore"] is True
+    assert data["totalAccrued"] == "14.75"
+    assert data["rewardPercent"] == "1.5"
+    assert len(data["items"]) == 1
+    item = data["items"][0]
+    assert item["id"] == first.id
+    assert item["displayName"] == "First Referral"
+    assert item["username"] == "first_ref"
+    assert item["photoUrl"] == "https://t.me/i/userpic/320/first.jpg"
+    assert item["rewardPercent"] == "1.5"
+    assert item["joinedAt"] is not None
+    assert "phone" not in item
+    assert "telegram_id" not in item
+    assert "telegramId" not in item
+    assert "earnedAex" not in item
+    assert "totalEarned" not in item
+    assert unrelated.id not in {referral["id"] for referral in data["items"]}
+
+
+@pytest.mark.asyncio
+async def test_admin_config_updates_referral_program_settings_for_miniapp(
+    api_client: tuple[AsyncClient, AsyncSession],
+) -> None:
+    client, db_session = api_client
+    _, _, customer = await seed_exchange_data(db_session)
+    admin = Admin(username="admin", password_hash="unused")
+    db_session.add_all([admin, Config(id=1, enabled=True)])
+    await db_session.flush()
+    admin_token = create_access_token({"sub": str(admin.id), "type": "admin"})
+    user_token = create_access_token({"sub": str(customer.id), "role": customer.role})
+
+    patch_response = await client.patch(
+        "/api/admin/config",
+        json={
+            "referralPercent": "0.35",
+            "referralMinWithdraw": "250",
+            "referralMaxWithdraw": "5000",
+            "aexRate": "1.2",
+            "aexWithdrawLimit": "750",
+        },
+        headers={"Authorization": f"Bearer {admin_token}"},
+    )
+    referral_response = await client.get(
+        "/api/miniapp/aex/referral",
+        headers={"Authorization": f"Bearer {user_token}"},
+    )
+
+    assert patch_response.status_code == 200
+    assert patch_response.json()["referralPercent"] == "0.35"
+    assert patch_response.json()["referralMinWithdraw"] == "250"
+    assert patch_response.json()["referralMaxWithdraw"] == "5000"
+    assert patch_response.json()["aexRate"] == "1.2"
+    assert patch_response.json()["aexWithdrawLimit"] == "750"
+    assert referral_response.status_code == 200
+    assert referral_response.json()["programConfig"] == {
+        "referralPercent": "0.35",
+        "referralMinWithdraw": "250",
+        "referralMaxWithdraw": "5000",
+        "aexRate": "1.2",
+        "aexWithdrawLimit": "750",
+    }
+
+
+@pytest.mark.asyncio
+async def test_admin_config_rejects_negative_aex_withdraw_limit(
+    api_client: tuple[AsyncClient, AsyncSession],
+) -> None:
+    client, db_session = api_client
+    admin = Admin(username="admin", password_hash="unused")
+    db_session.add_all([admin, Config(id=1, enabled=True)])
+    await db_session.flush()
+    admin_token = create_access_token({"sub": str(admin.id), "type": "admin"})
+
+    response = await client.patch(
+        "/api/admin/config",
+        json={"aexWithdrawLimit": "-1"},
+        headers={"Authorization": f"Bearer {admin_token}"},
+    )
+
+    assert response.status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_miniapp_aex_transactions_returns_offset_pagination_contract(
+    api_client: tuple[AsyncClient, AsyncSession],
+) -> None:
+    client, db_session = api_client
+    _, _, customer = await seed_exchange_data(db_session)
+    wallet = AexWallet(user_id=customer.id)
+    db_session.add(wallet)
+    await db_session.flush()
+    db_session.add_all(
+        [
+            AexLedgerEntry(
+                wallet_id=wallet.id,
+                amount=12.5,
+                entry_type="credit",
+                reference_type="referral",
+                reference_id="1",
+                description="Referral reward",
+            ),
+            AexLedgerEntry(
+                wallet_id=wallet.id,
+                amount=-5,
+                entry_type="debit",
+                reference_type="transfer",
+                reference_id="2",
+                description="Withdrawal",
+            ),
+        ]
+    )
+    await db_session.commit()
+    token = create_access_token({"sub": str(customer.id), "role": customer.role})
+
+    response = await client.get(
+        "/api/miniapp/aex/transactions",
+        params={"limit": 1, "offset": 0},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["limit"] == 1
+    assert data["offset"] == 0
+    assert data["total"] == 2
+    assert data["hasMore"] is True
+    assert len(data["items"]) == 1
+
+
+@pytest.mark.asyncio
+async def test_miniapp_aex_transactions_describes_referral_reward_by_public_order_number(
+    api_client: tuple[AsyncClient, AsyncSession],
+) -> None:
+    client, db_session = api_client
+    _, _, customer = await seed_exchange_data(db_session)
+    referred = User(
+        telegram_id=700004,
+        username="referred",
+        first_name="Referred",
+        referred_by=customer.id,
+    )
+    wallet = AexWallet(user_id=customer.id)
+    db_session.add_all([referred, wallet])
+    await db_session.flush()
+    order = Order(
+        UserId=referred.id,
+        CityId=None,
+        country=Country.THAILAND,
+        currencySell="RUB",
+        amountSell=10000,
+        currencyBuy="THB",
+        amountBuy=4000,
+        rate=0.4,
+        status=int(OrderStatus.COMPLETED),
+        contactTelegram="@referred",
+        methodGet="qrcode",
+        publicNumber="2026060001",
+    )
+    db_session.add(order)
+    await db_session.flush()
+    db_session.add(
+        AexLedgerEntry(
+            wallet_id=wallet.id,
+            amount=100,
+            entry_type="credit",
+            reference_type="referral",
+            reference_id=str(order.id),
+            description=f"Referral bonus for order #{order.id}",
+            createdAt=datetime(2026, 6, 22, 15, 37, tzinfo=UTC),
+        )
+    )
+    await db_session.commit()
+    token = create_access_token({"sub": str(customer.id), "role": customer.role})
+
+    response = await client.get(
+        "/api/miniapp/aex/transactions",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+
+    assert response.status_code == 200
+    item = response.json()["items"][0]
+    assert item["type"] == "referral_reward"
+    assert _strip_bidi_marks(item["description"]) == "Реферальное начисление по заявке 2026060001"
+    assert f"#{order.id}" not in item["description"]
+
+
+@pytest.mark.asyncio
+async def test_miniapp_aex_transactions_maps_withdraw_lifecycle(
+    api_client: tuple[AsyncClient, AsyncSession],
+) -> None:
+    client, db_session = api_client
+    _, _, customer = await seed_exchange_data(db_session)
+    wallet = AexWallet(user_id=customer.id)
+    db_session.add(wallet)
+    await db_session.flush()
+    order = Order(
+        UserId=customer.id,
+        CityId=None,
+        country=Country.THAILAND,
+        currencySell="ATXG",
+        amountSell=200,
+        currencyBuy="THB",
+        amountBuy=7240,
+        rate=36.2,
+        status=int(OrderStatus.COMPLETED),
+        contactTelegram="@customer",
+        methodGet="qrcode",
+        publicNumber="2026070007",
+    )
+    db_session.add(order)
+    await db_session.flush()
+    db_session.add_all(
+        [
+            AexLedgerEntry(
+                wallet_id=wallet.id,
+                amount=100,
+                entry_type="credit",
+                reference_type="referral",
+                reference_id=None,
+                description="Referral reward",
+                createdAt=datetime(2026, 7, 1, 10, 0, tzinfo=UTC),
+            ),
+            AexLedgerEntry(
+                wallet_id=wallet.id,
+                amount=50,
+                entry_type="hold",
+                reference_type="order_withdraw_hold",
+                reference_id=str(order.id),
+                description="Reserved for withdrawal",
+                createdAt=datetime(2026, 7, 1, 11, 0, tzinfo=UTC),
+            ),
+            AexLedgerEntry(
+                wallet_id=wallet.id,
+                amount=-30,
+                entry_type="debit",
+                reference_type="order_withdraw_debit",
+                reference_id=str(order.id),
+                description="Debited for withdrawal",
+                createdAt=datetime(2026, 7, 1, 12, 0, tzinfo=UTC),
+            ),
+            AexLedgerEntry(
+                wallet_id=wallet.id,
+                amount=20,
+                entry_type="release",
+                reference_type="order_withdraw_release",
+                reference_id=str(order.id),
+                description="Released withdrawal reserve",
+                createdAt=datetime(2026, 7, 1, 13, 0, tzinfo=UTC),
+            ),
+        ]
+    )
+    await db_session.commit()
+    token = create_access_token({"sub": str(customer.id), "role": customer.role})
+
+    response = await client.get(
+        "/api/miniapp/aex/transactions",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+
+    assert response.status_code == 200
+    items = response.json()["items"]
+    assert [(item["type"], item["balanceAfter"]) for item in items] == [
+        ("refund", 70),
+        ("debited", 70),
+        ("reserved", 100),
+        ("referral_reward", 100),
+    ]
+    assert [_strip_bidi_marks(item["description"]) for item in items] == [
+        "Возврат по заявке 2026070007",
+        "Списано по заявке 2026070007",
+        "Зарезервировано по заявке 2026070007",
+        "Реферальное начисление",
+    ]
+
+
+@pytest.mark.asyncio
+async def test_miniapp_aex_transactions_respect_english_locale(
+    api_client: tuple[AsyncClient, AsyncSession],
+) -> None:
+    client, db_session = api_client
+    _, _, customer = await seed_exchange_data(db_session)
+    customer.language_code_app = "en"
+    wallet = AexWallet(user_id=customer.id)
+    db_session.add(wallet)
+    await db_session.flush()
+    order = Order(
+        UserId=customer.id,
+        CityId=None,
+        country=Country.THAILAND,
+        currencySell="RUB",
+        amountSell=10000,
+        currencyBuy="THB",
+        amountBuy=4000,
+        rate=0.4,
+        status=int(OrderStatus.COMPLETED),
+        contactTelegram="@customer",
+        methodGet="qrcode",
+        publicNumber="2026070008",
+    )
+    db_session.add(order)
+    await db_session.flush()
+    db_session.add(
+        AexLedgerEntry(
+            wallet_id=wallet.id,
+            amount=25,
+            entry_type="hold",
+            reference_type="order_withdraw_hold",
+            reference_id=str(order.id),
+            description="Reserved for withdrawal",
+            createdAt=datetime(2026, 7, 1, 11, 0, tzinfo=UTC),
+        )
+    )
+    await db_session.commit()
+    token = create_access_token({"sub": str(customer.id), "role": customer.role})
+
+    response = await client.get(
+        "/api/miniapp/aex/transactions",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+
+    assert response.status_code == 200
+    item = response.json()["items"][0]
+    assert item["type"] == "reserved"
+    assert _strip_bidi_marks(item["description"]) == "Reserved for order 2026070008"
+
+
+@pytest.mark.asyncio
+async def test_miniapp_referral_apply_binds_once(
+    api_client: tuple[AsyncClient, AsyncSession],
+) -> None:
+    client, db_session = api_client
+    _, _, customer = await seed_exchange_data(db_session)
+    referrer_one = User(telegram_id=700004, username="ref_one", referral_code="A7kP2mX9")
+    referrer_two = User(telegram_id=700005, username="ref_two", referral_code="hF84LmQz")
+    db_session.add_all([referrer_one, referrer_two])
+    await db_session.flush()
+    token = create_access_token({"sub": str(customer.id), "role": customer.role})
+
+    first = await client.post(
+        "/api/miniapp/aex/referral/apply",
+        json={"code": "A7kP2mX9"},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    second = await client.post(
+        "/api/miniapp/aex/referral/apply",
+        json={"code": "hF84LmQz"},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+
+    assert first.status_code == 200
+    assert first.json() == {"success": True}
+    assert second.status_code == 200
+    await db_session.refresh(customer)
+    assert customer.referred_by == referrer_one.id
+
+
+@pytest.mark.asyncio
+async def test_miniapp_referral_apply_invalid_or_missing_code_returns_expected_message(
+    api_client: tuple[AsyncClient, AsyncSession],
+) -> None:
+    client, db_session = api_client
+    _, _, customer = await seed_exchange_data(db_session)
+    token = create_access_token({"sub": str(customer.id), "role": customer.role})
+
+    invalid_format = await client.post(
+        "/api/miniapp/aex/referral/apply",
+        json={"code": "bad-code"},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    missing = await client.post(
+        "/api/miniapp/aex/referral/apply",
+        json={"code": "N2vX8aBc"},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+
+    assert invalid_format.status_code == 422
+    assert missing.status_code == 422
+    assert invalid_format.json()["message"] == "Неверный реферальный код. Проверте или удалите!"
+    assert missing.json()["message"] == "Неверный реферальный код. Проверте или удалите!"
 
 
 @pytest.mark.asyncio
@@ -494,6 +1041,455 @@ async def test_miniapp_order_keeps_saved_order_when_manager_notification_fails(
     assert stored_order is not None
     assert stored_order.publicNumber == order["publicNumber"]
     order_flow.notify_order_created.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_miniapp_order_accepts_atxg_withdrawal_via_usdt_based_pair(
+    api_client: tuple[AsyncClient, AsyncSession],
+) -> None:
+    client, db_session = api_client
+    _, _, customer = await seed_exchange_data(db_session)
+    await credit_aex_wallet(db_session, customer.id, 1000)
+    token = create_access_token({"sub": str(customer.id), "role": customer.role})
+
+    response = await client.post(
+        "/api/miniapp/orders",
+        headers={"Authorization": f"Bearer {token}"},
+        json={
+            "country": "thailand",
+            "currencySell": "ATXG",
+            "amountSell": 400,
+            "currencyBuy": "THB",
+            "amountBuy": 14480,
+            "rate": 36.2,
+            "methodGet": "qrcode",
+        },
+    )
+
+    assert response.status_code == 201
+    order = response.json()
+    assert order["currencySell"] == "ATXG"
+    assert order["currencyBuy"] == "THB"
+
+    wallet = await db_session.scalar(select(AexWallet).where(AexWallet.user_id == customer.id))
+    assert wallet is not None
+    assert wallet.balance_available == 600
+    assert wallet.balance_reserved == 400
+
+    entries = (
+        await db_session.execute(
+            select(AexLedgerEntry).where(AexLedgerEntry.wallet_id == wallet.id)
+        )
+    ).scalars().all()
+    assert [(entry.entry_type, entry.amount, entry.reference_type) for entry in entries] == [
+        ("hold", 400, "order_withdraw_hold")
+    ]
+
+
+@pytest.mark.asyncio
+async def test_miniapp_aex_order_rejects_missing_usdt_based_pair_without_mutation(
+    api_client: tuple[AsyncClient, AsyncSession],
+) -> None:
+    client, db_session = api_client
+    _, _, customer = await seed_exchange_data(db_session)
+    await credit_aex_wallet(db_session, customer.id, 1000)
+    token = create_access_token({"sub": str(customer.id), "role": customer.role})
+
+    response = await client.post(
+        "/api/miniapp/orders",
+        headers={"Authorization": f"Bearer {token}"},
+        json={
+            "country": "thailand",
+            "currencySell": "ATXG",
+            "amountSell": 400,
+            "currencyBuy": "EUR",
+            "amountBuy": 100,
+            "rate": 0.01,
+            "methodGet": "qrcode",
+        },
+    )
+
+    assert response.status_code == 422
+    assert response.json()["code"] == "RATE_PAIR_UNAVAILABLE"
+    assert await db_session.scalar(select(func.count(Order.id))) == 0
+    assert await db_session.scalar(select(func.count(AexWallet.id))) == 1
+    assert await db_session.scalar(select(func.count(AexLedgerEntry.id))) == 0
+
+
+@pytest.mark.asyncio
+async def test_miniapp_aex_order_rejects_missing_usdt_based_pair_before_wallet_lookup(
+    api_client: tuple[AsyncClient, AsyncSession],
+) -> None:
+    client, db_session = api_client
+    _, _, customer = await seed_exchange_data(db_session)
+    token = create_access_token({"sub": str(customer.id), "role": customer.role})
+
+    response = await client.post(
+        "/api/miniapp/orders",
+        headers={"Authorization": f"Bearer {token}"},
+        json={
+            "country": "thailand",
+            "currencySell": "ATXG",
+            "amountSell": 400,
+            "currencyBuy": "EUR",
+            "amountBuy": 100,
+            "rate": 0.01,
+            "methodGet": "qrcode",
+        },
+    )
+
+    assert response.status_code == 422
+    assert response.json()["code"] == "RATE_PAIR_UNAVAILABLE"
+    assert await db_session.scalar(select(func.count(Order.id))) == 0
+    assert await db_session.scalar(select(func.count(AexWallet.id))) == 0
+    assert await db_session.scalar(select(func.count(AexLedgerEntry.id))) == 0
+
+
+@pytest.mark.asyncio
+async def test_miniapp_aex_order_uses_usdt_minimum_amount(
+    api_client: tuple[AsyncClient, AsyncSession],
+) -> None:
+    client, db_session = api_client
+    _, _, customer = await seed_exchange_data(db_session)
+    await credit_aex_wallet(db_session, customer.id, 1000)
+    token = create_access_token({"sub": str(customer.id), "role": customer.role})
+
+    response = await client.post(
+        "/api/miniapp/orders",
+        headers={"Authorization": f"Bearer {token}"},
+        json={
+            "country": "thailand",
+            "currencySell": "ATXG",
+            "amountSell": 299,
+            "currencyBuy": "THB",
+            "amountBuy": 10823.8,
+            "rate": 36.2,
+            "methodGet": "qrcode",
+        },
+    )
+
+    assert response.status_code == 422
+    assert response.json()["code"] == "MIN_AMOUNT"
+    assert response.json()["params"] == {
+        "minAmount": 300,
+        "method": "qrcode",
+        "currency": "ATXG",
+    }
+    assert await db_session.scalar(select(func.count(Order.id))) == 0
+    assert await db_session.scalar(select(func.count(AexLedgerEntry.id))) == 0
+
+
+@pytest.mark.asyncio
+async def test_miniapp_aex_order_rejects_amount_above_available_balance(
+    api_client: tuple[AsyncClient, AsyncSession],
+) -> None:
+    client, db_session = api_client
+    _, _, customer = await seed_exchange_data(db_session)
+    await credit_aex_wallet(db_session, customer.id, 350)
+    token = create_access_token({"sub": str(customer.id), "role": customer.role})
+
+    response = await client.post(
+        "/api/miniapp/orders",
+        headers={"Authorization": f"Bearer {token}"},
+        json={
+            "country": "thailand",
+            "currencySell": "ATXG",
+            "amountSell": 400,
+            "currencyBuy": "THB",
+            "amountBuy": 14480,
+            "rate": 36.2,
+            "methodGet": "qrcode",
+        },
+    )
+
+    assert response.status_code == 422
+    assert response.json()["code"] == "ATXG_INSUFFICIENT_BALANCE"
+    assert await db_session.scalar(select(func.count(Order.id))) == 0
+    assert await db_session.scalar(select(func.count(AexLedgerEntry.id))) == 0
+
+
+@pytest.mark.asyncio
+async def test_miniapp_aex_order_rejects_when_withdraw_limit_not_reached(
+    api_client: tuple[AsyncClient, AsyncSession],
+) -> None:
+    client, db_session = api_client
+    _, _, customer = await seed_exchange_data(db_session)
+    await credit_aex_wallet(db_session, customer.id, 50)
+    token = create_access_token({"sub": str(customer.id), "role": customer.role})
+
+    response = await client.post(
+        "/api/miniapp/orders",
+        headers={"Authorization": f"Bearer {token}"},
+        json={
+            "country": "thailand",
+            "currencySell": "ATXG",
+            "amountSell": 300,
+            "currencyBuy": "THB",
+            "amountBuy": 10860,
+            "rate": 36.2,
+            "methodGet": "qrcode",
+        },
+    )
+
+    assert response.status_code == 422
+    assert response.json()["code"] == "ATXG_WITHDRAW_LIMIT_NOT_REACHED"
+    assert await db_session.scalar(select(func.count(Order.id))) == 0
+    assert await db_session.scalar(select(func.count(AexLedgerEntry.id))) == 0
+
+
+@pytest.mark.asyncio
+async def test_miniapp_aex_order_rolls_back_order_when_hold_fails(
+    api_client: tuple[AsyncClient, AsyncSession],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    client, db_session = api_client
+    from app.services import order_flow
+
+    _, _, customer = await seed_exchange_data(db_session)
+    await credit_aex_wallet(db_session, customer.id, 1000)
+    token = create_access_token({"sub": str(customer.id), "role": customer.role})
+    from app.services.aex import AexService
+
+    class _FailingAexService(AexService):
+        async def hold_order_withdrawal(self, *args, **kwargs):
+            raise RuntimeError("hold failed")
+
+    monkeypatch.setattr(order_flow, "AexService", _FailingAexService, raising=False)
+
+    with pytest.raises(RuntimeError, match="hold failed"):
+        await client.post(
+            "/api/miniapp/orders",
+            headers={"Authorization": f"Bearer {token}"},
+            json={
+                "country": "thailand",
+                "currencySell": "ATXG",
+                "amountSell": 400,
+                "currencyBuy": "THB",
+                "amountBuy": 14480,
+                "rate": 36.2,
+                "methodGet": "qrcode",
+            },
+        )
+
+    await db_session.rollback()
+    assert await db_session.scalar(select(func.count(Order.id))) == 0
+    assert await db_session.scalar(select(func.count(AexLedgerEntry.id))) == 0
+
+
+@pytest.mark.asyncio
+async def test_completed_aex_order_debits_reserved_balance(
+    api_client: tuple[AsyncClient, AsyncSession],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    client, db_session = api_client
+    from app.services import order_status
+    from app.services.order_status import update_order_status
+
+    _, _, customer = await seed_exchange_data(db_session)
+    await credit_aex_wallet(db_session, customer.id, 1000)
+    token = create_access_token({"sub": str(customer.id), "role": customer.role})
+    monkeypatch.setattr(order_status, "notify_order_status_changed", AsyncMock())
+
+    response = await client.post(
+        "/api/miniapp/orders",
+        headers={"Authorization": f"Bearer {token}"},
+        json={
+            "country": "thailand",
+            "currencySell": "ATXG",
+            "amountSell": 400,
+            "currencyBuy": "THB",
+            "amountBuy": 14480,
+            "rate": 36.2,
+            "methodGet": "qrcode",
+        },
+    )
+    order_id = response.json()["id"]
+
+    updated = await update_order_status(db_session, order_id=order_id, status=OrderStatus.COMPLETED)
+
+    wallet = await db_session.scalar(select(AexWallet).where(AexWallet.user_id == customer.id))
+    assert updated.status == int(OrderStatus.COMPLETED)
+    assert wallet is not None
+    assert wallet.balance_available == 600
+    assert wallet.balance_reserved == 0
+    entries = (
+        await db_session.execute(
+            select(AexLedgerEntry.entry_type, AexLedgerEntry.reference_type).where(
+                AexLedgerEntry.wallet_id == wallet.id
+            )
+        )
+    ).all()
+    assert entries == [("hold", "order_withdraw_hold"), ("debit", "order_withdraw_debit")]
+
+
+@pytest.mark.asyncio
+async def test_cancelled_aex_order_releases_reserved_balance(
+    api_client: tuple[AsyncClient, AsyncSession],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    client, db_session = api_client
+    from app.services import order_status
+    from app.services.order_status import update_order_status
+
+    _, _, customer = await seed_exchange_data(db_session)
+    await credit_aex_wallet(db_session, customer.id, 1000)
+    token = create_access_token({"sub": str(customer.id), "role": customer.role})
+    monkeypatch.setattr(order_status, "notify_order_status_changed", AsyncMock())
+
+    response = await client.post(
+        "/api/miniapp/orders",
+        headers={"Authorization": f"Bearer {token}"},
+        json={
+            "country": "thailand",
+            "currencySell": "ATXG",
+            "amountSell": 400,
+            "currencyBuy": "THB",
+            "amountBuy": 14480,
+            "rate": 36.2,
+            "methodGet": "qrcode",
+        },
+    )
+    order_id = response.json()["id"]
+
+    updated = await update_order_status(db_session, order_id=order_id, status=OrderStatus.CANCELLED)
+
+    wallet = await db_session.scalar(select(AexWallet).where(AexWallet.user_id == customer.id))
+    assert updated.status == int(OrderStatus.CANCELLED)
+    assert wallet is not None
+    assert wallet.balance_available == 1000
+    assert wallet.balance_reserved == 0
+    entries = (
+        await db_session.execute(
+            select(AexLedgerEntry.entry_type, AexLedgerEntry.reference_type).where(
+                AexLedgerEntry.wallet_id == wallet.id
+            )
+        )
+    ).all()
+    assert entries == [("hold", "order_withdraw_hold"), ("release", "order_withdraw_release")]
+
+
+@pytest.mark.asyncio
+async def test_aex_order_status_retry_does_not_mutate_balance_twice(
+    api_client: tuple[AsyncClient, AsyncSession],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    client, db_session = api_client
+    from app.services import order_status
+    from app.services.order_status import update_order_status
+
+    _, _, customer = await seed_exchange_data(db_session)
+    await credit_aex_wallet(db_session, customer.id, 1000)
+    token = create_access_token({"sub": str(customer.id), "role": customer.role})
+    monkeypatch.setattr(order_status, "notify_order_status_changed", AsyncMock())
+
+    response = await client.post(
+        "/api/miniapp/orders",
+        headers={"Authorization": f"Bearer {token}"},
+        json={
+            "country": "thailand",
+            "currencySell": "ATXG",
+            "amountSell": 400,
+            "currencyBuy": "THB",
+            "amountBuy": 14480,
+            "rate": 36.2,
+            "methodGet": "qrcode",
+        },
+    )
+    order_id = response.json()["id"]
+
+    await update_order_status(db_session, order_id=order_id, status=OrderStatus.COMPLETED)
+    await update_order_status(db_session, order_id=order_id, status=OrderStatus.COMPLETED)
+
+    wallet = await db_session.scalar(select(AexWallet).where(AexWallet.user_id == customer.id))
+    assert wallet is not None
+    assert wallet.balance_available == 600
+    assert wallet.balance_reserved == 0
+    assert await db_session.scalar(select(func.count(AexLedgerEntry.id))) == 2
+
+
+@pytest.mark.asyncio
+async def test_completed_aex_order_rejects_later_cancellation_without_balance_mutation(
+    api_client: tuple[AsyncClient, AsyncSession],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    client, db_session = api_client
+    from app.services import order_status
+    from app.services.order_status import update_order_status
+
+    _, _, customer = await seed_exchange_data(db_session)
+    await credit_aex_wallet(db_session, customer.id, 1000)
+    token = create_access_token({"sub": str(customer.id), "role": customer.role})
+    monkeypatch.setattr(order_status, "notify_order_status_changed", AsyncMock())
+
+    response = await client.post(
+        "/api/miniapp/orders",
+        headers={"Authorization": f"Bearer {token}"},
+        json={
+            "country": "thailand",
+            "currencySell": "ATXG",
+            "amountSell": 400,
+            "currencyBuy": "THB",
+            "amountBuy": 14480,
+            "rate": 36.2,
+            "methodGet": "qrcode",
+        },
+    )
+    order_id = response.json()["id"]
+    await update_order_status(db_session, order_id=order_id, status=OrderStatus.COMPLETED)
+
+    with pytest.raises(AntExException) as exc_info:
+        await update_order_status(db_session, order_id=order_id, status=OrderStatus.CANCELLED)
+
+    wallet = await db_session.scalar(select(AexWallet).where(AexWallet.user_id == customer.id))
+    order = await db_session.get(Order, order_id)
+    assert exc_info.value.code == "ATXG_ORDER_FINAL_STATUS_LOCKED"
+    assert order is not None
+    assert order.status == int(OrderStatus.COMPLETED)
+    assert wallet is not None
+    assert wallet.balance_available == 600
+    assert wallet.balance_reserved == 0
+    assert await db_session.scalar(select(func.count(AexLedgerEntry.id))) == 2
+
+
+@pytest.mark.asyncio
+async def test_completed_aex_order_does_not_credit_referral_bonus(
+    api_client: tuple[AsyncClient, AsyncSession],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    client, db_session = api_client
+    from app.services import order_status
+    from app.services.order_status import update_order_status
+
+    _, _, customer = await seed_exchange_data(db_session)
+    referrer = User(telegram_id=700003, username="referrer", first_name="Referrer")
+    db_session.add(referrer)
+    await db_session.flush()
+    customer.referred_by = referrer.id
+    await credit_aex_wallet(db_session, customer.id, 1000)
+    token = create_access_token({"sub": str(customer.id), "role": customer.role})
+    monkeypatch.setattr(order_status, "notify_order_status_changed", AsyncMock())
+
+    response = await client.post(
+        "/api/miniapp/orders",
+        headers={"Authorization": f"Bearer {token}"},
+        json={
+            "country": "thailand",
+            "currencySell": "ATXG",
+            "amountSell": 400,
+            "currencyBuy": "THB",
+            "amountBuy": 14480,
+            "rate": 36.2,
+            "methodGet": "qrcode",
+        },
+    )
+    order_id = response.json()["id"]
+
+    await update_order_status(db_session, order_id=order_id, status=OrderStatus.COMPLETED)
+
+    referral_entries_count = await db_session.scalar(
+        select(func.count(AexLedgerEntry.id)).where(AexLedgerEntry.reference_type == "referral")
+    )
+    assert referral_entries_count == 0
 
 
 @pytest.mark.asyncio

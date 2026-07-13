@@ -56,3 +56,10 @@ class BroadcastOut(BaseModel):
     updatedAt: datetime  # noqa: N815
 
     model_config = {"from_attributes": True}
+
+
+class PaginatedBroadcastsResponse(BaseModel):
+    items: list[BroadcastOut]
+    total: int
+    limit: int
+    offset: int

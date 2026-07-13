@@ -4,9 +4,10 @@
 from __future__ import annotations
 
 from datetime import datetime
+from decimal import Decimal
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_serializer
 
 from app.enums.country import Country
 from app.schemas.city import CityOut
@@ -147,6 +148,64 @@ class MiniappProfileScreenResponse(BaseModel):
     version: str
 
 
+class MiniappReferralProgramConfig(BaseModel):
+    referralPercent: Decimal
+    referralMinWithdraw: Decimal
+    referralMaxWithdraw: Decimal | None
+    aexRate: Decimal
+    aexWithdrawLimit: Decimal
+
+    @field_serializer(
+        "referralPercent",
+        "referralMinWithdraw",
+        "referralMaxWithdraw",
+        "aexRate",
+        "aexWithdrawLimit",
+        when_used="json",
+    )
+    def serialize_decimal(self, value: Decimal | None) -> str | None:
+        if value is None:
+            return None
+        serialized = format(value, "f")
+        if "." in serialized:
+            return serialized.rstrip("0").rstrip(".")
+        return serialized
+
+
+class MiniappAexReferralResponse(BaseModel):
+    referralCode: str
+    referralLink: str
+    totalReferrals: int
+    programConfig: MiniappReferralProgramConfig
+
+
+class MiniappAexReferralUserItem(BaseModel):
+    id: int
+    displayName: str
+    username: str | None
+    photoUrl: str | None
+    joinedAt: datetime
+    rewardPercent: Decimal
+
+    @field_serializer("rewardPercent", when_used="json")
+    def serialize_reward_percent(self, value: Decimal) -> str:
+        return _serialize_decimal(value)
+
+
+class MiniappAexReferralsResponse(BaseModel):
+    items: list[MiniappAexReferralUserItem]
+    limit: int
+    offset: int
+    total: int
+    hasMore: bool
+    totalAccrued: Decimal
+    rewardPercent: Decimal
+
+    @field_serializer("totalAccrued", "rewardPercent", when_used="json")
+    def serialize_decimal_fields(self, value: Decimal) -> str:
+        return _serialize_decimal(value)
+
+
 class MiniappRatesResponse(BaseModel):
     items: list[RateOut]
 
@@ -194,9 +253,33 @@ class MiniappOrdersResponse(BaseModel):
     hasMore: bool
 
 
+class MiniappAexTransactionItem(BaseModel):
+    id: int
+    type: str
+    amount: float
+    balanceAfter: float
+    description: str
+    createdAt: datetime
+
+
+class MiniappAexTransactionsResponse(BaseModel):
+    items: list[MiniappAexTransactionItem]
+    limit: int
+    offset: int
+    total: int
+    hasMore: bool
+
+
 class MiniappOrderCreatedResponse(BaseModel):
     success: bool = True
     orderId: int
+
+
+def _serialize_decimal(value: Decimal) -> str:
+    serialized = format(value, "f")
+    if "." in serialized:
+        return serialized.rstrip("0").rstrip(".")
+    return serialized
 
 
 def build_miniapp_profile_summary(user) -> MiniappProfileSummary:

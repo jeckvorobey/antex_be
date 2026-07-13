@@ -31,22 +31,12 @@ def test_marketing_metadata_has_tables_constraints_and_indexes() -> None:
 
 
 def test_marketing_models_do_not_add_columns_to_users_or_orders() -> None:
-    assert set(Base.metadata.tables["Users"].columns.keys()) == {
-        "id",
-        "telegram_id",
-        "username",
-        "phone",
-        "first_name",
-        "last_name",
-        "language_code",
-        "photo_url",
-        "is_bot",
-        "session",
-        "role",
-        "is_premium",
-        "city_id",
-        "language_code_app",
-        "createdAt",
-        "updatedAt",
-    }
-    assert "campaign_id" not in Base.metadata.tables["Orders"].columns
+    marketing_columns = {"campaign_id", "marketing_campaign_id", "marketing_code"}
+
+    for table_name in ("Users", "Orders"):
+        table = Base.metadata.tables[table_name]
+        assert marketing_columns.isdisjoint(table.columns.keys())
+        assert all(
+            foreign_key.target_fullname != "MarketingCampaigns.id"
+            for foreign_key in table.foreign_keys
+        )

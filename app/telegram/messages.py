@@ -1,9 +1,11 @@
+# ruff: noqa: RUF002
 """Telegram bot message templates."""
 
 from __future__ import annotations
 
 from collections.abc import Callable
 from datetime import UTC, datetime
+from decimal import Decimal
 from typing import Any, cast
 
 from app.enums.order import MethodGet, OrderStatus
@@ -24,6 +26,7 @@ _CURRENCY_RATE_EMOJIS = {
 _CURRENCY_BUTTON_LABELS = {
     "USDT": "₮ USDT",
 }
+_ATXG_AMOUNT_QUANTIZER = Decimal("0.01")
 
 
 def _resolve_translator(
@@ -198,6 +201,11 @@ def _format_number(value: int | float) -> str:
     return text.rstrip("0").rstrip(".")
 
 
+def _format_aex_amount(value: Decimal | int | float | str) -> str:
+    amount = Decimal(str(value)).quantize(_ATXG_AMOUNT_QUANTIZER)
+    return f"{amount:.2f}"
+
+
 def exchange_summary_middle(
     *,
     country: str,
@@ -305,6 +313,38 @@ def manager_chat_open_text(
         id=order_id,
         amount=_format_number(amount_sell),
         currency=currency_sell,
+    )
+
+
+def referral_bonus_credited(
+    *,
+    amount: Decimal | int | float | str,
+    order_id: int | str,
+    translator: Translate | None = None,
+    locale: str | None = None,
+) -> str:
+    """Текст уведомления рефереру о начислении ATXG."""
+    translate = cast(Any, _resolve_translator(translator, locale))
+    return translate(
+        "referral-bonus-credited",
+        amount=_format_aex_amount(amount),
+        order_id=order_id,
+    )
+
+
+def referral_bonus_reversed(
+    *,
+    amount: Decimal | int | float | str,
+    order_id: int | str,
+    translator: Translate | None = None,
+    locale: str | None = None,
+) -> str:
+    """Текст уведомления о списании ATXG при отмене заявки."""
+    translate = cast(Any, _resolve_translator(translator, locale))
+    return translate(
+        "referral-bonus-reversed",
+        amount=_format_aex_amount(amount),
+        order_id=order_id,
     )
 
 

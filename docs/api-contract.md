@@ -6,6 +6,22 @@ Miniapp использует backend-driven namespace `/api/miniapp/*`.
 
 - `GET /api/miniapp/home` возвращает профиль, быстрые действия, featured rates,
   баннер, сервисы и города для главного экрана.
+- `GET /api/miniapp/aex/referral` возвращает ATXG referral payload для страницы
+  рефералов: `referralCode`, готовую `referralLink` вида
+  `https://t.me/<bot_username>?startapp=ref_<code>`, `totalReferrals` и
+  `programConfig` (`referralPercent`, `referralMinWithdraw`,
+  `referralMaxWithdraw`, `aexRate`, `aexWithdrawLimit`). `aexWithdrawLimit`
+  задает ATXG-порог, после достижения которого miniapp может показывать ATXG как
+  доступную внутреннюю валюту рядом с RUB и USDT. Персональный список referrals
+  не возвращается.
+- `GET /api/miniapp/aex/referrals` возвращает пагинированный безопасный список
+  приглашенных пользователей в envelope `items`, `total`, `limit`, `offset`,
+  `hasMore`, а также `totalAccrued` и `rewardPercent`. Item не содержит телефон,
+  `telegram_id` или сумму заработка по конкретному пользователю.
+- `GET /api/miniapp/aex/transactions` возвращает историю ATXG операций в envelope
+  `items`, `total`, `limit`, `offset`, `hasMore`. Для `referral_reward`
+  описание операции возвращается на русском с публичным номером заявки
+  `Order.publicNumber`, без внутреннего `Order.id`.
 - `GET /api/miniapp/exchange` возвращает начальное состояние калькулятора,
   chips, доступные пары и стартовый quote.
 - `GET /api/miniapp/exchange/quote?currencySell=&currencyBuy=&amountSell=`
@@ -13,6 +29,9 @@ Miniapp использует backend-driven namespace `/api/miniapp/*`.
 - `POST /api/miniapp/orders` принимает `cityId` опционально, валюты, сумму,
   контакт и метод получения. Сервер сам выбирает город по порядку:
   `cityId` из payload, затем `user.city_id`, затем первый доступный город.
+- Для вывода внутреннего токена `POST /api/miniapp/orders` принимает
+  `currencySell = ATXG` и локальные валюты получения `THB`, `GEL`, `VND`;
+  расчет и проверка пары выполняются через соответствующую USDT-based пару.
 - `POST /api/miniapp/orders` возвращает полный `MiniappOrderItem`.
   Клиентские `rate` и `amountBuy`, если переданы, игнорируются.
 
@@ -25,7 +44,9 @@ Machine-readable коды ошибок miniapp:
 
 ## Admin
 
-- `PATCH /api/admin/config` используется только для изменения `enabled`.
+- `GET/PATCH /api/admin/config` возвращает и обновляет `enabled`, timestamps и
+  настройки referral program: `referralPercent`, `referralMinWithdraw`,
+  `referralMaxWithdraw`, `aexRate`, `aexWithdrawLimit`.
 - `GET /api/admin/summary` возвращает метрики dashboard:
   `ordersToday`, `usersTotal`, `rubThbRate`.
 - `GET /api/admin/rates` возвращает административное представление курсов:

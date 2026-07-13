@@ -6,6 +6,8 @@ from datetime import datetime
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from app.schemas.user import UserOut
+
 
 class AdminCreate(BaseModel):
     username: str = Field(min_length=3, max_length=255)
@@ -54,3 +56,10 @@ class AdminSummaryOut(BaseModel):
     orders_today: int = Field(alias="ordersToday")
     users_total: int = Field(alias="usersTotal")
     featured_rates: list[AdminSummaryRateOut] = Field(alias="featuredRates")
+
+
+class PaginatedUsersResponse(BaseModel):
+    items: list[UserOut]
+    total: int
+    limit: int
+    offset: int

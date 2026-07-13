@@ -130,7 +130,19 @@ order-completed-top =
 order-completed-bottom =
     Спасибо, что воспользовались нашим сервисом!
 
-    ⭐ Если у вас есть пара минут, будем рады вашему отзыву. Это помогает нам становиться лучше.
+    Мы ценим обратную связь. За видео-отзыв (кружок) предоставляем <b>бонус 5$ к следующему обмену 💰</b>
+
+    ⭐ Будем рады вашему отзыву. Это помогает нам становиться лучше.
 order-cancelled = ❌ Заявка #{ $id } отменена.
 manager-chat-open-text = Здравствуйте! Вы оставляли заявку #{ $id } на обмен { $amount } { $currency }. Готовы продолжить?
 user-chat-open-text = Здравствуйте! По заявке #{ $id } на сумму { $amount } { $currency } подтверждаю готовность к обмену.
+referral-bonus-credited = 🎁 Начислено { $amount } ATXG за заявку #{ $order_id }.
+referral-bonus-reversed = 💸 Списано { $amount } ATXG за отмену заявки #{ $order_id }.
+miniapp-aex-referral-reward = Реферальное начисление
+miniapp-aex-referral-reward-with-order = Реферальное начисление по заявке { $order_number }
+miniapp-aex-withdraw-hold = Зарезервировано
+miniapp-aex-withdraw-hold-with-order = Зарезервировано по заявке { $order_number }
+miniapp-aex-withdraw-debit = Списано
+miniapp-aex-withdraw-debit-with-order = Списано по заявке { $order_number }
+miniapp-aex-withdraw-release = Возврат
+miniapp-aex-withdraw-release-with-order = Возврат по заявке { $order_number }

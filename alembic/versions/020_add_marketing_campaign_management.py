@@ -1,7 +1,7 @@
 """Add marketing campaign management tables.
 
-Revision ID: 014
-Revises: 013
+Revision ID: 020
+Revises: 019
 Create Date: 2026-07-13 00:00:00
 """
 
@@ -11,8 +11,8 @@ import sqlalchemy as sa
 
 from alembic import op
 
-revision = "014"
-down_revision = "013"
+revision = "020"
+down_revision = "019"
 branch_labels = None
 depends_on = None
 

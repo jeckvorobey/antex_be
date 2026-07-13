@@ -44,9 +44,7 @@ class TelegramUserAudienceProvider:
 
         while True:
             result = await self.session.execute(
-                self._recipients_statement()
-                .where(User.id > last_id)
-                .limit(normalized_batch_size)
+                self._recipients_statement().where(User.id > last_id).limit(normalized_batch_size)
             )
             users = list(result.scalars().all())
             if not users:

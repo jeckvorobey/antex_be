@@ -30,15 +30,26 @@ from app.schemas.admin import (
     AdminSummaryOut,
     AdminSummaryRateOut,
     AdminTokenResponse,
+    PaginatedUsersResponse,
 )
+from app.schemas.aex import AdminReferralGenerateResponse, AdminReferralReferredByRequest
 from app.schemas.city import CityCreate, CityOut, CityUpdate, build_city_out
 from app.schemas.config import AppConfigOut, AppConfigUpdate
-from app.schemas.order import OrderOut, OrderStatusUpdate, build_order_out
+from app.schemas.order import (
+    OrderOut,
+    OrderStatusUpdate,
+    PaginatedOrdersResponse,
+    build_order_out,
+)
 from app.schemas.rate import AdminRateOut, RateCreate, RateUpdate, build_admin_rate_out
-from app.schemas.site_lead import SiteLeadOut, build_site_lead_out
+from app.schemas.site_lead import (
+    PaginatedSiteLeadsResponse,
+    build_site_lead_out,
+)
 from app.schemas.user import UserOut, UserUpdate, build_user_out
 from app.services.exchange import ExchangeService
 from app.services.order_status import update_order_status as apply_order_status
+from app.services.referral import ReferralService
 
 router = APIRouter(prefix="/api/admin", tags=["admin"])
 
@@ -228,14 +239,22 @@ async def delete_city(city_id: int, db: DbDep, _: AdminUser) -> dict[str, bool]:
     return {"ok": True}
 
 
-@router.get("/users", response_model=list[UserOut])
+@router.get("/users", response_model=PaginatedUsersResponse)
 async def list_users(
     db: DbDep,
     _: AdminUser,
     search: str | None = Query(None),
-) -> list[UserOut]:
+    limit: int = Query(default=50, ge=1, le=100),
+    offset: int = Query(default=0, ge=0),
+) -> PaginatedUsersResponse:
     repo = UserRepository(db)
-    return [build_user_out(user) for user in await repo.search(search)]
+    users, total = await repo.search_paginated(search, limit=limit, offset=offset)
+    return PaginatedUsersResponse(
+        items=[build_user_out(user) for user in users],
+        total=total,
+        limit=limit,
+        offset=offset,
+    )
 
 
 @router.get("/users/{user_id}", response_model=UserOut)
@@ -277,19 +296,72 @@ async def update_user(user_id: int, body: UserUpdate, db: DbDep, _: AdminUser) -
     return build_user_out(updated)
 
 
-@router.get("/orders", response_model=list[OrderOut])
+@router.post(
+    "/users/{user_id}/generate-referral-code", response_model=AdminReferralGenerateResponse
+)
+async def generate_user_referral_code(
+    user_id: int,
+    db: DbDep,
+    _: AdminUser,
+    regenerate: bool = Query(False),
+) -> AdminReferralGenerateResponse:
+    """Создать или явно пересоздать referral_code одного пользователя."""
+    repo = UserRepository(db)
+    user = await repo.get_one(user_id)
+    if not user:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+
+    code = await ReferralService().generate_referral_code_for_user(
+        db,
+        user,
+        regenerate=regenerate,
+    )
+    await db.commit()
+    return AdminReferralGenerateResponse(ok=True, referral_code=code)
+
+
+@router.patch("/users/{user_id}/referred-by", response_model=UserOut)
+async def update_user_referred_by(
+    user_id: int,
+    body: AdminReferralReferredByRequest,
+    db: DbDep,
+    _: AdminUser,
+) -> UserOut:
+    """Admin-only ручная смена реферера пользователя."""
+    repo = UserRepository(db)
+    user = await repo.get_one(user_id)
+    if not user:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+
+    updated = await ReferralService().set_referrer_by_code(db, user, body.referral_code)
+    await db.commit()
+    updated = await repo.get_one(updated.id)
+    return build_user_out(updated)
+
+
+@router.get("/orders", response_model=PaginatedOrdersResponse)
 async def list_orders(
     db: DbDep,
     _: AdminUser,
     date_from: datetime | None = None,
     date_to: datetime | None = None,
-) -> list[OrderOut]:
+    limit: int = Query(default=50, ge=1, le=100),
+    offset: int = Query(default=0, ge=0),
+) -> PaginatedOrdersResponse:
     repo = OrderRepository(db)
-    if date_from and date_to:
-        orders = await repo.list_for_admin(date_from=date_from, date_to=date_to)
-    else:
-        orders = await repo.list_for_admin()
-    return [build_order_out(order) for order in orders]
+    orders = await repo.list_for_admin(
+        date_from=date_from,
+        date_to=date_to,
+        limit=limit,
+        offset=offset,
+    )
+    total = await repo.count_for_admin(date_from=date_from, date_to=date_to)
+    return PaginatedOrdersResponse(
+        items=[build_order_out(order) for order in orders],
+        total=total,
+        limit=limit,
+        offset=offset,
+    )
 
 
 @router.get("/orders/{order_id}", response_model=OrderOut)
@@ -324,9 +396,20 @@ async def update_order_status(
     return build_order_out(hydrated)
 
 
-@router.get("/site-leads", response_model=list[SiteLeadOut])
-async def list_site_leads(db: DbDep, _: AdminUser) -> list[SiteLeadOut]:
-    return [build_site_lead_out(lead) for lead in await SiteLeadRepository(db).list_all()]
+@router.get("/site-leads", response_model=PaginatedSiteLeadsResponse)
+async def list_site_leads(
+    db: DbDep,
+    _: AdminUser,
+    limit: int = Query(default=50, ge=1, le=100),
+    offset: int = Query(default=0, ge=0),
+) -> PaginatedSiteLeadsResponse:
+    items, total = await SiteLeadRepository(db).list_paginated(limit=limit, offset=offset)
+    return PaginatedSiteLeadsResponse(
+        items=[build_site_lead_out(lead) for lead in items],
+        total=total,
+        limit=limit,
+        offset=offset,
+    )
 
 
 @router.get("/rates", response_model=list[AdminRateOut])
@@ -381,6 +464,16 @@ async def update_config(body: AppConfigUpdate, db: DbDep, _: AdminUser) -> AppCo
     repo = ConfigRepository(db)
     if body.enabled is not None:
         await repo.set_enabled(body.enabled)
+    body_fields = body.model_fields_set
+    await repo.update_referral_program(
+        referral_percent=body.referral_percent,
+        referral_min_withdraw=body.referral_min_withdraw,
+        referral_max_withdraw=body.referral_max_withdraw,
+        aex_rate=body.aex_rate,
+        aex_withdraw_limit=body.aex_withdraw_limit,
+        update_referral_max_withdraw="referral_max_withdraw" in body_fields
+        or "referralMaxWithdraw" in body_fields,
+    )
     config = await repo.get_or_create()
     await db.commit()
     return AppConfigOut.model_validate(config)
