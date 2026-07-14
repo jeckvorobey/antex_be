@@ -6,11 +6,7 @@ from datetime import date, datetime
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
-from app.modules.marketing.constants import (
-    DEFAULT_MARKETING_PROVIDER,
-    MARKETING_CAMPAIGN_STATUSES,
-    MARKETING_PROVIDERS,
-)
+from app.modules.marketing.constants import MARKETING_CAMPAIGN_STATUSES
 
 
 class MarketingSchema(BaseModel):
@@ -19,24 +15,21 @@ class MarketingSchema(BaseModel):
 
 class CampaignCreate(MarketingSchema):
     name: str = Field(min_length=1, max_length=255)
-    provider: str = DEFAULT_MARKETING_PROVIDER
-    source: str | None = Field(default=None, max_length=128)
+    provider: str = Field(min_length=1, max_length=64)
     medium: str | None = Field(default=None, max_length=128)
     external_id: str | None = Field(default=None, alias="externalId", max_length=255)
     objective: str | None = Field(default=None, max_length=255)
     status: str = "draft"
     budget: float | None = Field(default=None, ge=0)
-    currency: str | None = Field(default=None, min_length=3, max_length=8)
+    currency: str = Field(min_length=3, max_length=8)
     starts_at: date | None = Field(default=None, alias="startsAt")
     ends_at: date | None = Field(default=None, alias="endsAt")
     notes: str | None = None
 
     @field_validator("provider")
     @classmethod
-    def validate_provider(cls, value: str) -> str:
-        if value not in MARKETING_PROVIDERS:
-            raise ValueError("Unsupported marketing provider")
-        return value
+    def normalize_provider(cls, value: str) -> str:
+        return value.strip().lower()
 
     @field_validator("status")
     @classmethod
@@ -47,21 +40,18 @@ class CampaignCreate(MarketingSchema):
 
     @field_validator("currency")
     @classmethod
-    def normalize_currency(cls, value: str | None) -> str | None:
-        return value.upper() if value else None
+    def normalize_currency(cls, value: str) -> str:
+        return value.strip().upper()
 
     @model_validator(mode="after")
     def validate_dates(self) -> CampaignCreate:
         if self.starts_at and self.ends_at and self.ends_at < self.starts_at:
             raise ValueError("endsAt must not be earlier than startsAt")
-        if self.budget is not None and self.currency is None:
-            raise ValueError("currency is required when budget is set")
         return self
 
 
 class CampaignUpdate(MarketingSchema):
     name: str | None = Field(default=None, min_length=1, max_length=255)
-    source: str | None = Field(default=None, max_length=128)
     medium: str | None = Field(default=None, max_length=128)
     external_id: str | None = Field(default=None, alias="externalId", max_length=255)
     objective: str | None = Field(default=None, max_length=255)
@@ -90,13 +80,12 @@ class CampaignOut(MarketingSchema):
     code: str
     name: str
     provider: str
-    source: str | None
     medium: str | None
     external_id: str | None = Field(alias="externalId")
     objective: str | None
     status: str
     budget: float | None
-    currency: str | None
+    currency: str
     starts_at: date | None = Field(alias="startsAt")
     ends_at: date | None = Field(alias="endsAt")
     notes: str | None
@@ -106,6 +95,47 @@ class CampaignOut(MarketingSchema):
     updated_at: datetime = Field(alias="updatedAt")
     attributed_users: int = Field(default=0, alias="attributedUsers")
     applications: int = 0
+    campaign_type: str = Field(alias="campaignType")
+
+
+class MarketingPlatformCreate(MarketingSchema):
+    slug: str = Field(min_length=1, max_length=64, pattern=r"^[a-z0-9_]+$")
+    name: str = Field(min_length=1, max_length=128)
+
+    @field_validator("slug")
+    @classmethod
+    def normalize_slug(cls, value: str) -> str:
+        return value.strip().lower()
+
+    @field_validator("name")
+    @classmethod
+    def normalize_name(cls, value: str) -> str:
+        return value.strip()
+
+
+class MarketingPlatformOut(MarketingSchema):
+    slug: str
+    name: str
+
+
+class MarketingCurrencyCreate(MarketingSchema):
+    code: str = Field(min_length=3, max_length=8, pattern=r"^[A-Za-z0-9]+$")
+    name: str = Field(min_length=1, max_length=64)
+
+    @field_validator("code")
+    @classmethod
+    def normalize_code(cls, value: str) -> str:
+        return value.strip().upper()
+
+    @field_validator("name")
+    @classmethod
+    def normalize_name(cls, value: str) -> str:
+        return value.strip()
+
+
+class MarketingCurrencyOut(MarketingSchema):
+    code: str
+    name: str
 
 
 class CampaignListOut(MarketingSchema):

@@ -7,9 +7,16 @@ from typing import Any
 
 from sqlalchemy import and_, case, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from app.enums.order import OrderStatus
-from app.models.marketing import MarketingAttribution, MarketingCampaign, MarketingDailyMetric
+from app.models.marketing import (
+    MarketingAttribution,
+    MarketingCampaign,
+    MarketingCurrency,
+    MarketingDailyMetric,
+    MarketingPlatform,
+)
 from app.models.order import Order
 
 
@@ -18,7 +25,42 @@ class MarketingAdminRepository:
         self.session = session
 
     async def get_campaign(self, campaign_id: int) -> MarketingCampaign | None:
-        return await self.session.get(MarketingCampaign, campaign_id)
+        return await self.session.scalar(
+            select(MarketingCampaign)
+            .options(
+                selectinload(MarketingCampaign.platform),
+                selectinload(MarketingCampaign.currency),
+            )
+            .where(MarketingCampaign.id == campaign_id)
+        )
+
+    async def list_platforms(self) -> list[MarketingPlatform]:
+        return list(
+            (
+                await self.session.scalars(
+                    select(MarketingPlatform).order_by(MarketingPlatform.name)
+                )
+            ).all()
+        )
+
+    async def list_currencies(self) -> list[MarketingCurrency]:
+        return list(
+            (
+                await self.session.scalars(
+                    select(MarketingCurrency).order_by(MarketingCurrency.code)
+                )
+            ).all()
+        )
+
+    async def get_platform_by_slug(self, slug: str) -> MarketingPlatform | None:
+        return await self.session.scalar(
+            select(MarketingPlatform).where(MarketingPlatform.slug == slug)
+        )
+
+    async def get_currency_by_code(self, code: str) -> MarketingCurrency | None:
+        return await self.session.scalar(
+            select(MarketingCurrency).where(MarketingCurrency.code == code)
+        )
 
     async def list_campaigns(
         self,
@@ -36,19 +78,26 @@ class MarketingAdminRepository:
                 or_(MarketingCampaign.name.ilike(pattern), MarketingCampaign.code.ilike(pattern))
             )
         if provider:
-            conditions.append(MarketingCampaign.provider == provider)
+            conditions.append(MarketingPlatform.slug == provider)
         if status:
             conditions.append(MarketingCampaign.status == status)
 
         total = int(
             (
                 await self.session.execute(
-                    select(func.count(MarketingCampaign.id)).where(*conditions)
+                    select(func.count(MarketingCampaign.id))
+                    .join(MarketingPlatform)
+                    .where(*conditions)
                 )
             ).scalar_one()
         )
         result = await self.session.execute(
             select(MarketingCampaign)
+            .join(MarketingPlatform)
+            .options(
+                selectinload(MarketingCampaign.platform),
+                selectinload(MarketingCampaign.currency),
+            )
             .where(*conditions)
             .order_by(MarketingCampaign.createdAt.desc(), MarketingCampaign.id.desc())
             .offset(offset)
@@ -144,20 +193,20 @@ class MarketingAdminRepository:
         if campaign_id is not None:
             conditions.append(MarketingCampaign.id == campaign_id)
         if provider is not None:
-            conditions.append(MarketingCampaign.provider == provider)
+            conditions.append(MarketingPlatform.slug == provider)
         if status is not None:
             conditions.append(MarketingCampaign.status == status)
         if currency is not None:
-            conditions.append(MarketingCampaign.currency == currency)
+            conditions.append(MarketingCurrency.code == currency)
 
         statement = (
             select(
                 MarketingCampaign.id.label("campaign_id"),
                 MarketingCampaign.name.label("campaign_name"),
                 MarketingCampaign.code,
-                MarketingCampaign.provider,
+                MarketingPlatform.slug.label("provider"),
                 MarketingCampaign.status,
-                MarketingCampaign.currency,
+                MarketingCurrency.code.label("currency"),
                 func.count(func.distinct(MarketingAttribution.user_id)).label("attributed_users"),
                 func.count(Order.id).label("applications"),
                 func.count(func.distinct(Order.UserId)).label("unique_applicants"),
@@ -166,10 +215,12 @@ class MarketingAdminRepository:
                 ),
             )
             .select_from(MarketingCampaign)
+            .join(MarketingPlatform)
+            .join(MarketingCurrency)
             .outerjoin(MarketingAttribution, attribution_join)
             .outerjoin(Order, order_join)
             .where(*conditions)
-            .group_by(MarketingCampaign.id)
+            .group_by(MarketingCampaign.id, MarketingPlatform.slug, MarketingCurrency.code)
             .order_by(MarketingCampaign.createdAt.desc(), MarketingCampaign.id.desc())
         )
         if limit is not None:
@@ -188,13 +239,16 @@ class MarketingAdminRepository:
         if campaign_id is not None:
             conditions.append(MarketingCampaign.id == campaign_id)
         if provider is not None:
-            conditions.append(MarketingCampaign.provider == provider)
+            conditions.append(MarketingPlatform.slug == provider)
         if status is not None:
             conditions.append(MarketingCampaign.status == status)
         if currency is not None:
-            conditions.append(MarketingCampaign.currency == currency)
+            conditions.append(MarketingCurrency.code == currency)
         result = await self.session.execute(
-            select(func.count(MarketingCampaign.id)).where(*conditions)
+            select(func.count(MarketingCampaign.id))
+            .join(MarketingPlatform)
+            .join(MarketingCurrency)
+            .where(*conditions)
         )
         return int(result.scalar_one())
 
@@ -214,18 +268,20 @@ class MarketingAdminRepository:
         if campaign_id is not None:
             conditions.append(MarketingCampaign.id == campaign_id)
         if provider is not None:
-            conditions.append(MarketingCampaign.provider == provider)
+            conditions.append(MarketingPlatform.slug == provider)
         if currency is not None:
-            conditions.append(MarketingCampaign.currency == currency)
+            conditions.append(MarketingCurrency.code == currency)
         statement = (
             select(
                 MarketingCampaign.id.label("campaign_id"),
-                MarketingCampaign.currency,
+                MarketingCurrency.code.label("currency"),
                 func.coalesce(func.sum(MarketingDailyMetric.spend), 0).label("spend"),
             )
             .join(MarketingCampaign, MarketingCampaign.id == MarketingDailyMetric.campaign_id)
+            .join(MarketingPlatform)
+            .join(MarketingCurrency)
             .where(*conditions)
-            .group_by(MarketingCampaign.id, MarketingCampaign.currency)
+            .group_by(MarketingCampaign.id, MarketingCurrency.code)
         )
         return [dict(row) for row in (await self.session.execute(statement)).mappings().all()]
 
@@ -242,9 +298,9 @@ class MarketingAdminRepository:
         if campaign_id is not None:
             campaign_conditions.append(MarketingCampaign.id == campaign_id)
         if provider is not None:
-            campaign_conditions.append(MarketingCampaign.provider == provider)
+            campaign_conditions.append(MarketingPlatform.slug == provider)
         if currency is not None:
-            campaign_conditions.append(MarketingCampaign.currency == currency)
+            campaign_conditions.append(MarketingCurrency.code == currency)
 
         attribution_result = await self.session.execute(
             select(
@@ -252,6 +308,8 @@ class MarketingAdminRepository:
                 func.count(MarketingAttribution.id).label("attributed_users"),
             )
             .join(MarketingCampaign)
+            .join(MarketingPlatform)
+            .join(MarketingCurrency)
             .where(
                 func.date(MarketingAttribution.attributed_at) >= date_from,
                 func.date(MarketingAttribution.attributed_at) <= date_to,
@@ -269,6 +327,8 @@ class MarketingAdminRepository:
             )
             .join(MarketingAttribution, MarketingAttribution.user_id == Order.UserId)
             .join(MarketingCampaign, MarketingCampaign.id == MarketingAttribution.campaign_id)
+            .join(MarketingPlatform)
+            .join(MarketingCurrency)
             .where(
                 Order.createdAt >= MarketingAttribution.attributed_at,
                 func.date(Order.createdAt) >= date_from,
@@ -286,6 +346,8 @@ class MarketingAdminRepository:
                 func.sum(MarketingDailyMetric.spend).label("spend"),
             )
             .join(MarketingCampaign)
+            .join(MarketingPlatform)
+            .join(MarketingCurrency)
             .where(
                 MarketingDailyMetric.metric_date >= date_from,
                 MarketingDailyMetric.metric_date <= date_to,

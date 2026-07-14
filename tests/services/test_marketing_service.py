@@ -1,9 +1,10 @@
 from __future__ import annotations
 
 import pytest
+from sqlalchemy import select
 
 from app.exceptions import AntExException
-from app.models.marketing import MarketingCampaign
+from app.models.marketing import MarketingCampaign, MarketingCurrency, MarketingPlatform
 from app.modules.marketing.service import MarketingService
 from app.repositories.user import UserRepository
 
@@ -18,10 +19,24 @@ async def _user(db_session, telegram_id: int):
 
 
 async def _campaign(db_session, code: str, status: str = "active") -> MarketingCampaign:
+    platform = await db_session.scalar(
+        select(MarketingPlatform).where(MarketingPlatform.slug == "telegram_ads")
+    )
+    if platform is None:
+        platform = MarketingPlatform(slug="telegram_ads", name="Telegram Ads")
+        db_session.add(platform)
+    currency = await db_session.scalar(
+        select(MarketingCurrency).where(MarketingCurrency.code == "USDT")
+    )
+    if currency is None:
+        currency = MarketingCurrency(code="USDT", name="USDT")
+        db_session.add(currency)
+    await db_session.flush()
     campaign = MarketingCampaign(
         code=code,
         name=f"Campaign {code}",
-        provider="telegram_ads",
+        platform_id=platform.id,
+        currency_id=currency.id,
         status=status,
     )
     db_session.add(campaign)

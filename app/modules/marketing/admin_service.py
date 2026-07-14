@@ -12,7 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.config import settings
 from app.core.unique_code import generate_unique_code
 from app.exceptions import AntExException
-from app.models.marketing import MarketingCampaign
+from app.models.marketing import MarketingCampaign, MarketingCurrency, MarketingPlatform
 from app.modules.marketing.admin_repository import MarketingAdminRepository
 from app.modules.marketing.constants import MARKETING_CODE_ALPHABET, MARKETING_CODE_LENGTH
 from app.modules.marketing.repository import MarketingRepository
@@ -23,6 +23,10 @@ from app.modules.marketing.schemas import (
     CampaignUpdate,
     DailyMetricOut,
     DailyMetricUpsert,
+    MarketingCurrencyCreate,
+    MarketingCurrencyOut,
+    MarketingPlatformCreate,
+    MarketingPlatformOut,
 )
 
 
@@ -47,7 +51,21 @@ class MarketingAdminService:
                 alphabet=MARKETING_CODE_ALPHABET,
                 exists=self.code_repository.campaign_code_exists,
             )
-            campaign = MarketingCampaign(code=code, **payload.model_dump(by_alias=False))
+            platform = await self.repository.get_platform_by_slug(payload.provider)
+            currency = await self.repository.get_currency_by_code(payload.currency)
+            if platform is None or currency is None:
+                raise AntExException(
+                    "Unknown marketing reference",
+                    code="UNKNOWN_MARKETING_REFERENCE",
+                    status_code=422,
+                )
+            values = payload.model_dump(by_alias=False, exclude={"provider", "currency"})
+            campaign = MarketingCampaign(
+                code=code,
+                platform_id=platform.id,
+                currency_id=currency.id,
+                **values,
+            )
             try:
                 async with self.session.begin_nested():
                     self.session.add(campaign)
@@ -55,8 +73,7 @@ class MarketingAdminService:
             except IntegrityError:
                 continue
             await self.session.commit()
-            await self.session.refresh(campaign)
-            return self.campaign_out(campaign)
+            return self.campaign_out(await self.require_campaign(campaign.id))
 
         raise AntExException(
             "Unable to persist a unique marketing code",
@@ -71,6 +88,15 @@ class MarketingAdminService:
     ) -> CampaignOut:
         campaign = await self.require_campaign(campaign_id)
         values = payload.model_dump(exclude_unset=True, by_alias=False)
+        if "currency" in values:
+            currency = await self.repository.get_currency_by_code(values.pop("currency"))
+            if currency is None:
+                raise AntExException(
+                    "Unknown marketing currency",
+                    code="UNKNOWN_MARKETING_CURRENCY",
+                    status_code=422,
+                )
+            values["currency_id"] = currency.id
         starts_at = values.get("starts_at", campaign.starts_at)
         ends_at = values.get("ends_at", campaign.ends_at)
         if starts_at and ends_at and ends_at < starts_at:
@@ -82,8 +108,47 @@ class MarketingAdminService:
         for field, value in values.items():
             setattr(campaign, field, value)
         await self.session.commit()
-        await self.session.refresh(campaign)
-        return self.campaign_out(campaign)
+        return self.campaign_out(await self.require_campaign(campaign.id))
+
+    async def list_platforms(self) -> list[MarketingPlatformOut]:
+        return [
+            MarketingPlatformOut(slug=item.slug, name=item.name)
+            for item in await self.repository.list_platforms()
+        ]
+
+    async def list_currencies(self) -> list[MarketingCurrencyOut]:
+        return [
+            MarketingCurrencyOut(code=item.code, name=item.name)
+            for item in await self.repository.list_currencies()
+        ]
+
+    async def create_platform(self, payload: MarketingPlatformCreate) -> MarketingPlatformOut:
+        item = MarketingPlatform(**payload.model_dump())
+        self.session.add(item)
+        try:
+            await self.session.commit()
+        except IntegrityError as error:
+            await self.session.rollback()
+            raise AntExException(
+                "Marketing platform already exists",
+                code="MARKETING_PLATFORM_ALREADY_EXISTS",
+                status_code=409,
+            ) from error
+        return MarketingPlatformOut(slug=item.slug, name=item.name)
+
+    async def create_currency(self, payload: MarketingCurrencyCreate) -> MarketingCurrencyOut:
+        item = MarketingCurrency(**payload.model_dump())
+        self.session.add(item)
+        try:
+            await self.session.commit()
+        except IntegrityError as error:
+            await self.session.rollback()
+            raise AntExException(
+                "Marketing currency already exists",
+                code="MARKETING_CURRENCY_ALREADY_EXISTS",
+                status_code=409,
+            ) from error
+        return MarketingCurrencyOut(code=item.code, name=item.name)
 
     async def upsert_daily_metric(
         self,
@@ -121,14 +186,13 @@ class MarketingAdminService:
             id=campaign.id,
             code=campaign.code,
             name=campaign.name,
-            provider=campaign.provider,
-            source=campaign.source,
+            provider=campaign.platform.slug,
             medium=campaign.medium,
             externalId=campaign.external_id,
             objective=campaign.objective,
             status=campaign.status,
             budget=float(campaign.budget) if campaign.budget is not None else None,
-            currency=campaign.currency,
+            currency=campaign.currency.code,
             startsAt=campaign.starts_at,
             endsAt=campaign.ends_at,
             notes=campaign.notes,
@@ -138,6 +202,7 @@ class MarketingAdminService:
             updatedAt=campaign.updatedAt,
             attributedUsers=(aggregates or {}).get("attributed_users", 0),
             applications=(aggregates or {}).get("applications", 0),
+            campaignType="paid" if campaign.budget and campaign.budget > 0 else "free",
         )
 
     async def application_report(
@@ -318,22 +383,27 @@ def _zero_filled_series(
         }
         current += timedelta(days=1)
 
-    for rows, mapping in (
-        (attribution_rows, {"attributed_users": "attributedUsers"}),
-        (
-            order_rows,
-            {"applications": "applications", "completed_applications": "completedApplications"},
-        ),
-        (metric_rows, {"impressions": "impressions", "starts": "starts", "spend": "spend"}),
-    ):
-        for row in rows:
-            day = row["day"]
-            key = day.isoformat() if hasattr(day, "isoformat") else str(day)
-            if key not in result:
-                continue
-            for source, target in mapping.items():
-                value = row[source] or 0
-                result[key][target] = float(value) if isinstance(value, Decimal) else int(value)
+    for row in attribution_rows:
+        day = row["day"]
+        bucket = result.get(day.isoformat() if hasattr(day, "isoformat") else str(day))
+        if bucket is not None:
+            bucket["attributedUsers"] = int(row["attributed_users"] or 0)
+
+    for row in order_rows:
+        day = row["day"]
+        bucket = result.get(day.isoformat() if hasattr(day, "isoformat") else str(day))
+        if bucket is not None:
+            bucket["applications"] = int(row["applications"] or 0)
+            bucket["completedApplications"] = int(row["completed_applications"] or 0)
+
+    for row in metric_rows:
+        day = row["day"]
+        bucket = result.get(day.isoformat() if hasattr(day, "isoformat") else str(day))
+        if bucket is not None:
+            bucket["impressions"] = int(row["impressions"] or 0)
+            bucket["starts"] = int(row["starts"] or 0)
+            spend = row["spend"] or 0
+            bucket["spend"] = float(spend) if isinstance(spend, Decimal) else int(spend)
     return list(result.values())
 
 

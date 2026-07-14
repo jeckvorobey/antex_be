@@ -1,15 +1,25 @@
 from __future__ import annotations
 
-from app.models import MarketingAttribution, MarketingCampaign, MarketingDailyMetric
+from app.models import (
+    MarketingAttribution,
+    MarketingCampaign,
+    MarketingCurrency,
+    MarketingDailyMetric,
+    MarketingPlatform,
+)
 from app.models.base import Base
 
 
 def test_marketing_metadata_has_tables_constraints_and_indexes() -> None:
     campaign = MarketingCampaign.__table__
+    platform = MarketingPlatform.__table__
+    currency = MarketingCurrency.__table__
     attribution = MarketingAttribution.__table__
     daily = MarketingDailyMetric.__table__
 
     assert campaign.name == "MarketingCampaigns"
+    assert platform.name == "MarketingPlatforms"
+    assert currency.name == "MarketingCurrencies"
     assert attribution.name == "MarketingAttributions"
     assert daily.name == "MarketingDailyMetrics"
     assert campaign.c.code.unique is True
@@ -23,7 +33,7 @@ def test_marketing_metadata_has_tables_constraints_and_indexes() -> None:
         for constraint in daily.constraints
     )
     assert {index.name for index in campaign.indexes} >= {
-        "ix_marketing_campaigns_provider_status",
+        "ix_marketing_campaigns_platform_status",
     }
     assert {index.name for index in attribution.indexes} >= {
         "ix_marketing_attributions_campaign_attributed",

@@ -14,7 +14,12 @@ from app.core.security import create_access_token
 from app.enums.country import Country
 from app.enums.order import OrderStatus
 from app.models.admin import Admin
-from app.models.marketing import MarketingAttribution, MarketingCampaign
+from app.models.marketing import (
+    MarketingAttribution,
+    MarketingCampaign,
+    MarketingCurrency,
+    MarketingPlatform,
+)
 from app.models.order import Order
 from app.repositories.user import UserRepository
 
@@ -29,7 +34,14 @@ async def marketing_api_client(
         yield db_session
 
     admin = Admin(username="marketing-admin", password_hash="unused")
-    db_session.add(admin)
+    db_session.add_all(
+        [
+            admin,
+            MarketingPlatform(slug="telegram_ads", name="Telegram Ads"),
+            MarketingCurrency(code="USDT", name="USDT"),
+            MarketingCurrency(code="RUB", name="Russian Ruble"),
+        ]
+    )
     await db_session.flush()
     token = create_access_token({"sub": str(admin.id), "type": "admin"})
     settings.telegram_bot_username = "antex_test_bot"
@@ -50,7 +62,6 @@ async def create_campaign(client: AsyncClient, token: str, **overrides):
     payload = {
         "name": "Telegram July",
         "provider": "telegram_ads",
-        "source": "telegram",
         "medium": "paid",
         "status": "active",
         "budget": 1500,
@@ -78,6 +89,33 @@ async def test_campaign_api_requires_admin_and_generates_code_and_link(
     assert data["code"].isalnum() and data["code"].isupper()
     assert data["link"] == f"https://t.me/antex_test_bot?startapp=market_{data['code']}"
     assert data["marketParameter"] == f"market={data['code']}"
+    assert "source" not in data
+    assert data["campaignType"] == "paid"
+
+
+async def test_reference_endpoints_require_admin_and_reject_duplicates(
+    marketing_api_client,
+) -> None:
+    client, _, token = marketing_api_client
+
+    unauthorized = await client.get("/api/admin/marketing/platforms")
+    platforms = await client.get("/api/admin/marketing/platforms", headers=auth(token))
+    created = await client.post(
+        "/api/admin/marketing/platforms",
+        headers=auth(token),
+        json={"slug": "google_ads", "name": "Google Ads"},
+    )
+    duplicate = await client.post(
+        "/api/admin/marketing/platforms",
+        headers=auth(token),
+        json={"slug": "google_ads", "name": "Google Ads"},
+    )
+
+    assert unauthorized.status_code == 401
+    assert platforms.json() == [{"slug": "telegram_ads", "name": "Telegram Ads"}]
+    assert created.status_code == 201
+    assert duplicate.status_code == 409
+    assert duplicate.json()["code"] == "MARKETING_PLATFORM_ALREADY_EXISTS"
 
 
 async def test_campaign_create_and_patch_reject_immutable_or_invalid_fields(

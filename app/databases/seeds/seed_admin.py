@@ -2,11 +2,11 @@
 
 from __future__ import annotations
 
-import hashlib
 import logging
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.api.routers.admin import build_password_hash
 from app.repositories.admin import AdminRepository
 
 logger = logging.getLogger(__name__)
@@ -21,7 +21,7 @@ async def seed_admin(db: AsyncSession) -> None:
     if existing:
         return
 
-    password_hash = hashlib.sha256(DEFAULT_PASSWORD.encode()).hexdigest()
+    password_hash = build_password_hash(DEFAULT_PASSWORD)
     await repo.create(
         username=DEFAULT_USERNAME,
         email="admin@example.com",

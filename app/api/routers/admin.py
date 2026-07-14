@@ -2,10 +2,15 @@
 
 from __future__ import annotations
 
+import base64
+import binascii
 import hashlib
+import hmac
+import secrets
 from datetime import UTC, datetime, time
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
+from cryptography.hazmat.primitives.kdf.scrypt import Scrypt
 from fastapi import APIRouter, HTTPException, Query, status
 from sqlalchemy import func, select
 
@@ -55,7 +60,33 @@ router = APIRouter(prefix="/api/admin", tags=["admin"])
 
 
 def build_password_hash(password: str) -> str:
-    return hashlib.sha256(password.encode()).hexdigest()
+    """Хеширует пароль администратора через memory-hard Scrypt и случайную соль."""
+    salt = secrets.token_bytes(16)
+    derived = Scrypt(salt=salt, length=32, n=2**14, r=8, p=1).derive(password.encode())
+    encoded_salt = base64.urlsafe_b64encode(salt).decode()
+    encoded_derived = base64.urlsafe_b64encode(derived).decode()
+    return f"scrypt$16384$8$1${encoded_salt}${encoded_derived}"
+
+
+def verify_password(password: str, password_hash: str) -> tuple[bool, bool]:
+    """Проверяет пароль и сообщает, нужно ли обновить legacy SHA-256 хеш."""
+    if password_hash.startswith("scrypt$"):
+        try:
+            _, n, r, p, salt, expected = password_hash.split("$", 5)
+            derived = Scrypt(
+                salt=base64.urlsafe_b64decode(salt),
+                length=32,
+                n=int(n),
+                r=int(r),
+                p=int(p),
+            ).derive(password.encode())
+            expected_bytes = base64.urlsafe_b64decode(expected)
+        except (TypeError, ValueError, binascii.Error):
+            return False, False
+        return hmac.compare_digest(derived, expected_bytes), False
+
+    legacy = hashlib.sha256(password.encode()).hexdigest()
+    return hmac.compare_digest(password_hash, legacy), True
 
 
 def get_today_start_for_timezone(
@@ -79,9 +110,14 @@ def get_today_start_for_timezone(
 async def admin_login(body: AdminLogin, db: DbDep) -> AdminTokenResponse:
     repo = AdminRepository(db)
     admin = await repo.get_by_username(body.username)
-    password_hash = build_password_hash(body.password)
-    if not admin or admin.password_hash != password_hash:
+    if not admin:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid credentials")
+    password_valid, needs_rehash = verify_password(body.password, admin.password_hash)
+    if not password_valid:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid credentials")
+    if needs_rehash:
+        admin.password_hash = build_password_hash(body.password)
+        await db.commit()
 
     access = create_access_token(
         {"sub": str(admin.id), "type": "admin"},
