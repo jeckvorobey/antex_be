@@ -75,6 +75,28 @@ async def test_admin_list_requires_authentication(
 
 
 @pytest.mark.asyncio
+async def test_admin_refresh_token_is_restricted_to_refresh_endpoint(
+    admin_crud_api_client: tuple[AsyncClient, AsyncSession],
+) -> None:
+    """Refresh-токен обновляет сессию, но не авторизует административные операции."""
+    client, db_session = admin_crud_api_client
+    admin = Admin(username="root", email="root@example.com", password_hash="unused")
+    db_session.add(admin)
+    await db_session.flush()
+    refresh_token = create_access_token({"sub": str(admin.id), "type": "admin_refresh"})
+    headers = {"Authorization": f"Bearer {refresh_token}"}
+
+    privileged = await client.get("/api/admin/list", headers=headers)
+    refreshed = await client.post("/api/admin/refresh", headers=headers)
+
+    assert privileged.status_code == 403
+    assert privileged.json()["detail"] == "Admin access required"
+    assert refreshed.status_code == 200
+    assert refreshed.json()["access_token"]
+    assert refreshed.json()["refresh_token"]
+
+
+@pytest.mark.asyncio
 async def test_admin_can_list_existing_admins(
     admin_crud_api_client: tuple[AsyncClient, AsyncSession],
 ) -> None:

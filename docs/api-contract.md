@@ -44,6 +44,10 @@ Machine-readable коды ошибок miniapp:
 
 ## Admin
 
+Обычные административные endpoints принимают только access token с типом `admin`.
+Refresh token с типом `admin_refresh` допускается исключительно на
+`POST /api/admin/refresh` и не авторизует CRUD/marketing операции.
+
 - `GET/PATCH /api/admin/config` возвращает и обновляет `enabled`, timestamps и
   настройки referral program: `referralPercent`, `referralMinWithdraw`,
   `referralMaxWithdraw`, `aexRate`, `aexWithdrawLimit`.
@@ -58,12 +62,18 @@ Machine-readable коды ошибок miniapp:
 
 ## Marketing Management
 
-Все endpoints защищены admin token и используют prefix `/api/admin/marketing`.
+Все endpoints защищены admin access token типа `admin` и используют prefix
+`/api/admin/marketing`; `admin_refresh` отклоняется.
 
-- `POST /campaigns` — единственная server-side операция создания кампании. Backend
-  генерирует неизменяемый code длиной 10 символов `A-Z0-9` и возвращает `link`
-  вида `https://t.me/<bot>?startapp=market_<CODE>` и `marketParameter` вида
-  `market=<CODE>`. Поле `code` в request запрещено.
+- `POST /campaigns/code-preview` — выдаёт незаписанный code длиной 10 символов
+  `A-Z0-9` и короткоживущий подписанный `token`. Операция не создаёт campaign или
+  reservation rows в БД.
+- `POST /campaigns` — атомарно создаёт кампанию. Новый admin flow передаёт
+  `codeToken` из preview response; backend проверяет подпись, тип, срок и сохраняет
+  embedded code вместе с валидной кампанией. Для обратной совместимости request без
+  `codeToken` получает новый server-generated code. Response возвращает `link` вида
+  `https://t.me/<bot>?startapp=market_<CODE>` и `marketParameter` вида
+  `market=<CODE>`. Прямое поле `code` в request запрещено.
 - `GET /campaigns` — список `items/total/limit/offset`; filters: `search`,
   `provider`, `status`, `limit`, `offset`. Item содержит `attributedUsers` и
   `applications`, рассчитанные без N+1.
@@ -95,6 +105,8 @@ unknown или archived code не блокируют обычную Telegram aut
 Machine-readable marketing errors:
 
 - `UNIQUE_CODE_EXHAUSTED`
+- `INVALID_MARKETING_CODE_PREVIEW`
+- `MARKETING_CODE_ALREADY_EXISTS`
 - `TELEGRAM_BOT_USERNAME_REQUIRED`
 - `INVALID_MARKETING_CODE`
 - `MARKETING_CAMPAIGN_NOT_FOUND`

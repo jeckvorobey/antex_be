@@ -5,7 +5,7 @@ from datetime import UTC, date, datetime, timedelta
 
 import pytest
 from httpx import ASGITransport, AsyncClient
-from sqlalchemy import event
+from sqlalchemy import event, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api import deps
@@ -92,6 +92,84 @@ async def test_campaign_api_requires_admin_and_generates_code_and_link(
     assert data["campaignType"] == "paid"
 
 
+async def test_campaign_code_preview_is_unique_and_does_not_persist(
+    marketing_api_client,
+) -> None:
+    """Preview-код выдаётся сервером, но не создаёт черновик кампании в БД."""
+    client, db_session, token = marketing_api_client
+
+    unauthorized = await client.post("/api/admin/marketing/campaigns/code-preview")
+    response = await client.post(
+        "/api/admin/marketing/campaigns/code-preview",
+        headers=auth(token),
+    )
+
+    assert unauthorized.status_code == 401
+    assert response.status_code == 200, response.text
+    code = response.json()["code"]
+    assert response.json()["token"]
+    assert len(code) == 10
+    assert code.isalnum() and code.isupper()
+    assert (
+        await db_session.scalar(select(MarketingCampaign).where(MarketingCampaign.code == code))
+        is None
+    )
+
+
+async def test_marketing_endpoints_reject_admin_refresh_token(marketing_api_client) -> None:
+    """Refresh-токен нельзя использовать для preview или создания кампании."""
+    client, db_session, _ = marketing_api_client
+    admin_id = await db_session.scalar(select(Admin.id).where(Admin.username == "marketing-admin"))
+    refresh_token = create_access_token({"sub": str(admin_id), "type": "admin_refresh"})
+
+    preview = await client.post(
+        "/api/admin/marketing/campaigns/code-preview",
+        headers=auth(refresh_token),
+    )
+    created = await create_campaign(client, refresh_token)
+
+    assert preview.status_code == 403
+    assert created.status_code == 403
+
+
+async def test_campaign_create_persists_preview_code_only_after_full_validation(
+    marketing_api_client,
+) -> None:
+    """Показанный код попадает в БД только после полной валидации кампании."""
+    client, db_session, token = marketing_api_client
+    preview = await client.post(
+        "/api/admin/marketing/campaigns/code-preview",
+        headers=auth(token),
+    )
+    code = preview.json()["code"]
+    code_token = preview.json()["token"]
+
+    invalid = await create_campaign(
+        client,
+        token,
+        codeToken=code_token,
+        startsAt="2026-07-20",
+        endsAt="2026-07-19",
+    )
+    assert invalid.status_code == 422
+    assert (
+        await db_session.scalar(select(MarketingCampaign).where(MarketingCampaign.code == code))
+        is None
+    )
+
+    created = await create_campaign(client, token, codeToken=code_token)
+    assert created.status_code == 201, created.text
+    assert created.json()["code"] == code
+    assert (
+        await db_session.scalar(select(MarketingCampaign).where(MarketingCampaign.code == code))
+        is not None
+    )
+
+    duplicate = await create_campaign(client, token, codeToken=code_token, name="Duplicate")
+    assert duplicate.status_code == 409
+    assert duplicate.json()["code"] == "MARKETING_CODE_ALREADY_EXISTS"
+
+
 async def test_reference_endpoints_require_admin_and_reject_duplicates(
     marketing_api_client,
 ) -> None:
@@ -134,7 +212,7 @@ async def test_platform_soft_deletes_when_used_and_currency_requires_no_campaign
     assert visible_platforms.json() == []
 
 
-async def test_campaign_create_and_patch_reject_immutable_or_invalid_fields(
+async def test_campaign_create_rejects_direct_code_and_patch_immutable_fields(
     marketing_api_client,
 ) -> None:
     client, _, token = marketing_api_client
@@ -158,6 +236,16 @@ async def test_campaign_create_and_patch_reject_immutable_or_invalid_fields(
     assert updated.status_code == 200
     assert updated.json()["name"] == "Updated"
     assert updated.json()["status"] == "archived"
+
+
+async def test_campaign_create_rejects_non_preview_token(marketing_api_client) -> None:
+    """Обычный access token нельзя использовать вместо подписанного preview token."""
+    client, _, token = marketing_api_client
+
+    response = await create_campaign(client, token, codeToken=token)
+
+    assert response.status_code == 422
+    assert response.json()["code"] == "INVALID_MARKETING_CODE_PREVIEW"
 
 
 async def test_campaign_list_has_server_pagination_and_filters(marketing_api_client) -> None:

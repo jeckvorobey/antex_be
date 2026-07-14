@@ -6,16 +6,23 @@ from datetime import UTC, date, datetime, time, timedelta
 from decimal import Decimal
 from typing import Any
 
+import jwt
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
 from app.core.reference_deletion import ReferenceDeletionService
+from app.core.security import create_access_token, decode_access_token
 from app.core.unique_code import generate_unique_code
 from app.exceptions import AntExException
 from app.models.marketing import MarketingCampaign, MarketingCurrency, MarketingPlatform
 from app.modules.marketing.admin_repository import MarketingAdminRepository
-from app.modules.marketing.constants import MARKETING_CODE_ALPHABET, MARKETING_CODE_LENGTH
+from app.modules.marketing.constants import (
+    MARKETING_CODE_ALPHABET,
+    MARKETING_CODE_LENGTH,
+    MARKETING_CODE_PREVIEW_TOKEN_TYPE,
+    MARKETING_CODE_PREVIEW_TTL_SECONDS,
+)
 from app.modules.marketing.repository import MarketingRepository
 from app.modules.marketing.schemas import (
     ApplicationRowOut,
@@ -38,7 +45,51 @@ class MarketingAdminService:
         self.code_repository = MarketingRepository(session)
         self.reference_deletion = ReferenceDeletionService(session)
 
+    async def generate_campaign_code(self) -> str:
+        """Генерирует уникальный на текущий момент код без записи в БД."""
+        return await generate_unique_code(
+            length=MARKETING_CODE_LENGTH,
+            alphabet=MARKETING_CODE_ALPHABET,
+            exists=self.code_repository.campaign_code_exists,
+        )
+
+    async def generate_campaign_code_preview(self) -> tuple[str, str]:
+        """Возвращает незаписанный код и короткоживущую подпись."""
+        code = await self.generate_campaign_code()
+        token = create_access_token(
+            {"type": MARKETING_CODE_PREVIEW_TOKEN_TYPE, "code": code},
+            ttl=MARKETING_CODE_PREVIEW_TTL_SECONDS,
+        )
+        return code, token
+
+    @staticmethod
+    def preview_code_from_token(token: str) -> str:
+        """Проверяет подпись preview token и извлекает серверный marketing code."""
+        try:
+            payload = decode_access_token(token)
+        except jwt.PyJWTError as error:
+            raise AntExException(
+                "Invalid marketing code preview",
+                code="INVALID_MARKETING_CODE_PREVIEW",
+                status_code=422,
+            ) from error
+
+        code = payload.get("code")
+        if (
+            payload.get("type") != MARKETING_CODE_PREVIEW_TOKEN_TYPE
+            or not isinstance(code, str)
+            or len(code) != MARKETING_CODE_LENGTH
+            or any(symbol not in MARKETING_CODE_ALPHABET for symbol in code)
+        ):
+            raise AntExException(
+                "Invalid marketing code preview",
+                code="INVALID_MARKETING_CODE_PREVIEW",
+                status_code=422,
+            )
+        return code
+
     async def create_campaign(self, payload: CampaignCreate) -> CampaignOut:
+        """Валидирует и атомарно сохраняет кампанию, используя показанный или новый код."""
         username = (settings.telegram_bot_username or "").strip().removeprefix("@")
         if not username:
             raise AntExException(
@@ -47,21 +98,27 @@ class MarketingAdminService:
                 status_code=503,
             )
 
-        for _ in range(5):
-            code = await generate_unique_code(
-                length=MARKETING_CODE_LENGTH,
-                alphabet=MARKETING_CODE_ALPHABET,
-                exists=self.code_repository.campaign_code_exists,
+        platform = await self.repository.get_platform_by_slug(payload.provider)
+        currency = await self.repository.get_currency_by_code(payload.currency)
+        if platform is None or currency is None:
+            raise AntExException(
+                "Unknown marketing reference",
+                code="UNKNOWN_MARKETING_REFERENCE",
+                status_code=422,
             )
-            platform = await self.repository.get_platform_by_slug(payload.provider)
-            currency = await self.repository.get_currency_by_code(payload.currency)
-            if platform is None or currency is None:
-                raise AntExException(
-                    "Unknown marketing reference",
-                    code="UNKNOWN_MARKETING_REFERENCE",
-                    status_code=422,
-                )
-            values = payload.model_dump(by_alias=False, exclude={"provider", "currency"})
+
+        preview_code = (
+            self.preview_code_from_token(payload.code_token)
+            if payload.code_token is not None
+            else None
+        )
+        attempts = 1 if preview_code else 5
+        values = payload.model_dump(
+            by_alias=False,
+            exclude={"provider", "currency", "code_token"},
+        )
+        for _ in range(attempts):
+            code = preview_code or await self.generate_campaign_code()
             campaign = MarketingCampaign(
                 code=code,
                 platform_id=platform.id,
@@ -72,7 +129,13 @@ class MarketingAdminService:
                 async with self.session.begin_nested():
                     self.session.add(campaign)
                     await self.session.flush()
-            except IntegrityError:
+            except IntegrityError as error:
+                if preview_code:
+                    raise AntExException(
+                        "Marketing code already exists",
+                        code="MARKETING_CODE_ALREADY_EXISTS",
+                        status_code=409,
+                    ) from error
                 continue
             await self.session.commit()
             return self.campaign_out(await self.require_campaign(campaign.id))

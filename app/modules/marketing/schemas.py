@@ -14,6 +14,7 @@ class MarketingSchema(BaseModel):
 
 
 class CampaignCreate(MarketingSchema):
+    code_token: str | None = Field(default=None, alias="codeToken", min_length=1)
     name: str = Field(min_length=1, max_length=255)
     provider: str = Field(min_length=1, max_length=64)
     external_id: str | None = Field(default=None, alias="externalId", max_length=255)
@@ -93,6 +94,11 @@ class CampaignOut(MarketingSchema):
     attributed_users: int = Field(default=0, alias="attributedUsers")
     applications: int = 0
     campaign_type: str = Field(alias="campaignType")
+
+
+class CampaignCodePreviewOut(MarketingSchema):
+    code: str
+    token: str
 
 
 class MarketingPlatformCreate(MarketingSchema):
