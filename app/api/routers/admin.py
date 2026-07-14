@@ -14,7 +14,7 @@ from cryptography.hazmat.primitives.kdf.scrypt import Scrypt
 from fastapi import APIRouter, HTTPException, Query, status
 from sqlalchemy import func, select
 
-from app.api.deps import AdminUser, DbDep
+from app.api.deps import AdminUser, DbDep, RefreshAdminUser
 from app.core.config import settings
 from app.core.security import create_access_token
 from app.enums.user import UserRole
@@ -131,7 +131,7 @@ async def admin_login(body: AdminLogin, db: DbDep) -> AdminTokenResponse:
 
 
 @router.post("/refresh", response_model=AdminTokenResponse)
-async def admin_refresh(_: DbDep, admin: AdminUser) -> AdminTokenResponse:
+async def admin_refresh(_: DbDep, admin: RefreshAdminUser) -> AdminTokenResponse:
     access = create_access_token(
         {"sub": str(admin.id), "type": "admin"},
         ttl=settings.admin_access_ttl_seconds,

@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
-from alembic import op
 import sqlalchemy as sa
+
+from alembic import op
 
 revision = "022"
 down_revision = "021"
@@ -14,7 +15,10 @@ depends_on = None
 def upgrade() -> None:
     """Удаляет medium и добавляет timestamp мягкого удаления платформы."""
     op.drop_column("MarketingCampaigns", "medium")
-    op.add_column("MarketingPlatforms", sa.Column("deleted_at", sa.DateTime(timezone=True), nullable=True))
+    op.add_column(
+        "MarketingPlatforms",
+        sa.Column("deleted_at", sa.DateTime(timezone=True), nullable=True),
+    )
 
 
 def downgrade() -> None:

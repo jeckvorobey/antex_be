@@ -14,6 +14,7 @@ from app.modules.marketing.admin_service import MarketingAdminService
 from app.modules.marketing.constants import MARKETING_CAMPAIGN_STATUSES
 from app.modules.marketing.schemas import (
     ApplicationListOut,
+    CampaignCodePreviewOut,
     CampaignCreate,
     CampaignListOut,
     CampaignOut,
@@ -38,6 +39,16 @@ async def create_campaign(
     _: AdminUser,
 ) -> CampaignOut:
     return await MarketingAdminService(db).create_campaign(payload)
+
+
+@router.post("/campaigns/code-preview", response_model=CampaignCodePreviewOut)
+async def generate_campaign_code_preview(
+    db: DbDep,
+    _: AdminUser,
+) -> CampaignCodePreviewOut:
+    """Выдаёт незаписанный уникальный код для предварительного показа в форме."""
+    code, token = await MarketingAdminService(db).generate_campaign_code_preview()
+    return CampaignCodePreviewOut(code=code, token=token)
 
 
 @router.get("/platforms", response_model=list[MarketingPlatformOut])

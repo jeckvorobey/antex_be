@@ -62,6 +62,25 @@ async def get_admin(
     db: DbDep,
     authorization: Annotated[str | None, Header()] = None,
 ) -> Admin:
+    """Авторизует административные операции только access-токеном."""
+    return await _get_admin_by_token_type(db, authorization, expected_type="admin")
+
+
+async def get_refresh_admin(
+    db: DbDep,
+    authorization: Annotated[str | None, Header()] = None,
+) -> Admin:
+    """Авторизует обновление сессии только административным refresh-токеном."""
+    return await _get_admin_by_token_type(db, authorization, expected_type="admin_refresh")
+
+
+async def _get_admin_by_token_type(
+    db: DbDep,
+    authorization: str | None,
+    *,
+    expected_type: str,
+) -> Admin:
+    """Проверяет JWT и возвращает администратора для строго заданного типа токена."""
     if not authorization or not authorization.startswith("Bearer "):
         raise HTTPException(status_code=401, detail="Not authenticated")
     token = authorization.removeprefix("Bearer ")
@@ -70,7 +89,7 @@ async def get_admin(
     except jwt.PyJWTError as exc:
         raise HTTPException(status_code=401, detail="Invalid token") from exc
 
-    if payload.get("type") not in {"admin", "admin_refresh"}:
+    if payload.get("type") != expected_type:
         raise HTTPException(status_code=403, detail="Admin access required")
 
     admin_id = int(payload.get("sub", 0))
@@ -84,3 +103,4 @@ async def get_admin(
 CurrentUser = Annotated[User, Depends(get_current_user)]
 MiniappUser = Annotated[User, Depends(get_miniapp_user)]
 AdminUser = Annotated[Admin, Depends(get_admin)]
+RefreshAdminUser = Annotated[Admin, Depends(get_refresh_admin)]
