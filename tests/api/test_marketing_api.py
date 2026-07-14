@@ -62,7 +62,6 @@ async def create_campaign(client: AsyncClient, token: str, **overrides):
     payload = {
         "name": "Telegram July",
         "provider": "telegram_ads",
-        "medium": "paid",
         "status": "active",
         "budget": 1500,
         "currency": "USDT",
@@ -116,6 +115,23 @@ async def test_reference_endpoints_require_admin_and_reject_duplicates(
     assert created.status_code == 201
     assert duplicate.status_code == 409
     assert duplicate.json()["code"] == "MARKETING_PLATFORM_ALREADY_EXISTS"
+
+
+async def test_platform_soft_deletes_when_used_and_currency_requires_no_campaigns(
+    marketing_api_client,
+) -> None:
+    client, _, token = marketing_api_client
+    await create_campaign(client, token)
+
+    platform = await client.delete(
+        "/api/admin/marketing/platforms/telegram_ads", headers=auth(token)
+    )
+    currency = await client.delete("/api/admin/marketing/currencies/USDT", headers=auth(token))
+    visible_platforms = await client.get("/api/admin/marketing/platforms", headers=auth(token))
+
+    assert platform.status_code == 204
+    assert currency.status_code == 409
+    assert visible_platforms.json() == []
 
 
 async def test_campaign_create_and_patch_reject_immutable_or_invalid_fields(

@@ -38,7 +38,9 @@ class MarketingAdminRepository:
         return list(
             (
                 await self.session.scalars(
-                    select(MarketingPlatform).order_by(MarketingPlatform.name)
+                    select(MarketingPlatform)
+                    .where(MarketingPlatform.deleted_at.is_(None))
+                    .order_by(MarketingPlatform.name)
                 )
             ).all()
         )
@@ -54,7 +56,33 @@ class MarketingAdminRepository:
 
     async def get_platform_by_slug(self, slug: str) -> MarketingPlatform | None:
         return await self.session.scalar(
+            select(MarketingPlatform).where(
+                MarketingPlatform.slug == slug,
+                MarketingPlatform.deleted_at.is_(None),
+            )
+        )
+
+    async def get_platform_any_by_slug(self, slug: str) -> MarketingPlatform | None:
+        return await self.session.scalar(
             select(MarketingPlatform).where(MarketingPlatform.slug == slug)
+        )
+
+    async def platform_has_campaigns(self, platform_id: int) -> bool:
+        return bool(
+            await self.session.scalar(
+                select(MarketingCampaign.id)
+                .where(MarketingCampaign.platform_id == platform_id)
+                .limit(1)
+            )
+        )
+
+    async def currency_has_campaigns(self, currency_id: int) -> bool:
+        return bool(
+            await self.session.scalar(
+                select(MarketingCampaign.id)
+                .where(MarketingCampaign.currency_id == currency_id)
+                .limit(1)
+            )
         )
 
     async def get_currency_by_code(self, code: str) -> MarketingCurrency | None:

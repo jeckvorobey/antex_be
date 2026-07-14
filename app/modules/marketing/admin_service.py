@@ -10,6 +10,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
+from app.core.reference_deletion import ReferenceDeletionService
 from app.core.unique_code import generate_unique_code
 from app.exceptions import AntExException
 from app.models.marketing import MarketingCampaign, MarketingCurrency, MarketingPlatform
@@ -35,6 +36,7 @@ class MarketingAdminService:
         self.session = session
         self.repository = MarketingAdminRepository(session)
         self.code_repository = MarketingRepository(session)
+        self.reference_deletion = ReferenceDeletionService(session)
 
     async def create_campaign(self, payload: CampaignCreate) -> CampaignOut:
         username = (settings.telegram_bot_username or "").strip().removeprefix("@")
@@ -187,7 +189,6 @@ class MarketingAdminService:
             code=campaign.code,
             name=campaign.name,
             provider=campaign.platform.slug,
-            medium=campaign.medium,
             externalId=campaign.external_id,
             objective=campaign.objective,
             status=campaign.status,
@@ -204,6 +205,38 @@ class MarketingAdminService:
             applications=(aggregates or {}).get("applications", 0),
             campaignType="paid" if campaign.budget and campaign.budget > 0 else "free",
         )
+
+    async def delete_platform(self, slug: str) -> bool:
+        """Удаляет платформу или скрывает её при наличии исторических кампаний."""
+        item = await self.repository.get_platform_any_by_slug(slug)
+        if item is None or item.deleted_at is not None:
+            raise AntExException(
+                "Marketing platform not found",
+                code="MARKETING_PLATFORM_NOT_FOUND",
+                status_code=404,
+            )
+        return await self.reference_deletion.delete_or_soft_delete(
+            item,
+            lambda: self.repository.platform_has_campaigns(item.id),
+        )
+
+    async def delete_currency(self, code: str) -> None:
+        """Физически удаляет валюту, только когда она не используется компаниями."""
+        item = await self.repository.get_currency_by_code(code)
+        if item is None:
+            raise AntExException(
+                "Marketing currency not found",
+                code="MARKETING_CURRENCY_NOT_FOUND",
+                status_code=404,
+            )
+        if await self.repository.currency_has_campaigns(item.id):
+            raise AntExException(
+                "Marketing currency is in use",
+                code="MARKETING_CURRENCY_IN_USE",
+                status_code=409,
+            )
+        await self.session.delete(item)
+        await self.session.commit()
 
     async def application_report(
         self,

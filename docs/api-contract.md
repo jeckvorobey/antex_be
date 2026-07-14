@@ -72,7 +72,7 @@ Machine-readable коды ошибок miniapp:
   неизменяемы. Удаление заменено status `archived`.
 - `PUT /campaigns/{id}/daily-metrics/{YYYY-MM-DD}` — идемпотентный upsert
   non-negative `impressions`, `starts`, `spend`, optional `platformCpm`.
-- `GET /applications` — агрегаты заявок по кампаниям с filters `dateFrom`,
+- `GET /applications` — агрегаты заявок по компаниям с filters `dateFrom`,
   `dateTo`, `campaignId`, `provider`, `status`, `currency`, `limit`, `offset`.
 - `GET /dashboard` — `summary`, `funnel`, zero-filled `timeSeries`,
   `campaignComparison`, `spendByCurrency`, `appliedFilters`.

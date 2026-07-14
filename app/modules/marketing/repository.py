@@ -9,7 +9,7 @@ from app.models.marketing import MarketingAttribution, MarketingCampaign
 
 
 class MarketingRepository:
-    """Доступ к кампаниям и first-touch атрибуциям."""
+    """Доступ к компаниям и first-touch атрибуциям."""
 
     def __init__(self, session: AsyncSession) -> None:
         self.session = session
