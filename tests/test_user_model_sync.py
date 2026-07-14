@@ -5,12 +5,40 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 
 from app.enums.user import UserRole, get_role_title, has_admin_access, has_operator_access
-from app.models.marketing import MarketingAttribution, MarketingCampaign
+from app.models.marketing import (
+    MarketingAttribution,
+    MarketingCampaign,
+    MarketingCurrency,
+    MarketingPlatform,
+)
 from app.models.user import User
 from app.repositories.user import UserRepository
 from app.schemas.user import build_user_out
 from app.services.auth import resolve_trusted_contact, telegram_auth
 from app.telegram.services.user_service import check_user
+
+
+async def _marketing_campaign(
+    db_session,
+    code: str,
+    name: str,
+    *,
+    status: str = "active",
+) -> MarketingCampaign:
+    platform = MarketingPlatform(slug="telegram_ads", name="Telegram Ads")
+    currency = MarketingCurrency(code="USDT", name="USDT")
+    db_session.add_all([platform, currency])
+    await db_session.flush()
+    campaign = MarketingCampaign(
+        code=code,
+        name=name,
+        platform_id=platform.id,
+        currency_id=currency.id,
+        status=status,
+    )
+    db_session.add(campaign)
+    await db_session.flush()
+    return campaign
 
 
 async def test_find_or_create_updates_existing_user_without_chat_id(db_session) -> None:
@@ -185,14 +213,7 @@ async def test_telegram_auth_persists_updates_and_clears_photo_url(
 
 
 async def test_telegram_auth_applies_trusted_market_start_param(monkeypatch, db_session) -> None:
-    campaign = MarketingCampaign(
-        code="BDF7J9J8JH",
-        name="Telegram Ads",
-        provider="telegram_ads",
-        status="active",
-    )
-    db_session.add(campaign)
-    await db_session.flush()
+    campaign = await _marketing_campaign(db_session, "BDF7J9J8JH", "Telegram Ads")
     monkeypatch.setattr(
         "app.services.auth.validate_telegram_init_data",
         lambda _: {
@@ -213,14 +234,7 @@ async def test_telegram_auth_ignores_invalid_archived_and_ref_start_params(
     monkeypatch,
     db_session,
 ) -> None:
-    archived = MarketingCampaign(
-        code="ARCHIVED00",
-        name="Archive",
-        provider="telegram_ads",
-        status="archived",
-    )
-    db_session.add(archived)
-    await db_session.flush()
+    await _marketing_campaign(db_session, "ARCHIVED00", "Archive", status="archived")
     monkeypatch.setattr("app.services.auth.create_access_token", lambda _: "token")
 
     for telegram_id, start_param in enumerate(
@@ -243,14 +257,7 @@ async def test_telegram_auth_does_not_accept_url_only_marketing_parameter(
     monkeypatch,
     db_session,
 ) -> None:
-    campaign = MarketingCampaign(
-        code="URLONLY000",
-        name="Unsafe",
-        provider="telegram_ads",
-        status="active",
-    )
-    db_session.add(campaign)
-    await db_session.flush()
+    await _marketing_campaign(db_session, "URLONLY000", "Unsafe")
     monkeypatch.setattr(
         "app.services.auth.validate_telegram_init_data",
         lambda _: {"user": '{"id": 9300, "first_name": "No URL"}'},

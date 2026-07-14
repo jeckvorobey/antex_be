@@ -11,7 +11,7 @@ from fastapi import APIRouter, Query, status
 from app.api.deps import AdminUser, DbDep
 from app.exceptions import AntExException
 from app.modules.marketing.admin_service import MarketingAdminService
-from app.modules.marketing.constants import MARKETING_CAMPAIGN_STATUSES, MARKETING_PROVIDERS
+from app.modules.marketing.constants import MARKETING_CAMPAIGN_STATUSES
 from app.modules.marketing.schemas import (
     ApplicationListOut,
     CampaignCreate,
@@ -21,6 +21,10 @@ from app.modules.marketing.schemas import (
     DailyMetricOut,
     DailyMetricUpsert,
     DashboardOut,
+    MarketingCurrencyCreate,
+    MarketingCurrencyOut,
+    MarketingPlatformCreate,
+    MarketingPlatformOut,
 )
 
 logger = logging.getLogger(__name__)
@@ -34,6 +38,38 @@ async def create_campaign(
     _: AdminUser,
 ) -> CampaignOut:
     return await MarketingAdminService(db).create_campaign(payload)
+
+
+@router.get("/platforms", response_model=list[MarketingPlatformOut])
+async def list_platforms(db: DbDep, _: AdminUser) -> list[MarketingPlatformOut]:
+    return await MarketingAdminService(db).list_platforms()
+
+
+@router.post("/platforms", response_model=MarketingPlatformOut, status_code=status.HTTP_201_CREATED)
+async def create_platform(
+    payload: MarketingPlatformCreate,
+    db: DbDep,
+    _: AdminUser,
+) -> MarketingPlatformOut:
+    return await MarketingAdminService(db).create_platform(payload)
+
+
+@router.get("/currencies", response_model=list[MarketingCurrencyOut])
+async def list_currencies(db: DbDep, _: AdminUser) -> list[MarketingCurrencyOut]:
+    return await MarketingAdminService(db).list_currencies()
+
+
+@router.post(
+    "/currencies",
+    response_model=MarketingCurrencyOut,
+    status_code=status.HTTP_201_CREATED,
+)
+async def create_currency(
+    payload: MarketingCurrencyCreate,
+    db: DbDep,
+    _: AdminUser,
+) -> MarketingCurrencyOut:
+    return await MarketingAdminService(db).create_currency(payload)
 
 
 @router.get("/campaigns", response_model=CampaignListOut)
@@ -190,12 +226,6 @@ def _period(date_from: date | None, date_to: date | None) -> tuple[date, date]:
 
 
 def _validate_filter_values(*, provider: str | None, campaign_status: str | None) -> None:
-    if provider is not None and provider not in MARKETING_PROVIDERS:
-        raise AntExException(
-            "Unsupported marketing provider",
-            code="UNSUPPORTED_MARKETING_PROVIDER",
-            status_code=422,
-        )
     if campaign_status is not None and campaign_status not in MARKETING_CAMPAIGN_STATUSES:
         raise AntExException(
             "Unsupported campaign status",

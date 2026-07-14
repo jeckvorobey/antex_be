@@ -11,6 +11,7 @@ from sqlalchemy import event, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api import deps
+from app.api.routers.admin import verify_password
 from app.core.security import create_access_token
 from app.enums.country import Country
 from app.enums.order import OrderStatus
@@ -128,7 +129,8 @@ async def test_admin_can_create_new_admin(
     created = await db_session.scalar(select(Admin).where(Admin.username == "alice"))
     assert created is not None
     assert created.email == "alice@example.com"
-    assert created.password_hash == hashlib.sha256(b"Secret123").hexdigest()
+    assert created.password_hash.startswith("scrypt$")
+    assert verify_password("Secret123", created.password_hash) == (True, False)
 
 
 @pytest.mark.asyncio
@@ -156,7 +158,32 @@ async def test_admin_can_change_password_for_existing_admin(
     assert response.json() == {"ok": True}
 
     await db_session.refresh(target)
-    assert target.password_hash == hashlib.sha256(b"NewPassword123").hexdigest()
+    assert target.password_hash.startswith("scrypt$")
+    assert verify_password("NewPassword123", target.password_hash) == (True, False)
+
+
+@pytest.mark.asyncio
+async def test_admin_login_migrates_legacy_sha256_hash(
+    admin_crud_api_client: tuple[AsyncClient, AsyncSession],
+) -> None:
+    client, db_session = admin_crud_api_client
+    admin = Admin(
+        username="legacy",
+        email="legacy@example.com",
+        password_hash=hashlib.sha256(b"OldPassword123").hexdigest(),
+    )
+    db_session.add(admin)
+    await db_session.commit()
+
+    response = await client.post(
+        "/api/admin/login",
+        json={"username": "legacy", "password": "OldPassword123"},
+    )
+
+    assert response.status_code == 200
+    await db_session.refresh(admin)
+    assert admin.password_hash.startswith("scrypt$")
+    assert verify_password("OldPassword123", admin.password_hash) == (True, False)
 
 
 @pytest.mark.asyncio

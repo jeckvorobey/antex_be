@@ -28,30 +28,63 @@ if TYPE_CHECKING:
     from app.models.user import User
 
 
+class MarketingPlatform(Base, TimestampMixin):
+    """Рекламная платформа из управляемого справочника."""
+
+    __tablename__ = "MarketingPlatforms"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    slug: Mapped[str] = mapped_column(String(64), unique=True, nullable=False)
+    name: Mapped[str] = mapped_column(String(128), unique=True, nullable=False)
+
+    campaigns: Mapped[list[MarketingCampaign]] = relationship(back_populates="platform")
+
+
+class MarketingCurrency(Base, TimestampMixin):
+    """Валюта бюджета и маркетинговых расходов из управляемого справочника."""
+
+    __tablename__ = "MarketingCurrencies"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    code: Mapped[str] = mapped_column(String(8), unique=True, nullable=False)
+    name: Mapped[str] = mapped_column(String(64), nullable=False)
+
+    campaigns: Mapped[list[MarketingCampaign]] = relationship(back_populates="currency")
+
+
 class MarketingCampaign(Base, TimestampMixin):
     """Рекламная кампания с неизменяемыми code и provider."""
 
     __tablename__ = "MarketingCampaigns"
     __table_args__ = (
         CheckConstraint("budget IS NULL OR budget >= 0", name="ck_marketing_campaign_budget"),
-        Index("ix_marketing_campaigns_provider_status", "provider", "status"),
+        Index("ix_marketing_campaigns_platform_status", "platform_id", "status"),
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     code: Mapped[str] = mapped_column(String(10), unique=True, nullable=False)
     name: Mapped[str] = mapped_column(String(255), nullable=False)
-    provider: Mapped[str] = mapped_column(String(64), nullable=False)
-    source: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    platform_id: Mapped[int] = mapped_column(
+        Integer,
+        ForeignKey("MarketingPlatforms.id", ondelete="RESTRICT"),
+        nullable=False,
+    )
     medium: Mapped[str | None] = mapped_column(String(128), nullable=True)
     external_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
     objective: Mapped[str | None] = mapped_column(String(255), nullable=True)
     status: Mapped[str] = mapped_column(String(32), nullable=False, default="draft")
     budget: Mapped[Decimal | None] = mapped_column(Numeric(18, 8), nullable=True)
-    currency: Mapped[str | None] = mapped_column(String(8), nullable=True)
+    currency_id: Mapped[int] = mapped_column(
+        Integer,
+        ForeignKey("MarketingCurrencies.id", ondelete="RESTRICT"),
+        nullable=False,
+    )
     starts_at: Mapped[date | None] = mapped_column(Date, nullable=True)
     ends_at: Mapped[date | None] = mapped_column(Date, nullable=True)
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
 
+    platform: Mapped[MarketingPlatform] = relationship(back_populates="campaigns")
+    currency: Mapped[MarketingCurrency] = relationship(back_populates="campaigns")
     attributions: Mapped[list[MarketingAttribution]] = relationship(
         back_populates="campaign",
         cascade="all, delete-orphan",
