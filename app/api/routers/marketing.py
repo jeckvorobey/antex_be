@@ -54,6 +54,11 @@ async def create_platform(
     return await MarketingAdminService(db).create_platform(payload)
 
 
+@router.delete("/platforms/{slug}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_platform(slug: str, db: DbDep, _: AdminUser) -> None:
+    await MarketingAdminService(db).delete_platform(slug)
+
+
 @router.get("/currencies", response_model=list[MarketingCurrencyOut])
 async def list_currencies(db: DbDep, _: AdminUser) -> list[MarketingCurrencyOut]:
     return await MarketingAdminService(db).list_currencies()
@@ -70,6 +75,11 @@ async def create_currency(
     _: AdminUser,
 ) -> MarketingCurrencyOut:
     return await MarketingAdminService(db).create_currency(payload)
+
+
+@router.delete("/currencies/{code}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_currency(code: str, db: DbDep, _: AdminUser) -> None:
+    await MarketingAdminService(db).delete_currency(code.upper())
 
 
 @router.get("/campaigns", response_model=CampaignListOut)

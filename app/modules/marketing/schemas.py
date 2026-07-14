@@ -16,7 +16,6 @@ class MarketingSchema(BaseModel):
 class CampaignCreate(MarketingSchema):
     name: str = Field(min_length=1, max_length=255)
     provider: str = Field(min_length=1, max_length=64)
-    medium: str | None = Field(default=None, max_length=128)
     external_id: str | None = Field(default=None, alias="externalId", max_length=255)
     objective: str | None = Field(default=None, max_length=255)
     status: str = "draft"
@@ -52,7 +51,6 @@ class CampaignCreate(MarketingSchema):
 
 class CampaignUpdate(MarketingSchema):
     name: str | None = Field(default=None, min_length=1, max_length=255)
-    medium: str | None = Field(default=None, max_length=128)
     external_id: str | None = Field(default=None, alias="externalId", max_length=255)
     objective: str | None = Field(default=None, max_length=255)
     status: str | None = None
@@ -80,7 +78,6 @@ class CampaignOut(MarketingSchema):
     code: str
     name: str
     provider: str
-    medium: str | None
     external_id: str | None = Field(alias="externalId")
     objective: str | None
     status: str

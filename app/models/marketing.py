@@ -36,6 +36,7 @@ class MarketingPlatform(Base, TimestampMixin):
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     slug: Mapped[str] = mapped_column(String(64), unique=True, nullable=False)
     name: Mapped[str] = mapped_column(String(128), unique=True, nullable=False)
+    deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
     campaigns: Mapped[list[MarketingCampaign]] = relationship(back_populates="platform")
 
@@ -53,7 +54,7 @@ class MarketingCurrency(Base, TimestampMixin):
 
 
 class MarketingCampaign(Base, TimestampMixin):
-    """Рекламная кампания с неизменяемыми code и provider."""
+    """Рекламная компания с неизменяемыми code и provider."""
 
     __tablename__ = "MarketingCampaigns"
     __table_args__ = (
@@ -69,7 +70,6 @@ class MarketingCampaign(Base, TimestampMixin):
         ForeignKey("MarketingPlatforms.id", ondelete="RESTRICT"),
         nullable=False,
     )
-    medium: Mapped[str | None] = mapped_column(String(128), nullable=True)
     external_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
     objective: Mapped[str | None] = mapped_column(String(255), nullable=True)
     status: Mapped[str] = mapped_column(String(32), nullable=False, default="draft")
