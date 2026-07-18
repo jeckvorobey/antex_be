@@ -319,9 +319,7 @@ async def list_all_operations(
     """Журнал всех операций ATXG."""
     repo = AexLedgerEntryRepository(db)
     parsed_date_from = (
-        None
-        if not date_from
-        else datetime.fromisoformat(f"{date_from}T00:00:00+00:00")
+        None if not date_from else datetime.fromisoformat(f"{date_from}T00:00:00+00:00")
     )
     parsed_date_to = None if not date_to else datetime.fromisoformat(f"{date_to}T23:59:59+00:00")
     entries = await repo.get_all_paginated(

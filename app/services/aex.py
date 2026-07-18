@@ -307,9 +307,7 @@ class AexService:
             return [], None
 
         entry_repo = AexLedgerEntryRepository(db)
-        rows = await entry_repo.get_by_wallet_cursor(
-            wallet.id, limit=limit, cursor=cursor
-        )
+        rows = await entry_repo.get_by_wallet_cursor(wallet.id, limit=limit, cursor=cursor)
         # Detect has_more: if we got limit+1, there's a next page
         next_cursor: int | None = None
         has_more = len(rows) > limit

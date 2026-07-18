@@ -62,7 +62,6 @@ class UserRepository(BaseRepository[User]):
         )
         return list(result.scalars().all())
 
-
     async def search(self, query: str | None) -> list[User]:
         statement = select(User).options(*self._admin_user_options()).order_by(User.id)
         if query:
@@ -107,8 +106,7 @@ class UserRepository(BaseRepository[User]):
             count_statement = count_statement.where(or_(*conditions))
 
         result = await self.session.execute(
-            statement
-            .options(*self._admin_user_options())
+            statement.options(*self._admin_user_options())
             .order_by(User.id)
             .limit(limit)
             .offset(offset)

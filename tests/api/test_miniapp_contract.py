@@ -1077,10 +1077,14 @@ async def test_miniapp_order_accepts_atxg_withdrawal_via_usdt_based_pair(
     assert wallet.balance_reserved == 400
 
     entries = (
-        await db_session.execute(
-            select(AexLedgerEntry).where(AexLedgerEntry.wallet_id == wallet.id)
+        (
+            await db_session.execute(
+                select(AexLedgerEntry).where(AexLedgerEntry.wallet_id == wallet.id)
+            )
         )
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
     assert [(entry.entry_type, entry.amount, entry.reference_type) for entry in entries] == [
         ("hold", 400, "order_withdraw_hold")
     ]

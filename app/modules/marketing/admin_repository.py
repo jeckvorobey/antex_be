@@ -96,6 +96,7 @@ class MarketingAdminRepository:
         search: str | None,
         provider: str | None,
         status: str | None,
+        include_archived: bool,
         limit: int,
         offset: int,
     ) -> tuple[list[MarketingCampaign], int]:
@@ -109,6 +110,8 @@ class MarketingAdminRepository:
             conditions.append(MarketingPlatform.slug == provider)
         if status:
             conditions.append(MarketingCampaign.status == status)
+        elif not include_archived:
+            conditions.append(MarketingCampaign.status != "archived")
 
         total = int(
             (

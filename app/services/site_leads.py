@@ -34,8 +34,7 @@ async def create_site_lead(db: AsyncSession, payload: SiteLeadCreate) -> object:
 
     try:
         logger.info(
-            "Site lead notification attempt: lead_id=%s manager_user_id=%s "
-            "manager_telegram_id=%s",
+            "Site lead notification attempt: lead_id=%s manager_user_id=%s manager_telegram_id=%s",
             lead.id,
             getattr(manager, "id", None),
             getattr(manager, "telegram_id", None),
