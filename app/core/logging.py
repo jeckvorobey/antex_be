@@ -40,9 +40,8 @@ def configure_logging(
         log_file_backup_count,
         file_logging_disabled,
     )
-    if (
-        getattr(root_logger, _LOGGING_CONFIG_ATTR, None) == config_fingerprint
-        and any(getattr(handler, _MANAGED_HANDLER_ATTR, False) for handler in root_logger.handlers)
+    if getattr(root_logger, _LOGGING_CONFIG_ATTR, None) == config_fingerprint and any(
+        getattr(handler, _MANAGED_HANDLER_ATTR, False) for handler in root_logger.handlers
     ):
         _configure_external_loggers(level)
         return

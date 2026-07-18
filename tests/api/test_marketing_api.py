@@ -273,6 +273,34 @@ async def test_campaign_list_has_server_pagination_and_filters(marketing_api_cli
     assert missing.json()["code"] == "MARKETING_CAMPAIGN_NOT_FOUND"
 
 
+async def test_campaign_list_hides_archived_by_default_and_includes_them_on_request(
+    marketing_api_client,
+) -> None:
+    client, _, token = marketing_api_client
+    await create_campaign(client, token, name="Active", status="active")
+    await create_campaign(client, token, name="Archived", status="archived")
+
+    default_response = await client.get(
+        "/api/admin/marketing/campaigns",
+        headers=auth(token),
+    )
+    with_archive_response = await client.get(
+        "/api/admin/marketing/campaigns",
+        headers=auth(token),
+        params={"include_archived": "true"},
+    )
+
+    assert default_response.status_code == 200
+    assert default_response.json()["total"] == 1
+    assert [item["name"] for item in default_response.json()["items"]] == ["Active"]
+    assert with_archive_response.status_code == 200
+    assert with_archive_response.json()["total"] == 2
+    assert {item["name"] for item in with_archive_response.json()["items"]} == {
+        "Active",
+        "Archived",
+    }
+
+
 async def test_daily_metrics_upsert_and_validation(marketing_api_client) -> None:
     client, _, token = marketing_api_client
     campaign = (await create_campaign(client, token)).json()

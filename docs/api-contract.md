@@ -75,8 +75,10 @@ Refresh token с типом `admin_refresh` допускается исключ�
   `https://t.me/<bot>?startapp=market_<CODE>` и `marketParameter` вида
   `market=<CODE>`. Прямое поле `code` в request запрещено.
 - `GET /campaigns` — список `items/total/limit/offset`; filters: `search`,
-  `provider`, `status`, `limit`, `offset`. Item содержит `attributedUsers` и
-  `applications`, рассчитанные без N+1.
+  `provider`, `status`, `include_archived`, `limit`, `offset`.
+  `include_archived=false` по умолчанию исключает archived records до
+  server-side pagination; item содержит `attributedUsers` и `applications`,
+  рассчитанные без N+1.
 - `GET /campaigns/{id}` — карточка кампании.
 - `PATCH /campaigns/{id}` — изменение metadata/status; `code` и `provider`
   неизменяемы. Удаление заменено status `archived`.

@@ -65,9 +65,7 @@ class TestNotifyAexOperation:
         self, mock_db: AsyncMock, mock_user: MagicMock
     ) -> None:
         with (
-            patch(
-                "app.services.aex_notifications.UserRepository"
-            ) as mock_repo_cls,
+            patch("app.services.aex_notifications.UserRepository") as mock_repo_cls,
             patch("app.telegram.bot.bot") as mock_bot,
         ):
             mock_repo = AsyncMock()
@@ -87,13 +85,9 @@ class TestNotifyAexOperation:
             assert call_kwargs.kwargs["chat_id"] == 123456789
             assert "Начисление ATXG" in call_kwargs.kwargs["text"]
 
-    async def test_sends_debit_notification(
-        self, mock_db: AsyncMock, mock_user: MagicMock
-    ) -> None:
+    async def test_sends_debit_notification(self, mock_db: AsyncMock, mock_user: MagicMock) -> None:
         with (
-            patch(
-                "app.services.aex_notifications.UserRepository"
-            ) as mock_repo_cls,
+            patch("app.services.aex_notifications.UserRepository") as mock_repo_cls,
             patch("app.telegram.bot.bot") as mock_bot,
         ):
             mock_repo = AsyncMock()
@@ -113,9 +107,7 @@ class TestNotifyAexOperation:
             assert "Списание ATXG" in call_kwargs.kwargs["text"]
 
     async def test_skips_when_user_not_found(self, mock_db: AsyncMock) -> None:
-        with patch(
-            "app.services.aex_notifications.UserRepository"
-        ) as mock_repo_cls:
+        with patch("app.services.aex_notifications.UserRepository") as mock_repo_cls:
             mock_repo = AsyncMock()
             mock_repo.get_one.return_value = None
             mock_repo_cls.return_value = mock_repo
@@ -128,15 +120,11 @@ class TestNotifyAexOperation:
                 amount=Decimal("100"),
             )
 
-    async def test_skips_when_no_telegram_id(
-        self, mock_db: AsyncMock
-    ) -> None:
+    async def test_skips_when_no_telegram_id(self, mock_db: AsyncMock) -> None:
         user_no_tg = MagicMock()
         user_no_tg.telegram_id = None
 
-        with patch(
-            "app.services.aex_notifications.UserRepository"
-        ) as mock_repo_cls:
+        with patch("app.services.aex_notifications.UserRepository") as mock_repo_cls:
             mock_repo = AsyncMock()
             mock_repo.get_one.return_value = user_no_tg
             mock_repo_cls.return_value = mock_repo
@@ -153,9 +141,7 @@ class TestNotifyAexOperation:
         self, mock_db: AsyncMock, mock_user: MagicMock
     ) -> None:
         with (
-            patch(
-                "app.services.aex_notifications.UserRepository"
-            ) as mock_repo_cls,
+            patch("app.services.aex_notifications.UserRepository") as mock_repo_cls,
             patch("app.telegram.bot.bot", None),
         ):
             mock_repo = AsyncMock()
@@ -174,9 +160,7 @@ class TestNotifyAexOperation:
         self, mock_db: AsyncMock, mock_user: MagicMock
     ) -> None:
         with (
-            patch(
-                "app.services.aex_notifications.UserRepository"
-            ) as mock_repo_cls,
+            patch("app.services.aex_notifications.UserRepository") as mock_repo_cls,
         ):
             mock_repo = AsyncMock()
             mock_repo.get_one.return_value = mock_user

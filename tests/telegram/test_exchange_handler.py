@@ -613,8 +613,7 @@ async def test_enter_amount_rejects_below_minimum_and_stays_on_amount_step(monke
     assert state._data.get("amount_sell") is None
     assert len(message.answers) == 1
     assert message.answers[0]["text"] == (
-        "Сумма должна быть не меньше 15000. "
-        "Введите допустимую сумму для данного способа получения."
+        "Сумма должна быть не меньше 15000. Введите допустимую сумму для данного способа получения."
     )
     assert message.answers[0]["reply_markup"] is not None
     quote_mock.assert_not_called()

@@ -232,9 +232,7 @@ class TestAexOperationsCursorPagination:
         assert len(data["items"]) == 2
         assert data["next_cursor"] is None  # Last page
 
-    async def test_empty_result(
-        self, aex_api_client: tuple[AsyncClient, AsyncSession]
-    ) -> None:
+    async def test_empty_result(self, aex_api_client: tuple[AsyncClient, AsyncSession]) -> None:
         client, db = aex_api_client
         user = User(telegram_id=60003, username="cursor_empty")
         db.add(user)

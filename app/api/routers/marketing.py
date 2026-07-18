@@ -100,6 +100,7 @@ async def list_campaigns(
     search: str | None = None,
     provider: str | None = None,
     campaign_status: Annotated[str | None, Query(alias="status")] = None,
+    include_archived: bool = False,
     limit: Annotated[int, Query(ge=1, le=100)] = 20,
     offset: Annotated[int, Query(ge=0)] = 0,
 ) -> CampaignListOut:
@@ -109,6 +110,7 @@ async def list_campaigns(
         search=search,
         provider=provider,
         status=campaign_status,
+        include_archived=include_archived,
         limit=limit,
         offset=offset,
     )
