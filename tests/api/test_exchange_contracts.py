@@ -5,6 +5,7 @@ from unittest.mock import AsyncMock
 
 import pytest
 from httpx import ASGITransport, AsyncClient
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api import deps
@@ -200,6 +201,57 @@ async def test_internal_rates_are_hidden_from_all_existing_rate_apis(
     assert delete_response.status_code == 404
     assert refresh_response.status_code == 200
     assert set(refresh_response.json()["rates"]) == {"USDTTHB"}
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("reserved_currency", ["USDTRUB", "rubusdt"])
+async def test_admin_cannot_create_reserved_internal_rate(
+    api_client: tuple[AsyncClient, AsyncSession],
+    reserved_currency: str,
+) -> None:
+    """Admin API не создаёт внешнюю строку, использующую внутренний код."""
+    client, db_session = api_client
+    admin, _ = await seed_admin_exchange_data(db_session)
+    token = create_access_token({"sub": str(admin.id), "type": "admin"})
+
+    response = await client.post(
+        "/api/admin/rates",
+        headers={"Authorization": f"Bearer {token}"},
+        json={
+            "currency": reserved_currency,
+            "country": "thailand",
+            "price": 90.0,
+            "margin": 3.0,
+        },
+    )
+
+    assert response.status_code == 422
+    stored = await db_session.scalar(select(Rate).where(Rate.currency == reserved_currency.upper()))
+    assert stored is None
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("reserved_currency", ["USDTRUB", "rubusdt"])
+async def test_admin_cannot_rename_visible_rate_to_reserved_internal_rate(
+    api_client: tuple[AsyncClient, AsyncSession],
+    reserved_currency: str,
+) -> None:
+    """Admin API не переименовывает внешний курс во внутреннюю пару."""
+    client, db_session = api_client
+    admin, _ = await seed_admin_exchange_data(db_session)
+    token = create_access_token({"sub": str(admin.id), "type": "admin"})
+    visible = await db_session.scalar(select(Rate).where(Rate.currency == "USDTTHB"))
+    assert visible is not None
+
+    response = await client.patch(
+        f"/api/admin/rates/{visible.id}",
+        headers={"Authorization": f"Bearer {token}"},
+        json={"currency": reserved_currency},
+    )
+
+    assert response.status_code == 422
+    await db_session.refresh(visible)
+    assert visible.currency == "USDTTHB"
 
 
 @pytest.mark.asyncio
