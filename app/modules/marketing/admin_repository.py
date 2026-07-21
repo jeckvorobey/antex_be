@@ -505,6 +505,34 @@ class MarketingAdminRepository:
         )
         return [dict(row) for row in (await self.session.execute(statement)).mappings().all()]
 
+    async def unique_touched_user_count(
+        self,
+        *,
+        date_from: datetime,
+        date_to: datetime,
+        campaign_id: int | None,
+        provider: str | None,
+        currency: str | None,
+    ) -> int:
+        conditions = [
+            MarketingTouch.touched_at >= date_from,
+            MarketingTouch.touched_at < date_to,
+        ]
+        if campaign_id is not None:
+            conditions.append(MarketingCampaign.id == campaign_id)
+        if provider is not None:
+            conditions.append(MarketingPlatform.slug == provider)
+        if currency is not None:
+            conditions.append(MarketingCurrency.code == currency)
+        value = await self.session.scalar(
+            select(func.count(func.distinct(MarketingTouch.user_id)))
+            .join(MarketingCampaign, MarketingCampaign.id == MarketingTouch.campaign_id)
+            .join(MarketingPlatform)
+            .join(MarketingCurrency)
+            .where(*conditions)
+        )
+        return int(value or 0)
+
     async def daily_series(
         self,
         *,

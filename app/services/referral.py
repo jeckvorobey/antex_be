@@ -15,6 +15,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.exceptions import AntExException
 from app.models.aex import AexLedgerEntry
+from app.models.attribution import UserAcquisition
 from app.models.user import User
 from app.repositories.rate import RateRepository
 from app.repositories.user import UserRepository
@@ -70,6 +71,17 @@ class ReferralService:
         """
         if user.referred_by is not None:
             return user
+
+        acquisition = await db.scalar(
+            select(UserAcquisition.id).where(UserAcquisition.user_id == user.id)
+        )
+        if acquisition is not None:
+            logger.info("Rejected public referral binding for existing user_id=%s", user.id)
+            raise AntExException(
+                "Referral can only be assigned during first registration",
+                code="REFERRAL_EXISTING_USER",
+                status_code=409,
+            )
 
         repo = UserRepository(db)
         self._validate_referral_code(referral_code)

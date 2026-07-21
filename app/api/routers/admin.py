@@ -332,7 +332,8 @@ async def update_user(user_id: int, body: UserUpdate, db: DbDep, _: AdminUser) -
     updated = await repo.update(user, **update_data)
     await db.commit()
     updated = await repo.get_one(updated.id)
-    return build_user_out(updated)
+    attribution = await AttributionService(db).admin_summaries([updated.id])
+    return build_user_out(updated, attribution=attribution.get(updated.id))
 
 
 @router.post(

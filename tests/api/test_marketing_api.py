@@ -484,6 +484,43 @@ async def test_dashboard_empty_period_returns_null_rates_and_rejects_bad_dates(
     assert overflowing.json()["code"] == "INVALID_MARKETING_DATE_RANGE"
 
 
+async def test_dashboard_unique_touched_users_is_distinct_across_campaigns(
+    marketing_api_client,
+) -> None:
+    client, db_session, token = marketing_api_client
+    first = (await create_campaign(client, token, name="First")).json()
+    second = (await create_campaign(client, token, name="Second")).json()
+    user, _ = await UserRepository(db_session).find_or_create(778001, first_name="Shared")
+    now = datetime.now(UTC)
+    db_session.add_all(
+        [
+            MarketingTouch(
+                user_id=user.id,
+                campaign_id=first["id"],
+                touched_at=now,
+                user_state="returning",
+            ),
+            MarketingTouch(
+                user_id=user.id,
+                campaign_id=second["id"],
+                touched_at=now,
+                user_state="returning",
+            ),
+        ]
+    )
+    await db_session.flush()
+
+    response = await client.get(
+        "/api/admin/marketing/dashboard",
+        headers=auth(token),
+        params={"dateFrom": str(date.today()), "dateTo": str(date.today()), "currency": "USDT"},
+    )
+
+    assert response.status_code == 200, response.text
+    assert response.json()["summary"]["touches"] == 2
+    assert response.json()["summary"]["uniqueTouchedUsers"] == 1
+
+
 async def test_dashboard_does_not_merge_mixed_currency_or_claim_roas(
     marketing_api_client,
 ) -> None:

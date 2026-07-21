@@ -150,6 +150,14 @@ async def test_admin_user_contract_separates_fixed_acquisition_from_referrer(
     assert data["attribution"]["sourceStatus"] == "fixed"
     assert data["attribution"]["primaryCampaignId"] is None
 
+    updated = await client.patch(
+        f"/api/admin/users/{user.id}",
+        headers={"Authorization": f"Bearer {token}"},
+        json={"role": int(UserRole.USER)},
+    )
+    assert updated.status_code == 200, updated.text
+    assert updated.json()["attribution"]["sourceType"] == "referral"
+
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize(

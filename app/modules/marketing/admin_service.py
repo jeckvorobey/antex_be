@@ -431,7 +431,14 @@ class MarketingAdminService:
         new_users = sum(row.new_users for row in comparison)
         returning_users = sum(row.returning_users for row in comparison)
         touches = sum(row.touches for row in comparison)
-        unique_touched_users = sum(row.unique_touched_users for row in comparison)
+        start, end = _date_bounds(date_from, date_to)
+        unique_touched_users = await self.repository.unique_touched_user_count(
+            date_from=start,
+            date_to=end,
+            campaign_id=campaign_id,
+            provider=provider,
+            currency=currency,
+        )
         applications = sum(row.applications for row in comparison)
         unique_applicants = sum(row.unique_applicants for row in comparison)
         completed = sum(row.completed_applications for row in comparison)

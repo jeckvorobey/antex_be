@@ -2,9 +2,11 @@ from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
 
+import pytest
 from sqlalchemy import select
 
-from app.models.attribution import MarketingTouch
+from app.exceptions import AntExException
+from app.models.attribution import MarketingTouch, UserAcquisition
 from app.models.marketing import MarketingCampaign, MarketingCurrency, MarketingPlatform
 from app.models.user import User
 from app.repositories.user import UserRepository
@@ -41,6 +43,25 @@ async def test_existing_user_cannot_receive_referrer_from_public_start_param(
     await auth.telegram_auth(db_session, "trusted")
 
     await db_session.refresh(existing)
+    assert existing.referred_by is None
+
+
+async def test_existing_acquired_user_cannot_bind_referrer_through_public_service(
+    db_session,
+) -> None:
+    from app.services.referral import ReferralService
+
+    referrer = User(telegram_id=21, referral_code="PUBLIC01")
+    existing = User(telegram_id=22)
+    db_session.add_all([referrer, existing])
+    await db_session.flush()
+    db_session.add(UserAcquisition(user_id=existing.id, source_type="direct"))
+    await db_session.flush()
+
+    with pytest.raises(AntExException) as error:
+        await ReferralService().bind_referral(db_session, existing, "PUBLIC01")
+
+    assert error.value.code == "REFERRAL_EXISTING_USER"
     assert existing.referred_by is None
 
 
