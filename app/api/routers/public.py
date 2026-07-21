@@ -22,7 +22,7 @@ async def public_cities(db: DbDep) -> list[CityOut]:
 
 @router.get("/rates", response_model=list[RateOut])
 async def public_rates(db: DbDep) -> list[RateOut]:
-    return [build_rate_out(rate) for rate in await RateRepository(db).get_all()]
+    return [build_rate_out(rate) for rate in await RateRepository(db).get_visible()]
 
 
 @router.post("/site-leads", response_model=SiteLeadOut, status_code=status.HTTP_201_CREATED)

@@ -450,12 +450,12 @@ async def list_site_leads(
 
 @router.get("/rates", response_model=list[AdminRateOut])
 async def list_rates(db: DbDep, _: AdminUser) -> list[AdminRateOut]:
-    return [build_admin_rate_out(rate) for rate in await RateRepository(db).get_all()]
+    return [build_admin_rate_out(rate) for rate in await RateRepository(db).get_visible()]
 
 
 @router.get("/rates/{rate_id}", response_model=AdminRateOut)
 async def get_rate(rate_id: int, db: DbDep, _: AdminUser) -> AdminRateOut:
-    rate = await RateRepository(db).get_by_id(rate_id)
+    rate = await RateRepository(db).get_visible_by_id(rate_id)
     if not rate:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Rate not found")
     return build_admin_rate_out(rate)
@@ -471,7 +471,7 @@ async def create_rate(body: RateCreate, db: DbDep, _: AdminUser) -> AdminRateOut
 @router.patch("/rates/{rate_id}", response_model=AdminRateOut)
 async def update_rate(rate_id: int, body: RateUpdate, db: DbDep, _: AdminUser) -> AdminRateOut:
     repo = RateRepository(db)
-    rate = await repo.get_by_id(rate_id)
+    rate = await repo.get_visible_by_id(rate_id)
     if not rate:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Rate not found")
     updated = await repo.update(rate, **body.model_dump(exclude_none=True))
@@ -482,7 +482,7 @@ async def update_rate(rate_id: int, body: RateUpdate, db: DbDep, _: AdminUser) -
 @router.delete("/rates/{rate_id}")
 async def delete_rate(rate_id: int, db: DbDep, _: AdminUser) -> dict[str, bool]:
     repo = RateRepository(db)
-    rate = await repo.get_by_id(rate_id)
+    rate = await repo.get_visible_by_id(rate_id)
     if not rate:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Rate not found")
     await repo.delete(rate)
@@ -517,7 +517,12 @@ async def update_config(body: AppConfigUpdate, db: DbDep, _: AdminUser) -> AppCo
 
 @router.post("/rates/refresh")
 async def refresh_rates(db: DbDep, _: AdminUser) -> dict[str, object]:
-    from app.services.rate_fetcher import fetch_and_save_rates
+    from app.services.rate_fetcher import INTERNAL_RATE_CURRENCIES, fetch_and_save_rates
 
     rates = await fetch_and_save_rates(db)
-    return {"ok": True, "rates": rates}
+    visible_rates = {
+        currency: price
+        for currency, price in rates.items()
+        if currency not in INTERNAL_RATE_CURRENCIES
+    }
+    return {"ok": True, "rates": visible_rates}

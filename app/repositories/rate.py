@@ -12,6 +12,8 @@ from app.repositories.base import BaseRepository
 
 
 class RateRepository(BaseRepository[Rate]):
+    """Управляет хранением и безопасными выборками валютных курсов."""
+
     model = Rate
 
     async def has_any(self) -> bool:
@@ -19,9 +21,34 @@ class RateRepository(BaseRepository[Rate]):
         result = await self.session.execute(select(Rate.id).limit(1))
         return result.scalar_one_or_none() is not None
 
+    async def has_all_currencies(self, currencies: set[str] | frozenset[str]) -> bool:
+        """Проверяет наличие полного набора валютных пар в таблице."""
+        normalized = {currency.upper() for currency in currencies}
+        if not normalized:
+            return True
+        result = await self.session.execute(
+            select(Rate.currency).where(Rate.currency.in_(normalized))
+        )
+        existing = {currency.upper() for currency in result.scalars().all()}
+        return existing == normalized
+
     async def find_by_currency(self, currency: str) -> Rate | None:
         """Ищет курс по коду валютной пары."""
         result = await self.session.execute(select(Rate).where(Rate.currency == currency.upper()))
+        return result.scalar_one_or_none()
+
+    async def get_visible(self) -> list[Rate]:
+        """Возвращает только внешние курсы, разрешённые для API и UI."""
+        result = await self.session.execute(
+            select(Rate).where(Rate.is_internal.is_(False)).order_by(Rate.id)
+        )
+        return list(result.scalars().all())
+
+    async def get_visible_by_id(self, rate_id: int) -> Rate | None:
+        """Ищет внешний курс по id, не раскрывая внутренние строки."""
+        result = await self.session.execute(
+            select(Rate).where(Rate.id == rate_id, Rate.is_internal.is_(False))
+        )
         return result.scalar_one_or_none()
 
     async def find_or_create(
@@ -80,7 +107,7 @@ class RateRepository(BaseRepository[Rate]):
 
     async def upsert_many(
         self,
-        rates: Mapping[str, tuple[float, Country]],
+        rates: Mapping[str, tuple[float, Country | None, bool]],
         *,
         margin: float | None = None,
     ) -> list[Rate]:
@@ -89,14 +116,15 @@ class RateRepository(BaseRepository[Rate]):
         existing = {rate.currency.upper(): rate for rate in result.scalars().all()}
 
         upserted: list[Rate] = []
-        for currency, (price, country) in rates.items():
+        for currency, (price, country, is_internal) in rates.items():
             normalized_currency = currency.upper()
             rate = existing.get(normalized_currency)
             if rate is None:
-                payload: dict[str, float | str | Country] = {
+                payload: dict[str, float | str | Country | bool | None] = {
                     "currency": normalized_currency,
                     "price": price,
                     "country": country,
+                    "is_internal": is_internal,
                 }
                 if margin is not None:
                     payload["margin"] = margin
@@ -105,6 +133,7 @@ class RateRepository(BaseRepository[Rate]):
             else:
                 rate.price = price
                 rate.country = country
+                rate.is_internal = is_internal
                 if margin is not None:
                     rate.margin = margin
             upserted.append(rate)

@@ -132,6 +132,77 @@ async def test_admin_summary_returns_featured_rates(
 
 
 @pytest.mark.asyncio
+async def test_internal_rates_are_hidden_from_all_existing_rate_apis(
+    api_client: tuple[AsyncClient, AsyncSession],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Внутренние пары не раскрываются ни одним существующим rates endpoint."""
+    client, db_session = api_client
+    admin, customer = await seed_admin_exchange_data(db_session)
+    internal = Rate(
+        currency="USDTRUB",
+        price=90.0,
+        margin=4.5,
+        country=None,
+        is_internal=True,
+    )
+    db_session.add(internal)
+    await db_session.commit()
+
+    admin_token = create_access_token({"sub": str(admin.id), "type": "admin"})
+    user_token = create_access_token({"sub": str(customer.id), "role": customer.role})
+    admin_headers = {"Authorization": f"Bearer {admin_token}"}
+    user_headers = {"Authorization": f"Bearer {user_token}"}
+
+    public_response = await client.get("/public/rates")
+    miniapp_response = await client.get("/api/miniapp/rates", headers=user_headers)
+    admin_response = await client.get("/api/admin/rates", headers=admin_headers)
+    detail_response = await client.get(f"/api/admin/rates/{internal.id}", headers=admin_headers)
+    patch_response = await client.patch(
+        f"/api/admin/rates/{internal.id}",
+        headers=admin_headers,
+        json={"margin": 5.0},
+    )
+    delete_response = await client.delete(
+        f"/api/admin/rates/{internal.id}",
+        headers=admin_headers,
+    )
+
+    from app.services import rate_fetcher
+
+    monkeypatch.setattr(
+        rate_fetcher,
+        "fetch_and_save_rates",
+        AsyncMock(return_value={"USDTTHB": 36.0, "USDTRUB": 90.0, "RUBUSDT": 1 / 90.0}),
+    )
+    refresh_response = await client.post("/api/admin/rates/refresh", headers=admin_headers)
+
+    assert public_response.status_code == 200
+    assert miniapp_response.status_code == 200
+    assert admin_response.status_code == 200
+    assert {row["currency"] for row in public_response.json()} == {
+        "RUBTHB",
+        "RUBGEL",
+        "USDTTHB",
+    }
+    assert {row["currency"] for row in miniapp_response.json()["items"]} == {
+        "RUBTHB",
+        "RUBGEL",
+        "USDTTHB",
+    }
+    assert {row["currency"] for row in admin_response.json()} == {
+        "RUBTHB",
+        "RUBGEL",
+        "USDTTHB",
+    }
+    assert detail_response.status_code == 404
+    assert patch_response.status_code == 404
+    assert delete_response.status_code == 404
+    assert refresh_response.status_code == 200
+    assert set(refresh_response.json()["rates"]) == {"USDTTHB"}
+
+
+@pytest.mark.asyncio
 async def test_orders_api_accepts_preliminary_rate_and_amount_buy_fields(
     api_client: tuple[AsyncClient, AsyncSession],
 ) -> None:
