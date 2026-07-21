@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import date, datetime
 from typing import Any
 
-from sqlalchemy import case, func, or_, select, union_all
+from sqlalchemy import case, func, literal, or_, select, union_all
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -630,20 +630,37 @@ class MarketingAdminRepository:
         if currency is not None:
             campaign_conditions.append(MarketingCurrency.code == currency)
 
-        attribution_result = await self.session.execute(
+        attribution_source = union_all(
             select(
                 func.date(UserAcquisition.acquired_at).label("day"),
-                func.count(UserAcquisition.id).label("attributed_users"),
+                UserAcquisition.user_id.label("user_id"),
+                UserAcquisition.campaign_id.label("campaign_id"),
+                literal(True).label("is_new"),
+            ).where(UserAcquisition.campaign_id.is_not(None)),
+            select(
+                func.date(MarketingAttribution.attributed_at).label("day"),
+                MarketingAttribution.user_id.label("user_id"),
+                MarketingAttribution.campaign_id.label("campaign_id"),
+                literal(False).label("is_new"),
+            ),
+        ).subquery()
+        attribution_result = await self.session.execute(
+            select(
+                attribution_source.c.day,
+                func.count(func.distinct(attribution_source.c.user_id)).label("attributed_users"),
+                func.count(
+                    func.distinct(case((attribution_source.c.is_new, attribution_source.c.user_id)))
+                ).label("new_users"),
             )
-            .join(MarketingCampaign, MarketingCampaign.id == UserAcquisition.campaign_id)
+            .join(MarketingCampaign, MarketingCampaign.id == attribution_source.c.campaign_id)
             .join(MarketingPlatform)
             .join(MarketingCurrency)
             .where(
-                func.date(UserAcquisition.acquired_at) >= date_from,
-                func.date(UserAcquisition.acquired_at) <= date_to,
+                attribution_source.c.day >= date_from,
+                attribution_source.c.day <= date_to,
                 *campaign_conditions,
             )
-            .group_by(func.date(UserAcquisition.acquired_at))
+            .group_by(attribution_source.c.day)
         )
         touch_result = await self.session.execute(
             select(

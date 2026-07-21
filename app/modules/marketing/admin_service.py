@@ -594,7 +594,7 @@ def _zero_filled_series(
         bucket = result.get(day.isoformat() if hasattr(day, "isoformat") else str(day))
         if bucket is not None:
             bucket["attributedUsers"] = int(row["attributed_users"] or 0)
-            bucket["newUsers"] = int(row["attributed_users"] or 0)
+            bucket["newUsers"] = int(row["new_users"] or 0)
 
     for row in touch_rows:
         day = row["day"]
