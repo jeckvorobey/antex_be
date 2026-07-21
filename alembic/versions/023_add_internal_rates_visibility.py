@@ -29,6 +29,15 @@ def upgrade() -> None:
         ),
     )
     op.alter_column("Rates", "country", existing_type=sa.Enum(name="country_enum"), nullable=True)
+    op.execute(
+        sa.text(
+            """
+            UPDATE "Rates"
+            SET is_internal = true, country = NULL
+            WHERE upper(currency) IN ('USDTRUB', 'RUBUSDT')
+            """
+        )
+    )
 
 
 def downgrade() -> None:
