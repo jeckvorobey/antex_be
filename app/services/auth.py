@@ -52,9 +52,8 @@ async def telegram_auth(db: AsyncSession, init_data: str) -> TokenResponse:
             await ReferralService().bind_referral(db, user, referral_code)
         except AntExException as exc:
             logger.info(
-                "Referral start_param ignored during auth: user_id=%s, code=%s, error_code=%s",
+                "Referral start_param ignored during auth: user_id=%s, error_code=%s",
                 user.id,
-                referral_code,
                 exc.code,
             )
     elif referral_code:
