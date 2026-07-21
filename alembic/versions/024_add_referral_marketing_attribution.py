@@ -151,11 +151,15 @@ def upgrade() -> None:
     op.execute(
         'INSERT INTO "UserAcquisitions" (user_id, source_type, acquired_at) SELECT id, \'legacy\', "createdAt" FROM "Users" ON CONFLICT (user_id) DO NOTHING'
     )
-    # Intentionally do not derive acquisition/touches from legacy MarketingAttributions.
-    # The old auth flow wrote that table for both new and returning users, so it proves
-    # neither the user's primary source nor user_state at the event. The source rows stay
-    # intact for legacy API compatibility; inventing `campaign`/`new` here would corrupt
-    # immutable attribution history.
+    # Legacy rows came only from trusted Telegram auth, so they prove a campaign touch,
+    # but not whether the user was new. Preserve them conservatively as returning touches;
+    # never derive a campaign acquisition or `new` user_state from this table.
+    op.execute(
+        'INSERT INTO "MarketingTouches" (user_id, campaign_id, touched_at, user_state, metadata) SELECT legacy.user_id, legacy.campaign_id, legacy.attributed_at, \'returning\', \'{"source":"legacy_trusted_telegram_auth"}\'::json FROM "MarketingAttributions" legacy WHERE NOT EXISTS (SELECT 1 FROM "MarketingTouches" touch WHERE touch.user_id = legacy.user_id AND touch.campaign_id = legacy.campaign_id AND touch.touched_at = legacy.attributed_at AND touch.metadata->>\'source\' = \'legacy_trusted_telegram_auth\')'
+    )
+    op.execute(
+        'INSERT INTO "OrderAttributions" (order_id, campaign_id, marketing_touch_id, attribution_type, attributed_at, lookback_days) SELECT orders.id, touches.campaign_id, touches.id, \'reengagement\', touches.touched_at, 7 FROM "Orders" orders JOIN "MarketingTouches" touches ON touches.user_id = orders."UserId" AND touches.metadata->>\'source\' = \'legacy_trusted_telegram_auth\' WHERE orders."createdAt" >= touches.touched_at AND orders."createdAt" <= touches.touched_at + interval \'7 days\' ON CONFLICT (order_id) DO NOTHING'
+    )
     op.execute(
         'INSERT INTO "OrderAttributions" (order_id, attribution_type, lookback_days) SELECT id, \'none\', 7 FROM "Orders" ON CONFLICT (order_id) DO NOTHING'
     )

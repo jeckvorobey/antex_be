@@ -62,6 +62,9 @@ def test_attribution_migration_offline_sql_contains_snapshot_constraints_and_ind
     assert '"createdAt"' in result.stdout
     assert "'legacy'" in result.stdout
     assert 'INSERT INTO "OrderAttributions"' in result.stdout
+    assert "legacy_trusted_telegram_auth" in result.stdout
+    assert "'reengagement'" in result.stdout
+    assert "interval '7 days'" in result.stdout
 
 
 def test_attribution_migration_does_not_invent_acquisition_from_legacy_marketing_rows() -> None:
@@ -69,5 +72,6 @@ def test_attribution_migration_does_not_invent_acquisition_from_legacy_marketing
         BACK_ROOT / "alembic/versions/024_add_referral_marketing_attribution.py"
     ).read_text()
 
-    assert 'FROM "MarketingAttributions"' not in migration
-    assert "old auth flow wrote that table for both new and returning users" in migration
+    acquisition_backfill = migration.split('INSERT INTO "MarketingTouches"', maxsplit=1)[0]
+    assert 'FROM "MarketingAttributions"' not in acquisition_backfill
+    assert "never derive a campaign acquisition" in migration
