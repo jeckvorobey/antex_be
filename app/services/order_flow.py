@@ -82,6 +82,7 @@ async def create_order_for_user(
     )
 
     try:
+        order_created_at = datetime.now(UTC)
         order = await order_repo.create(
             UserId=user.id,
             CityId=city.id if city else None,
@@ -95,9 +96,21 @@ async def create_order_for_user(
             contactTelegram=user.username or None,
             methodGet=payload.method_get,
             publicNumber=await OrderNumberService(db).next_public_number(
-                created_at=datetime.now(UTC)
+                created_at=order_created_at
             ),
+            createdAt=order_created_at,
+            updatedAt=order_created_at,
         )
+        config = await ConfigRepository(db).get_or_create()
+        from app.services.attribution import AttributionService
+
+        attribution = await AttributionService(db).resolve_order_attribution(
+            user.id,
+            order_created_at,
+            config.marketing_attribution_window_days,
+        )
+        attribution.order_id = order.id
+        db.add(attribution)
         if _is_aex_withdrawal(payload):
             await AexService().hold_order_withdrawal(
                 db,

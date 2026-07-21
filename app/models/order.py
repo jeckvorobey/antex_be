@@ -27,6 +27,7 @@ class Order(Base, TimestampMixin):
         Integer,
         ForeignKey("Users.id"),
         nullable=False,
+        index=True,
     )
     CityId: Mapped[int | None] = mapped_column(
         "CityId",

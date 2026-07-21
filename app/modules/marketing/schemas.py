@@ -92,7 +92,18 @@ class CampaignOut(MarketingSchema):
     created_at: datetime = Field(alias="createdAt")
     updated_at: datetime = Field(alias="updatedAt")
     attributed_users: int = Field(default=0, alias="attributedUsers")
+    new_users: int = Field(default=0, alias="newUsers")
+    returning_users: int = Field(default=0, alias="returningUsers")
+    touches: int = 0
+    unique_touched_users: int = Field(default=0, alias="uniqueTouchedUsers")
     applications: int = 0
+    completed_applications: int = Field(default=0, alias="completedApplications")
+    spend: float = 0
+    cost_per_new_user: float | None = Field(default=None, alias="costPerNewUser")
+    cost_per_application: float | None = Field(default=None, alias="costPerApplication")
+    cost_per_completed_application: float | None = Field(
+        default=None, alias="costPerCompletedApplication"
+    )
     campaign_type: str = Field(alias="campaignType")
 
 
@@ -173,17 +184,50 @@ class ApplicationRowOut(MarketingSchema):
     status: str
     currency: str | None
     attributed_users: int = Field(alias="attributedUsers")
+    new_users: int = Field(alias="newUsers")
+    returning_users: int = Field(alias="returningUsers")
+    touches: int
+    unique_touched_users: int = Field(alias="uniqueTouchedUsers")
     applications: int
+    new_user_applications: int = Field(alias="newUserApplications")
+    returning_user_applications: int = Field(alias="returningUserApplications")
     unique_applicants: int = Field(alias="uniqueApplicants")
     completed_applications: int = Field(alias="completedApplications")
     attribution_to_application_rate: float | None = Field(alias="attributionToApplicationRate")
+    new_user_to_application_rate: float | None = Field(alias="newUserToApplicationRate")
+    touch_to_application_rate: float | None = Field(alias="touchToApplicationRate")
     application_completion_rate: float | None = Field(alias="applicationCompletionRate")
     spend: float
     cost_per_application: float | None = Field(alias="costPerApplication")
+    cost_per_new_user: float | None = Field(alias="costPerNewUser")
+    cost_per_completed_application: float | None = Field(alias="costPerCompletedApplication")
 
 
 class ApplicationListOut(MarketingSchema):
     items: list[ApplicationRowOut]
+    total: int
+    limit: int
+    offset: int
+    applied_filters: dict[str, object | None] = Field(alias="appliedFilters")
+
+
+class ApplicationAttributionOut(MarketingSchema):
+    order_id: int = Field(alias="orderId")
+    public_number: str = Field(alias="publicNumber")
+    user_id: int = Field(alias="userId")
+    campaign_id: int = Field(alias="campaignId")
+    campaign_name: str = Field(alias="campaignName")
+    user_state: str = Field(alias="userState")
+    attribution_type: str = Field(alias="attributionType")
+    touch_at: datetime = Field(alias="touchAt")
+    application_at: datetime = Field(alias="applicationAt")
+    hours_to_application: float = Field(alias="hoursToApplication")
+    status: int
+    completed: bool
+
+
+class ApplicationAttributionListOut(MarketingSchema):
+    items: list[ApplicationAttributionOut]
     total: int
     limit: int
     offset: int

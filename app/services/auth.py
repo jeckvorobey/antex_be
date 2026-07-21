@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import logging
 
@@ -35,7 +36,7 @@ async def telegram_auth(db: AsyncSession, init_data: str) -> TokenResponse:
 
     tg_id: int = int(user_data["id"])
     repo = UserRepository(db)
-    user, _ = await repo.find_or_create(
+    user, is_new_user = await repo.find_or_create(
         tg_id,
         username=user_data.get("username"),
         first_name=user_data.get("first_name"),
@@ -46,7 +47,7 @@ async def telegram_auth(db: AsyncSession, init_data: str) -> TokenResponse:
         is_premium=user_data.get("is_premium", False),
     )
     referral_code = extract_referral_code_from_start_param(parsed.get("start_param"))
-    if referral_code and user.referred_by is None:
+    if referral_code and is_new_user:
         try:
             await ReferralService().bind_referral(db, user, referral_code)
         except AntExException as exc:
@@ -56,22 +57,51 @@ async def telegram_auth(db: AsyncSession, init_data: str) -> TokenResponse:
                 referral_code,
                 exc.code,
             )
+    elif referral_code:
+        from app.services.attribution import AttributionService
+
+        await AttributionService(db).audit(
+            user.id,
+            "referral_binding_rejected",
+            reason="existing_user",
+        )
 
     start_param = parsed.get("start_param")
+    marketing_touch_created = False
     if isinstance(start_param, str) and start_param.startswith(MARKETING_START_PARAM_PREFIX):
-        from app.modules.marketing.service import MarketingService
-
         code = start_param.removeprefix(MARKETING_START_PARAM_PREFIX)
         try:
-            await MarketingService(db).attribute_user(user.id, code)
-        except AntExException as exc:
+            from app.services.attribution import AttributionService
+
+            touch = await AttributionService(db).record_marketing_touch(
+                user.id,
+                code,
+                is_new_user=is_new_user,
+                session_key=_marketing_session_key(parsed, tg_id, start_param),
+            )
+            marketing_touch_created = True
+            if is_new_user:
+                await AttributionService(db).ensure_acquisition(
+                    user.id, source_type="campaign", campaign_id=touch.campaign_id
+                )
+        except (AntExException, ValueError) as exc:
             logger.info(
                 "Marketing attribution skipped: code=%s user_id=%s",
-                exc.code,
+                getattr(exc, "code", str(exc)),
                 user.id,
             )
         except Exception:
             logger.exception("Marketing attribution failed for user_id=%s", user.id)
+
+    if is_new_user:
+        from app.services.attribution import AttributionService
+
+        if referral_code and user.referred_by is not None:
+            await AttributionService(db).ensure_acquisition(
+                user.id, source_type="referral", referrer_user_id=user.referred_by
+            )
+        elif not marketing_touch_created:
+            await AttributionService(db).ensure_acquisition(user.id, source_type="direct")
 
     token = create_access_token({"sub": str(user.id), "role": user.role})
     return TokenResponse(access_token=token)
@@ -87,6 +117,16 @@ def extract_referral_code_from_start_param(start_param: object) -> str | None:
 
     referral_code = start_param.removeprefix(REFERRAL_START_PARAM_PREFIX).strip()
     return referral_code or None
+
+
+def _marketing_session_key(parsed: dict, telegram_id: int, start_param: str) -> str | None:
+    """Дедуплицирует replay одного trusted Telegram initData без хранения initData."""
+    query_id = parsed.get("query_id")
+    auth_date = parsed.get("auth_date")
+    if not isinstance(query_id, str) and not isinstance(auth_date, str | int):
+        return None
+    material = f"{telegram_id}:{query_id or ''}:{auth_date or ''}:{start_param}"
+    return hashlib.sha256(material.encode()).hexdigest()
 
 
 def resolve_trusted_contact(user) -> TrustedContactResponse:

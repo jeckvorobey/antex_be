@@ -1,4 +1,3 @@
-# ruff: noqa: RUF002
 """Сервис реферальной системы.
 
 Генерация referral-кода, валидация deep-link, связывание пользователей,
@@ -76,42 +75,6 @@ class ReferralService:
         self._validate_referral_code(referral_code)
         referrer = await repo.get_by_referral_code(referral_code)
 
-        if referrer is None:
-            raise self._invalid_referral_code_error()
-
-        if referrer.id == user.id:
-            raise AntExException(
-                "Cannot refer yourself",
-                code="SELF_REFERRAL",
-                status_code=422,
-            )
-
-        if referrer.referred_by == user.id:
-            raise AntExException(
-                "Cannot create mutual referral",
-                code="MUTUAL_REFERRAL",
-                status_code=422,
-            )
-
-        await repo.update(user, referred_by=referrer.id)
-        await db.refresh(user)
-        return user
-
-    async def set_referrer_by_code(
-        self,
-        db: AsyncSession,
-        user: User,
-        referral_code: str | None,
-    ) -> User:
-        """Admin-only смена привязки реферера с теми же доменными запретами."""
-        repo = UserRepository(db)
-        if referral_code is None or referral_code == "":
-            await repo.update(user, referred_by=None)
-            await db.refresh(user)
-            return user
-
-        self._validate_referral_code(referral_code)
-        referrer = await repo.get_by_referral_code(referral_code)
         if referrer is None:
             raise self._invalid_referral_code_error()
 

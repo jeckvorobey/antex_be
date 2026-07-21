@@ -5,6 +5,7 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 
 from app.enums.user import UserRole, get_role_title, has_admin_access, has_operator_access
+from app.models.attribution import AttributionAuditEvent, MarketingTouch, UserAcquisition
 from app.models.marketing import (
     MarketingAttribution,
     MarketingCampaign,
@@ -224,10 +225,14 @@ async def test_telegram_auth_applies_trusted_market_start_param(monkeypatch, db_
     monkeypatch.setattr("app.services.auth.create_access_token", lambda _: "token")
 
     response = await telegram_auth(db_session, "signed-init-data")
-    attribution = (await db_session.execute(select(MarketingAttribution))).scalar_one()
+    touch = (await db_session.execute(select(MarketingTouch))).scalar_one()
+    acquisition = (await db_session.execute(select(UserAcquisition))).scalar_one()
 
     assert response.access_token == "token"
-    assert attribution.campaign_id == campaign.id
+    assert touch.campaign_id == campaign.id
+    assert touch.user_state == "new"
+    assert acquisition.campaign_id == campaign.id
+    assert acquisition.source_type == "campaign"
 
 
 async def test_telegram_auth_ignores_invalid_archived_and_ref_start_params(
@@ -269,7 +274,7 @@ async def test_telegram_auth_does_not_accept_url_only_marketing_parameter(
     assert (await db_session.execute(select(MarketingAttribution))).scalars().all() == []
 
 
-async def test_telegram_auth_binds_existing_user_from_referral_start_param(
+async def test_telegram_auth_rejects_existing_user_referral_start_param(
     monkeypatch,
     db_session,
 ) -> None:
@@ -297,7 +302,16 @@ async def test_telegram_auth_binds_existing_user_from_referral_start_param(
     await telegram_auth(db_session, "init-data")
 
     await db_session.refresh(existing_user)
-    assert existing_user.referred_by == referrer.id
+    assert existing_user.referred_by is None
+    audit = (
+        await db_session.execute(
+            select(AttributionAuditEvent).where(
+                AttributionAuditEvent.user_id == existing_user.id,
+                AttributionAuditEvent.event_type == "referral_binding_rejected",
+            )
+        )
+    ).scalar_one()
+    assert audit.reason == "existing_user"
 
 
 async def test_telegram_auth_does_not_rewrite_existing_referral_from_start_param(

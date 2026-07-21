@@ -19,6 +19,7 @@ class AppConfigOut(BaseModel):
     referral_max_withdraw: Decimal | None = Field(alias="referralMaxWithdraw")
     aex_rate: Decimal = Field(alias="aexRate")
     aex_withdraw_limit: Decimal = Field(alias="aexWithdrawLimit")
+    marketing_attribution_window_days: int = Field(alias="marketingAttributionWindowDays")
     createdAt: datetime
     updatedAt: datetime
 
@@ -48,3 +49,9 @@ class AppConfigUpdate(BaseModel):
     referral_max_withdraw: Decimal | None = Field(default=None, alias="referralMaxWithdraw", ge=0)
     aex_rate: Decimal | None = Field(default=None, alias="aexRate", gt=0)
     aex_withdraw_limit: Decimal | None = Field(default=None, alias="aexWithdrawLimit", ge=0)
+    marketing_attribution_window_days: int | None = Field(
+        default=None,
+        alias="marketingAttributionWindowDays",
+        ge=1,
+        le=90,
+    )

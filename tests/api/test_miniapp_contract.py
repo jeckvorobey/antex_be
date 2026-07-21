@@ -19,8 +19,10 @@ from app.enums.user import UserRole
 from app.exceptions import AntExException
 from app.models.admin import Admin
 from app.models.aex import AexLedgerEntry, AexPersonalRate, AexWallet
+from app.models.attribution import MarketingTouch
 from app.models.city import City
 from app.models.config import Config
+from app.models.marketing import MarketingCampaign, MarketingCurrency, MarketingPlatform
 from app.models.order import Order
 from app.models.rate import Rate
 from app.models.user import User
@@ -1494,6 +1496,70 @@ async def test_completed_aex_order_does_not_credit_referral_bonus(
         select(func.count(AexLedgerEntry.id)).where(AexLedgerEntry.reference_type == "referral")
     )
     assert referral_entries_count == 0
+
+
+@pytest.mark.asyncio
+async def test_reengagement_order_keeps_referral_bonus_without_marketing_ledger(
+    api_client: tuple[AsyncClient, AsyncSession],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    client, db_session = api_client
+    from app.services import order_status
+    from app.services.order_status import update_order_status
+
+    _, _, customer = await seed_exchange_data(db_session)
+    referrer = User(telegram_id=700030, username="referrer_reengagement")
+    platform = MarketingPlatform(slug="referral_ads", name="Referral Ads")
+    currency = MarketingCurrency(code="MKT", name="Marketing Test")
+    db_session.add_all([referrer, platform, currency])
+    await db_session.flush()
+    customer.referred_by = referrer.id
+    campaign = MarketingCampaign(
+        code="REENGAGE01",
+        name="Reengagement",
+        platform_id=platform.id,
+        currency_id=currency.id,
+        status="active",
+    )
+    db_session.add(campaign)
+    await db_session.flush()
+    db_session.add(
+        MarketingTouch(
+            user_id=customer.id,
+            campaign_id=campaign.id,
+            user_state="returning",
+            touched_at=datetime.now(UTC),
+        )
+    )
+    await db_session.flush()
+    token = create_access_token({"sub": str(customer.id), "role": customer.role})
+    monkeypatch.setattr(order_status, "notify_order_status_changed", AsyncMock())
+
+    response = await client.post(
+        "/api/miniapp/orders",
+        headers={"Authorization": f"Bearer {token}"},
+        json={
+            "country": "thailand",
+            "currencySell": "RUB",
+            "amountSell": 20_000,
+            "currencyBuy": "THB",
+            "amountBuy": 8_200,
+            "rate": 0.41,
+            "methodGet": "qrcode",
+        },
+    )
+    assert response.status_code == 201, response.text
+
+    await update_order_status(
+        db_session, order_id=response.json()["id"], status=OrderStatus.COMPLETED
+    )
+
+    reference_types = set(
+        (await db_session.execute(select(AexLedgerEntry.reference_type))).scalars().all()
+    )
+    assert "referral" in reference_types
+    assert not any(value and "market" in value.lower() for value in reference_types)
+    assert not any(value and "campaign" in value.lower() for value in reference_types)
 
 
 @pytest.mark.asyncio

@@ -2,6 +2,12 @@
 
 from app.models.admin import Admin
 from app.models.aex import AexLedgerEntry, AexPartnerRate, AexPersonalRate, AexRate, AexWallet
+from app.models.attribution import (
+    AttributionAuditEvent,
+    MarketingTouch,
+    OrderAttribution,
+    UserAcquisition,
+)
 from app.models.city import City
 from app.models.config import Config
 from app.models.marketing import (
@@ -25,6 +31,7 @@ __all__ = [
     "AexPersonalRate",
     "AexRate",
     "AexWallet",
+    "AttributionAuditEvent",
     "Broadcast",
     "City",
     "Config",
@@ -33,9 +40,12 @@ __all__ = [
     "MarketingCurrency",
     "MarketingDailyMetric",
     "MarketingPlatform",
+    "MarketingTouch",
     "Order",
+    "OrderAttribution",
     "OrderNumberCounter",
     "Rate",
     "SiteLead",
     "User",
+    "UserAcquisition",
 ]

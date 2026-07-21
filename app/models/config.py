@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from decimal import Decimal
 
-from sqlalchemy import Boolean, Integer, Numeric
+from sqlalchemy import Boolean, CheckConstraint, Integer, Numeric
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.models.base import Base, TimestampMixin
@@ -12,6 +12,12 @@ from app.models.base import Base, TimestampMixin
 
 class Config(Base, TimestampMixin):
     __tablename__ = "Configs"
+    __table_args__ = (
+        CheckConstraint(
+            "marketing_attribution_window_days BETWEEN 1 AND 90",
+            name="ck_config_marketing_attribution_window",
+        ),
+    )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=False)
     enabled: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
@@ -34,5 +40,11 @@ class Config(Base, TimestampMixin):
     aex_withdraw_limit: Mapped[Decimal] = mapped_column(
         Numeric(18, 6),
         default=Decimal("100"),
+        nullable=False,
+    )
+    marketing_attribution_window_days: Mapped[int] = mapped_column(
+        Integer,
+        default=7,
+        server_default="7",
         nullable=False,
     )

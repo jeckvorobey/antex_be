@@ -6,12 +6,31 @@ from __future__ import annotations
 from datetime import datetime
 from decimal import Decimal
 
-from pydantic import BaseModel, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from app.enums.user import get_role_title, is_assignable_user_role, normalize_user_role
 from app.schemas.auth import build_trusted_contact
 from app.schemas.city import CityOut
 from app.services.aex_rate import DEFAULT_ATXG_RATE, normalize_aex_rate, rate_to_percent
+
+
+class UserAttributionOut(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
+    source_type: str | None = Field(default=None, alias="sourceType")
+    acquired_at: datetime | None = Field(default=None, alias="acquiredAt")
+    primary_campaign_id: int | None = Field(default=None, alias="primaryCampaignId")
+    primary_campaign_name: str | None = Field(default=None, alias="primaryCampaignName")
+    last_touch_at: datetime | None = Field(default=None, alias="lastTouchAt")
+    last_touch_campaign_id: int | None = Field(default=None, alias="lastTouchCampaignId")
+    last_touch_campaign_name: str | None = Field(default=None, alias="lastTouchCampaignName")
+    last_touch_user_state: str | None = Field(default=None, alias="lastTouchUserState")
+    last_order_campaign_id: int | None = Field(default=None, alias="lastOrderCampaignId")
+    last_order_campaign_name: str | None = Field(default=None, alias="lastOrderCampaignName")
+    last_order_attribution_type: str | None = Field(default=None, alias="lastOrderAttributionType")
+    last_order_attributed_at: datetime | None = Field(default=None, alias="lastOrderAttributedAt")
+    last_order_created_at: datetime | None = Field(default=None, alias="lastOrderCreatedAt")
+    source_status: str = Field(alias="sourceStatus")
 
 
 class UserOut(BaseModel):
@@ -39,6 +58,7 @@ class UserOut(BaseModel):
     referral_rate_percent: str = "0.200000"
     aex_balance: str = "0"
     balance: str = "0"
+    attribution: UserAttributionOut | None = None
     createdAt: datetime
     updatedAt: datetime
 
@@ -72,7 +92,12 @@ def _resolve_aex_balance(user) -> str:
     return str(wallet.balance_available)
 
 
-def build_user_out(user, *, referral_rate: Decimal | None = None) -> UserOut:
+def build_user_out(
+    user,
+    *,
+    referral_rate: Decimal | None = None,
+    attribution: dict[str, object] | None = None,
+) -> UserOut:
     from app.schemas.city import build_city_out
 
     trusted_contact = build_trusted_contact(user)
@@ -109,6 +134,7 @@ def build_user_out(user, *, referral_rate: Decimal | None = None) -> UserOut:
         referral_rate_percent=_format_referral_rate_percent(effective_referral_rate),
         aex_balance=aex_balance,
         balance=aex_balance,
+        attribution=UserAttributionOut(**attribution) if attribution is not None else None,
         createdAt=user.createdAt,
         updatedAt=user.updatedAt,
     )

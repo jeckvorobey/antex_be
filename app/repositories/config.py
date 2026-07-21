@@ -41,6 +41,7 @@ class ConfigRepository(BaseRepository[Config]):
         referral_max_withdraw: Decimal | None = None,
         aex_rate: Decimal | None = None,
         aex_withdraw_limit: Decimal | None = None,
+        marketing_attribution_window_days: int | None = None,
         update_referral_max_withdraw: bool = False,
     ) -> Config:
         """Обновляет глобальные настройки referral/ATXG program."""
@@ -55,5 +56,7 @@ class ConfigRepository(BaseRepository[Config]):
             config.aex_rate = aex_rate
         if aex_withdraw_limit is not None:
             config.aex_withdraw_limit = aex_withdraw_limit
+        if marketing_attribution_window_days is not None:
+            config.marketing_attribution_window_days = marketing_attribution_window_days
         await self.session.flush()
         return config
