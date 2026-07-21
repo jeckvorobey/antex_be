@@ -15,6 +15,7 @@ from app.models.marketing import (
 from app.models.user import User
 from app.repositories.user import UserRepository
 from app.schemas.user import build_user_out
+from app.services.attribution import AttributionService
 from app.services.auth import resolve_trusted_contact, telegram_auth
 from app.telegram.services.user_service import check_user
 
@@ -91,6 +92,8 @@ async def test_check_user_refreshes_user_from_start_command(db_session) -> None:
         is_premium=False,
     )
     user, created = await check_user(db_session, tg_user)
+    acquisition = await AttributionService(db_session).get_acquisition(user.id)
+    assert acquisition is not None and acquisition.source_type == "direct"
     assert created is True
 
     refreshed_tg_user = TgUser(

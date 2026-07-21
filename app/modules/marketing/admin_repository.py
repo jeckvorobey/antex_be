@@ -5,13 +5,14 @@ from __future__ import annotations
 from datetime import date, datetime
 from typing import Any
 
-from sqlalchemy import case, func, or_, select
+from sqlalchemy import case, func, or_, select, union_all
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.enums.order import OrderStatus
 from app.models.attribution import MarketingTouch, OrderAttribution, UserAcquisition
 from app.models.marketing import (
+    MarketingAttribution,
     MarketingCampaign,
     MarketingCurrency,
     MarketingDailyMetric,
@@ -167,7 +168,23 @@ class MarketingAdminRepository:
         if not campaign_ids:
             return {}
         result: dict[int, dict[str, Any]] = {item_id: {} for item_id in campaign_ids}
+        attributed_source = union_all(
+            select(
+                UserAcquisition.campaign_id.label("campaign_id"),
+                UserAcquisition.user_id.label("user_id"),
+            ).where(UserAcquisition.campaign_id.is_not(None)),
+            select(
+                MarketingAttribution.campaign_id.label("campaign_id"),
+                MarketingAttribution.user_id.label("user_id"),
+            ),
+        ).subquery()
         grouped_queries = {
+            "attributed": select(
+                attributed_source.c.campaign_id,
+                func.count(func.distinct(attributed_source.c.user_id)),
+            )
+            .where(attributed_source.c.campaign_id.in_(campaign_ids))
+            .group_by(attributed_source.c.campaign_id),
             "new_users": select(UserAcquisition.campaign_id, func.count(UserAcquisition.id))
             .where(UserAcquisition.campaign_id.in_(campaign_ids))
             .group_by(UserAcquisition.campaign_id),
@@ -201,7 +218,9 @@ class MarketingAdminRepository:
         for kind, statement in grouped_queries.items():
             for row in (await self.session.execute(statement)).all():
                 campaign_id = int(row[0])
-                if kind == "new_users":
+                if kind == "attributed":
+                    result[campaign_id]["attributed_users"] = int(row[1] or 0)
+                elif kind == "new_users":
                     result[campaign_id]["new_users"] = int(row[1] or 0)
                 elif kind == "touches":
                     result[campaign_id].update(
@@ -226,7 +245,7 @@ class MarketingAdminRepository:
                 "completed_applications",
             ):
                 values.setdefault(key, 0)
-            values["attributed_users"] = values["new_users"]
+            values.setdefault("attributed_users", 0)
             values.setdefault("spend", 0.0)
         return result
 
@@ -252,6 +271,22 @@ class MarketingAdminRepository:
         if currency is not None:
             conditions.append(MarketingCurrency.code == currency)
 
+        attributed_source = union_all(
+            select(
+                UserAcquisition.campaign_id.label("campaign_id"),
+                UserAcquisition.user_id.label("user_id"),
+            ).where(UserAcquisition.campaign_id.is_not(None)),
+            select(
+                MarketingAttribution.campaign_id.label("campaign_id"),
+                MarketingAttribution.user_id.label("user_id"),
+            ),
+        ).subquery()
+        attributed_count = (
+            select(func.count(func.distinct(attributed_source.c.user_id)))
+            .where(attributed_source.c.campaign_id == MarketingCampaign.id)
+            .correlate(MarketingCampaign)
+            .scalar_subquery()
+        )
         acquisition_count = (
             select(func.count(UserAcquisition.id))
             .where(
@@ -349,7 +384,7 @@ class MarketingAdminRepository:
                 MarketingPlatform.slug.label("provider"),
                 MarketingCampaign.status,
                 MarketingCurrency.code.label("currency"),
-                acquisition_count.label("attributed_users"),
+                attributed_count.label("attributed_users"),
                 acquisition_count.label("new_users"),
                 returning_users.label("returning_users"),
                 touches.label("touches"),
@@ -505,7 +540,7 @@ class MarketingAdminRepository:
         )
         return [dict(row) for row in (await self.session.execute(statement)).mappings().all()]
 
-    async def unique_touched_user_count(
+    async def dashboard_unique_counts(
         self,
         *,
         date_from: datetime,
@@ -513,25 +548,42 @@ class MarketingAdminRepository:
         campaign_id: int | None,
         provider: str | None,
         currency: str | None,
-    ) -> int:
-        conditions = [
+    ) -> tuple[int, int]:
+        touch_conditions = [
             MarketingTouch.touched_at >= date_from,
             MarketingTouch.touched_at < date_to,
         ]
-        if campaign_id is not None:
-            conditions.append(MarketingCampaign.id == campaign_id)
-        if provider is not None:
-            conditions.append(MarketingPlatform.slug == provider)
-        if currency is not None:
-            conditions.append(MarketingCurrency.code == currency)
-        value = await self.session.scalar(
+        applicant_conditions = [
+            Order.createdAt >= date_from,
+            Order.createdAt < date_to,
+            Order.destroyTime.is_(None),
+        ]
+        for conditions in (touch_conditions, applicant_conditions):
+            if campaign_id is not None:
+                conditions.append(MarketingCampaign.id == campaign_id)
+            if provider is not None:
+                conditions.append(MarketingPlatform.slug == provider)
+            if currency is not None:
+                conditions.append(MarketingCurrency.code == currency)
+        touched = (
             select(func.count(func.distinct(MarketingTouch.user_id)))
             .join(MarketingCampaign, MarketingCampaign.id == MarketingTouch.campaign_id)
             .join(MarketingPlatform)
             .join(MarketingCurrency)
-            .where(*conditions)
+            .where(*touch_conditions)
+            .scalar_subquery()
         )
-        return int(value or 0)
+        applicants = (
+            select(func.count(func.distinct(Order.UserId)))
+            .join(OrderAttribution, OrderAttribution.order_id == Order.id)
+            .join(MarketingCampaign, MarketingCampaign.id == OrderAttribution.campaign_id)
+            .join(MarketingPlatform)
+            .join(MarketingCurrency)
+            .where(*applicant_conditions)
+            .scalar_subquery()
+        )
+        row = (await self.session.execute(select(touched, applicants))).one()
+        return int(row[0] or 0), int(row[1] or 0)
 
     async def daily_series(
         self,

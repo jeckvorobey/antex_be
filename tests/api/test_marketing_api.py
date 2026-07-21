@@ -492,19 +492,39 @@ async def test_dashboard_unique_touched_users_is_distinct_across_campaigns(
     second = (await create_campaign(client, token, name="Second")).json()
     user, _ = await UserRepository(db_session).find_or_create(778001, first_name="Shared")
     now = datetime.now(UTC)
+    first_touch = MarketingTouch(
+        user_id=user.id,
+        campaign_id=first["id"],
+        touched_at=now,
+        user_state="returning",
+    )
+    second_touch = MarketingTouch(
+        user_id=user.id,
+        campaign_id=second["id"],
+        touched_at=now,
+        user_state="returning",
+    )
+    first_order = _order(user.id, "SHARED0001", now)
+    second_order = _order(user.id, "SHARED0002", now)
+    db_session.add_all([first_touch, second_touch, first_order, second_order])
+    await db_session.flush()
     db_session.add_all(
         [
-            MarketingTouch(
-                user_id=user.id,
+            OrderAttribution(
+                order_id=first_order.id,
                 campaign_id=first["id"],
-                touched_at=now,
-                user_state="returning",
+                marketing_touch_id=first_touch.id,
+                attribution_type="reengagement",
+                attributed_at=now,
+                lookback_days=7,
             ),
-            MarketingTouch(
-                user_id=user.id,
+            OrderAttribution(
+                order_id=second_order.id,
                 campaign_id=second["id"],
-                touched_at=now,
-                user_state="returning",
+                marketing_touch_id=second_touch.id,
+                attribution_type="reengagement",
+                attributed_at=now,
+                lookback_days=7,
             ),
         ]
     )
@@ -519,6 +539,7 @@ async def test_dashboard_unique_touched_users_is_distinct_across_campaigns(
     assert response.status_code == 200, response.text
     assert response.json()["summary"]["touches"] == 2
     assert response.json()["summary"]["uniqueTouchedUsers"] == 1
+    assert response.json()["summary"]["uniqueApplicants"] == 1
 
 
 async def test_dashboard_does_not_merge_mixed_currency_or_claim_roas(
