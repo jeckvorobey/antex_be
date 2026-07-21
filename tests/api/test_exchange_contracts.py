@@ -112,6 +112,32 @@ async def test_admin_rates_include_base_and_final_values(
 
 
 @pytest.mark.asyncio
+async def test_admin_create_normalizes_external_currency_to_uppercase(
+    api_client: tuple[AsyncClient, AsyncSession],
+) -> None:
+    """Admin write сохраняет внешний код в canonical uppercase-форме."""
+    client, db_session = api_client
+    admin, _ = await seed_admin_exchange_data(db_session)
+    token = create_access_token({"sub": str(admin.id), "type": "admin"})
+
+    response = await client.post(
+        "/api/admin/rates",
+        headers={"Authorization": f"Bearer {token}"},
+        json={
+            "currency": "usdtgel",
+            "country": "georgia",
+            "price": 2.7,
+            "margin": 3.0,
+        },
+    )
+
+    assert response.status_code == 201
+    assert response.json()["currency"] == "USDTGEL"
+    stored = await db_session.scalar(select(Rate).where(Rate.currency == "USDTGEL"))
+    assert stored is not None
+
+
+@pytest.mark.asyncio
 async def test_admin_summary_returns_featured_rates(
     api_client: tuple[AsyncClient, AsyncSession],
 ) -> None:

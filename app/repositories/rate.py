@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 
-from sqlalchemy import delete, select
+from sqlalchemy import delete, func, select
 
 from app.enums.country import Country
 from app.models.rate import Rate
@@ -27,14 +27,16 @@ class RateRepository(BaseRepository[Rate]):
         if not normalized:
             return True
         result = await self.session.execute(
-            select(Rate.currency).where(Rate.currency.in_(normalized))
+            select(Rate.currency).where(func.upper(Rate.currency).in_(normalized))
         )
         existing = {currency.upper() for currency in result.scalars().all()}
         return existing == normalized
 
     async def find_by_currency(self, currency: str) -> Rate | None:
         """Ищет курс по коду валютной пары."""
-        result = await self.session.execute(select(Rate).where(Rate.currency == currency.upper()))
+        result = await self.session.execute(
+            select(Rate).where(func.upper(Rate.currency) == currency.upper())
+        )
         return result.scalar_one_or_none()
 
     async def get_visible(self) -> list[Rate]:
@@ -59,14 +61,18 @@ class RateRepository(BaseRepository[Rate]):
         country: Country,
         margin: float | None = None,
     ) -> tuple[Rate, bool]:
-        result = await self.session.execute(select(Rate).where(Rate.currency == currency))
+        normalized_currency = currency.upper()
+        result = await self.session.execute(
+            select(Rate).where(func.upper(Rate.currency) == normalized_currency)
+        )
         rate = result.scalar_one_or_none()
         if rate:
+            rate.currency = normalized_currency
             if rate.country != country:
                 rate.country = country
             return rate, False
         payload: dict[str, float | str | Country] = {
-            "currency": currency,
+            "currency": normalized_currency,
             "price": price,
             "country": country,
         }
@@ -85,16 +91,20 @@ class RateRepository(BaseRepository[Rate]):
         country: Country,
         margin: float | None = None,
     ) -> Rate:
-        result = await self.session.execute(select(Rate).where(Rate.currency == currency))
+        normalized_currency = currency.upper()
+        result = await self.session.execute(
+            select(Rate).where(func.upper(Rate.currency) == normalized_currency)
+        )
         rate = result.scalar_one_or_none()
         if rate:
+            rate.currency = normalized_currency
             rate.price = price
             rate.country = country
             if margin is not None:
                 rate.margin = margin
         else:
             payload: dict[str, float | str | Country] = {
-                "currency": currency,
+                "currency": normalized_currency,
                 "price": price,
                 "country": country,
             }
@@ -112,7 +122,9 @@ class RateRepository(BaseRepository[Rate]):
         margin: float | None = None,
     ) -> list[Rate]:
         currencies = [currency.upper() for currency in rates]
-        result = await self.session.execute(select(Rate).where(Rate.currency.in_(currencies)))
+        result = await self.session.execute(
+            select(Rate).where(func.upper(Rate.currency).in_(currencies))
+        )
         existing = {rate.currency.upper(): rate for rate in result.scalars().all()}
 
         upserted: list[Rate] = []
@@ -131,6 +143,7 @@ class RateRepository(BaseRepository[Rate]):
                 rate = Rate(**payload)
                 self.session.add(rate)
             else:
+                rate.currency = normalized_currency
                 rate.price = price
                 rate.country = country
                 rate.is_internal = is_internal

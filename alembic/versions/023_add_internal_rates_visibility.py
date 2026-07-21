@@ -32,7 +32,7 @@ def upgrade() -> None:
     op.execute(
         sa.text(
             """
-            WITH ranked_reserved_rates AS (
+            WITH ranked_rates AS (
                 SELECT
                     id,
                     row_number() OVER (
@@ -40,12 +40,11 @@ def upgrade() -> None:
                         ORDER BY (currency = upper(currency)) DESC, id
                     ) AS row_number
                 FROM "Rates"
-                WHERE upper(currency) IN ('USDTRUB', 'RUBUSDT')
             )
             DELETE FROM "Rates"
-            USING ranked_reserved_rates
-            WHERE "Rates".id = ranked_reserved_rates.id
-              AND ranked_reserved_rates.row_number > 1
+            USING ranked_rates
+            WHERE "Rates".id = ranked_rates.id
+              AND ranked_rates.row_number > 1
             """
         )
     )
@@ -53,8 +52,17 @@ def upgrade() -> None:
         sa.text(
             """
             UPDATE "Rates"
-            SET currency = upper(currency), is_internal = true, country = NULL
-            WHERE upper(currency) IN ('USDTRUB', 'RUBUSDT')
+            SET currency = upper(currency)
+            WHERE currency <> upper(currency)
+            """
+        )
+    )
+    op.execute(
+        sa.text(
+            """
+            UPDATE "Rates"
+            SET is_internal = true, country = NULL
+            WHERE currency IN ('USDTRUB', 'RUBUSDT')
             """
         )
     )

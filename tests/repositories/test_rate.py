@@ -93,3 +93,24 @@ async def test_has_all_currencies_requires_complete_set(db_session) -> None:
 
     assert await repo.has_all_currencies({"USDTTHB"}) is True
     assert await repo.has_all_currencies({"USDTTHB", "USDTRUB"}) is False
+
+
+async def test_legacy_currency_lookup_and_upsert_are_case_insensitive(db_session) -> None:
+    """Legacy-код в нижнем регистре обновляется без создания uppercase-дубликата."""
+    repo = RateRepository(db_session)
+    legacy = await repo.create(
+        currency="usdtthb",
+        price=35.0,
+        margin=4.5,
+        country=Country.THAILAND,
+    )
+
+    assert await repo.has_all_currencies({"USDTTHB"}) is True
+
+    updated = await repo.upsert_many({"USDTTHB": (36.2, Country.THAILAND, False)})
+
+    assert updated[0].id == legacy.id
+    assert updated[0].currency == "USDTTHB"
+    assert updated[0].price == pytest.approx(36.2)
+    assert updated[0].margin == pytest.approx(4.5)
+    assert len(await repo.get_all()) == 1

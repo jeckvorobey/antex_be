@@ -120,10 +120,14 @@ def test_internal_rates_migration_hides_existing_reserved_pairs() -> None:
 
     assert result.returncode == 0, result.stderr
     assert "PARTITION BY upper(currency)" in result.stdout
-    assert "ranked_reserved_rates.row_number > 1" in result.stdout
+    assert "ranked_rates.row_number > 1" in result.stdout
+    assert (
+        "SET currency = upper(currency)\n            WHERE currency <> upper(currency)"
+        in result.stdout
+    )
     assert 'UPDATE "Rates"' in result.stdout
-    assert "SET currency = upper(currency), is_internal = true, country = NULL" in result.stdout
-    assert "upper(currency) IN ('USDTRUB', 'RUBUSDT')" in result.stdout
+    assert "SET is_internal = true, country = NULL" in result.stdout
+    assert "currency IN ('USDTRUB', 'RUBUSDT')" in result.stdout
 
 
 def test_alembic_load_models_includes_all_tables() -> None:

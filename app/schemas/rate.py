@@ -50,9 +50,10 @@ class RateCreate(BaseModel):
     @classmethod
     def reject_internal_currency(cls, value: str) -> str:
         """Запрещает создание системных внутренних пар через admin API."""
-        if value.upper() in INTERNAL_RATE_CURRENCIES:
+        normalized = value.upper()
+        if normalized in INTERNAL_RATE_CURRENCIES:
             raise ValueError("Internal rate currency is reserved")
-        return value
+        return normalized
 
 
 class RateUpdate(BaseModel):
@@ -67,9 +68,12 @@ class RateUpdate(BaseModel):
     @classmethod
     def reject_internal_currency(cls, value: str | None) -> str | None:
         """Запрещает переименование внешнего курса во внутреннюю пару."""
-        if value is not None and value.upper() in INTERNAL_RATE_CURRENCIES:
+        if value is None:
+            return None
+        normalized = value.upper()
+        if normalized in INTERNAL_RATE_CURRENCIES:
             raise ValueError("Internal rate currency is reserved")
-        return value
+        return normalized
 
 
 def build_rate_out(rate) -> RateOut:
