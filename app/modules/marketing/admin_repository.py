@@ -275,15 +275,21 @@ class MarketingAdminRepository:
             select(
                 UserAcquisition.campaign_id.label("campaign_id"),
                 UserAcquisition.user_id.label("user_id"),
+                UserAcquisition.acquired_at.label("occurred_at"),
             ).where(UserAcquisition.campaign_id.is_not(None)),
             select(
                 MarketingAttribution.campaign_id.label("campaign_id"),
                 MarketingAttribution.user_id.label("user_id"),
+                MarketingAttribution.attributed_at.label("occurred_at"),
             ),
         ).subquery()
         attributed_count = (
             select(func.count(func.distinct(attributed_source.c.user_id)))
-            .where(attributed_source.c.campaign_id == MarketingCampaign.id)
+            .where(
+                attributed_source.c.campaign_id == MarketingCampaign.id,
+                attributed_source.c.occurred_at >= date_from,
+                attributed_source.c.occurred_at < date_to,
+            )
             .correlate(MarketingCampaign)
             .scalar_subquery()
         )
@@ -367,6 +373,14 @@ class MarketingAdminRepository:
             .correlate(MarketingCampaign)
             .scalar_subquery()
         )
+        new_applicants = (
+            select(func.count(func.distinct(Order.UserId)))
+            .select_from(OrderAttribution)
+            .join(Order, Order.id == OrderAttribution.order_id)
+            .where(*order_base, OrderAttribution.attribution_type == "acquisition")
+            .correlate(MarketingCampaign)
+            .scalar_subquery()
+        )
         returning_applications = (
             select(func.count(OrderAttribution.id))
             .select_from(OrderAttribution)
@@ -391,6 +405,7 @@ class MarketingAdminRepository:
                 unique_touched.label("unique_touched_users"),
                 applications.label("applications"),
                 new_applications.label("new_user_applications"),
+                new_applicants.label("new_user_applicants"),
                 returning_applications.label("returning_user_applications"),
                 unique_applicants.label("unique_applicants"),
                 completed.label("completed_applications"),

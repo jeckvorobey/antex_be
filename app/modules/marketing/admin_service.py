@@ -533,6 +533,7 @@ def _application_out(row: dict[str, Any], spend: float) -> ApplicationRowOut:
     touches = int(row["touches"] or 0)
     unique_touched = int(row["unique_touched_users"] or 0)
     new_applications = int(row["new_user_applications"] or 0)
+    new_applicants = int(row["new_user_applicants"] or 0)
     returning_applications = int(row["returning_user_applications"] or 0)
     return ApplicationRowOut(
         campaignId=row["campaign_id"],
@@ -552,7 +553,7 @@ def _application_out(row: dict[str, Any], spend: float) -> ApplicationRowOut:
         uniqueApplicants=unique,
         completedApplications=completed,
         attributionToApplicationRate=_rate(unique, attributed),
-        newUserToApplicationRate=_rate(new_applications, new_users),
+        newUserToApplicationRate=_rate(new_applicants, new_users),
         touchToApplicationRate=_rate(applications, touches),
         applicationCompletionRate=_rate(completed, applications),
         spend=spend,
