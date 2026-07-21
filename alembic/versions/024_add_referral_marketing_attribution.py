@@ -154,6 +154,11 @@ def upgrade() -> None:
     op.execute(
         'INSERT INTO "UserAcquisitions" (user_id, source_type, acquired_at) SELECT id, \'legacy\', "createdAt" FROM "Users" ON CONFLICT (user_id) DO NOTHING'
     )
+    # Intentionally do not derive acquisition/touches from legacy MarketingAttributions.
+    # The old auth flow wrote that table for both new and returning users, so it proves
+    # neither the user's primary source nor user_state at the event. The source rows stay
+    # intact for legacy API compatibility; inventing `campaign`/`new` here would corrupt
+    # immutable attribution history.
     op.execute(
         'INSERT INTO "OrderAttributions" (order_id, attribution_type, lookback_days) SELECT id, \'none\', 7 FROM "Orders" ON CONFLICT (order_id) DO NOTHING'
     )

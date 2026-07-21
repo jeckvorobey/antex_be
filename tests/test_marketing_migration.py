@@ -62,3 +62,12 @@ def test_attribution_migration_offline_sql_contains_snapshot_constraints_and_ind
     assert '"createdAt"' in result.stdout
     assert "'legacy'" in result.stdout
     assert 'INSERT INTO "OrderAttributions"' in result.stdout
+
+
+def test_attribution_migration_does_not_invent_acquisition_from_legacy_marketing_rows() -> None:
+    migration = (
+        BACK_ROOT / "alembic/versions/024_add_referral_marketing_attribution.py"
+    ).read_text()
+
+    assert 'FROM "MarketingAttributions"' not in migration
+    assert "old auth flow wrote that table for both new and returning users" in migration
