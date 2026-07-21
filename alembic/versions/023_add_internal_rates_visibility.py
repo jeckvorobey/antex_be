@@ -32,8 +32,28 @@ def upgrade() -> None:
     op.execute(
         sa.text(
             """
+            WITH ranked_reserved_rates AS (
+                SELECT
+                    id,
+                    row_number() OVER (
+                        PARTITION BY upper(currency)
+                        ORDER BY (currency = upper(currency)) DESC, id
+                    ) AS row_number
+                FROM "Rates"
+                WHERE upper(currency) IN ('USDTRUB', 'RUBUSDT')
+            )
+            DELETE FROM "Rates"
+            USING ranked_reserved_rates
+            WHERE "Rates".id = ranked_reserved_rates.id
+              AND ranked_reserved_rates.row_number > 1
+            """
+        )
+    )
+    op.execute(
+        sa.text(
+            """
             UPDATE "Rates"
-            SET is_internal = true, country = NULL
+            SET currency = upper(currency), is_internal = true, country = NULL
             WHERE upper(currency) IN ('USDTRUB', 'RUBUSDT')
             """
         )
