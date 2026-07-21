@@ -429,10 +429,13 @@ class MarketingAdminService:
         )
         attributed = sum(row.attributed_users for row in comparison)
         new_users = sum(row.new_users for row in comparison)
-        returning_users = sum(row.returning_users for row in comparison)
         touches = sum(row.touches for row in comparison)
         start, end = _date_bounds(date_from, date_to)
-        unique_touched_users, unique_applicants = await self.repository.dashboard_unique_counts(
+        (
+            unique_touched_users,
+            returning_users,
+            unique_applicants,
+        ) = await self.repository.dashboard_unique_counts(
             date_from=start,
             date_to=end,
             campaign_id=campaign_id,

@@ -538,6 +538,7 @@ async def test_dashboard_unique_touched_users_is_distinct_across_campaigns(
 
     assert response.status_code == 200, response.text
     assert response.json()["summary"]["touches"] == 2
+    assert response.json()["summary"]["returningUsers"] == 1
     assert response.json()["summary"]["uniqueTouchedUsers"] == 1
     assert response.json()["summary"]["uniqueApplicants"] == 1
 

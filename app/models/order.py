@@ -6,7 +6,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import TYPE_CHECKING
 
-from sqlalchemy import DateTime, Enum, Float, ForeignKey, Integer, String
+from sqlalchemy import DateTime, Enum, Float, ForeignKey, Index, Integer, String
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.enums.country import Country
@@ -20,6 +20,7 @@ if TYPE_CHECKING:
 
 class Order(Base, TimestampMixin):
     __tablename__ = "Orders"
+    __table_args__ = (Index("ix_orders_user_id", "UserId"),)
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     UserId: Mapped[int] = mapped_column(
@@ -27,7 +28,6 @@ class Order(Base, TimestampMixin):
         Integer,
         ForeignKey("Users.id"),
         nullable=False,
-        index=True,
     )
     CityId: Mapped[int | None] = mapped_column(
         "CityId",

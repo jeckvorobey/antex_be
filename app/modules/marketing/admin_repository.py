@@ -548,7 +548,7 @@ class MarketingAdminRepository:
         campaign_id: int | None,
         provider: str | None,
         currency: str | None,
-    ) -> tuple[int, int]:
+    ) -> tuple[int, int, int]:
         touch_conditions = [
             MarketingTouch.touched_at >= date_from,
             MarketingTouch.touched_at < date_to,
@@ -573,6 +573,14 @@ class MarketingAdminRepository:
             .where(*touch_conditions)
             .scalar_subquery()
         )
+        returning = (
+            select(func.count(func.distinct(MarketingTouch.user_id)))
+            .join(MarketingCampaign, MarketingCampaign.id == MarketingTouch.campaign_id)
+            .join(MarketingPlatform)
+            .join(MarketingCurrency)
+            .where(*touch_conditions, MarketingTouch.user_state == "returning")
+            .scalar_subquery()
+        )
         applicants = (
             select(func.count(func.distinct(Order.UserId)))
             .join(OrderAttribution, OrderAttribution.order_id == Order.id)
@@ -582,8 +590,8 @@ class MarketingAdminRepository:
             .where(*applicant_conditions)
             .scalar_subquery()
         )
-        row = (await self.session.execute(select(touched, applicants))).one()
-        return int(row[0] or 0), int(row[1] or 0)
+        row = (await self.session.execute(select(touched, returning, applicants))).one()
+        return int(row[0] or 0), int(row[1] or 0), int(row[2] or 0)
 
     async def daily_series(
         self,
