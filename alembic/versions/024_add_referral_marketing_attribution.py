@@ -149,9 +149,6 @@ def upgrade() -> None:
         "ix_attribution_audit_user_created", "AttributionAuditEvents", ["user_id", "createdAt"]
     )
     op.execute(
-        'INSERT INTO "UserAcquisitions" (user_id, source_type, referrer_user_id, acquired_at) SELECT id, \'referral\', referred_by, "createdAt" FROM "Users" WHERE referred_by IS NOT NULL ON CONFLICT (user_id) DO NOTHING'
-    )
-    op.execute(
         'INSERT INTO "UserAcquisitions" (user_id, source_type, acquired_at) SELECT id, \'legacy\', "createdAt" FROM "Users" ON CONFLICT (user_id) DO NOTHING'
     )
     # Intentionally do not derive acquisition/touches from legacy MarketingAttributions.
