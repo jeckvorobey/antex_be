@@ -11,6 +11,7 @@ from app.api import deps
 from app.core.security import create_access_token
 from app.enums.user import UserRole
 from app.models.admin import Admin
+from app.models.attribution import UserAcquisition
 from app.models.user import User
 
 
@@ -107,6 +108,55 @@ async def test_admin_list_users_search_no_results(
     assert response.status_code == 200
     data = response.json()
     assert data == {"items": [], "total": 0, "limit": 50, "offset": 0}
+
+
+@pytest.mark.asyncio
+async def test_admin_user_contract_separates_fixed_acquisition_from_referrer(
+    admin_users_api_client: tuple[AsyncClient, AsyncSession],
+) -> None:
+    client, db_session = admin_users_api_client
+    admin = Admin(username="attribution-admin", password_hash="unused")
+    referrer = User(telegram_id=811001, username="referrer", first_name="Ref")
+    user = User(
+        telegram_id=811002,
+        username="attributed_user",
+        first_name="User",
+        referred_by=referrer.id,
+    )
+    db_session.add_all([admin, referrer])
+    await db_session.flush()
+    user.referred_by = referrer.id
+    db_session.add(user)
+    await db_session.flush()
+    db_session.add(
+        UserAcquisition(
+            user_id=user.id,
+            source_type="referral",
+            referrer_user_id=referrer.id,
+        )
+    )
+    await db_session.flush()
+    token = create_access_token({"sub": str(admin.id), "type": "admin"})
+
+    response = await client.get(
+        f"/api/admin/users/{user.id}",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+
+    assert response.status_code == 200, response.text
+    data = response.json()
+    assert data["referred_by"] == referrer.id
+    assert data["attribution"]["sourceType"] == "referral"
+    assert data["attribution"]["sourceStatus"] == "fixed"
+    assert data["attribution"]["primaryCampaignId"] is None
+
+    updated = await client.patch(
+        f"/api/admin/users/{user.id}",
+        headers={"Authorization": f"Bearer {token}"},
+        json={"role": int(UserRole.USER)},
+    )
+    assert updated.status_code == 200, updated.text
+    assert updated.json()["attribution"]["sourceType"] == "referral"
 
 
 @pytest.mark.asyncio

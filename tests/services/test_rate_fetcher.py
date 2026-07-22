@@ -258,14 +258,37 @@ class TestFetchAndSaveRates:
 
         rates = await fetch_and_save_rates(db_session)
 
-        assert set(rates) == {"USDTTHB", "USDTGEL", "USDTVND", "RUBTHB", "RUBGEL", "RUBVND"}
+        assert set(rates) == {
+            "USDTTHB",
+            "USDTGEL",
+            "USDTVND",
+            "USDTRUB",
+            "RUBTHB",
+            "RUBGEL",
+            "RUBVND",
+            "RUBUSDT",
+        }
 
         repo = RateRepository(db_session)
         all_rates = await repo.get_all()
         currencies = {r.currency for r in all_rates}
-        assert {"USDTTHB", "USDTGEL", "USDTVND", "RUBTHB", "RUBGEL", "RUBVND"} <= currencies
+        assert {
+            "USDTTHB",
+            "USDTGEL",
+            "USDTVND",
+            "USDTRUB",
+            "RUBTHB",
+            "RUBGEL",
+            "RUBVND",
+            "RUBUSDT",
+        } <= currencies
+        by_currency = {rate.currency: rate for rate in all_rates}
+        assert by_currency["USDTRUB"].country is None
+        assert by_currency["USDTRUB"].is_internal is True
+        assert by_currency["RUBUSDT"].country is None
+        assert by_currency["RUBUSDT"].is_internal is True
 
-    async def test_calculates_all_six_pairs_from_usd_rates(
+    async def test_calculates_all_eight_pairs_from_usd_rates(
         self,
         db_session,
         mock_currencybeacon: AsyncMock,
@@ -278,6 +301,8 @@ class TestFetchAndSaveRates:
         assert rates["RUBTHB"] == pytest.approx(36.0 / 90.0, rel=1e-6)
         assert rates["RUBGEL"] == pytest.approx(2.8 / 90.0, rel=1e-6)
         assert rates["RUBVND"] == pytest.approx(25000.0 / 90.0, rel=1e-6)
+        assert rates["USDTRUB"] == pytest.approx(90.0 / 1.0, rel=1e-6)
+        assert rates["RUBUSDT"] == pytest.approx(1.0 / 90.0, rel=1e-6)
 
     async def test_saved_rates_keep_market_price_and_default_margin(
         self,
@@ -296,6 +321,8 @@ class TestFetchAndSaveRates:
         assert all_rates["RUBVND"].price == pytest.approx(25000.0 / 90.0, rel=1e-4)
         assert all_rates["USDTTHB"].margin == pytest.approx(3.0)
         assert all_rates["RUBVND"].margin == pytest.approx(3.0)
+        assert all_rates["USDTRUB"].margin == pytest.approx(3.0)
+        assert all_rates["RUBUSDT"].margin == pytest.approx(3.0)
 
     async def test_idempotent_double_call(self, db_session, mock_currencybeacon: AsyncMock) -> None:
         from app.repositories.rate import RateRepository
@@ -336,6 +363,20 @@ class TestFetchAndSaveRates:
 
         repo = RateRepository(db_session)
         await repo.upsert("RUBTHB", 0.41, country=Country.THAILAND)
+        await repo.create(
+            currency="USDTRUB",
+            price=88.0,
+            margin=4.0,
+            country=None,
+            is_internal=True,
+        )
+        await repo.create(
+            currency="RUBUSDT",
+            price=1 / 88.0,
+            margin=5.0,
+            country=None,
+            is_internal=True,
+        )
         await db_session.commit()
 
         first_response = MagicMock()
@@ -375,6 +416,10 @@ class TestFetchAndSaveRates:
         assert set(rates) == {"USDTTHB", "USDTGEL", "USDTVND"}
         assert all_rates["USDTTHB"].price == pytest.approx(36.0)
         assert all_rates["RUBTHB"].price == pytest.approx(0.41)
+        assert all_rates["USDTRUB"].price == pytest.approx(88.0)
+        assert all_rates["USDTRUB"].margin == pytest.approx(4.0)
+        assert all_rates["RUBUSDT"].price == pytest.approx(1 / 88.0)
+        assert all_rates["RUBUSDT"].margin == pytest.approx(5.0)
 
     async def test_rub_fallback_still_upserts_all_supported_currencies(
         self,
@@ -411,5 +456,39 @@ class TestFetchAndSaveRates:
 
         rates = await fetch_and_save_rates(db_session)
 
-        assert set(rates) == {"USDTTHB", "USDTGEL", "USDTVND", "RUBTHB", "RUBGEL", "RUBVND"}
+        assert set(rates) == {
+            "USDTTHB",
+            "USDTGEL",
+            "USDTVND",
+            "USDTRUB",
+            "RUBTHB",
+            "RUBGEL",
+            "RUBVND",
+            "RUBUSDT",
+        }
         assert rates["RUBTHB"] == pytest.approx(36.0 / 90.0, rel=1e-6)
+
+    async def test_refresh_preserves_internal_margin(
+        self,
+        db_session,
+        mock_currencybeacon: AsyncMock,
+    ) -> None:
+        """Автообновление внутренних пар не сбрасывает ручную маржу."""
+        from app.repositories.rate import RateRepository
+
+        repo = RateRepository(db_session)
+        await repo.create(
+            currency="USDTRUB",
+            price=80.0,
+            margin=4.5,
+            country=None,
+            is_internal=True,
+        )
+        await db_session.commit()
+
+        await fetch_and_save_rates(db_session)
+
+        updated = await repo.find_by_currency("USDTRUB")
+        assert updated is not None
+        assert updated.price == pytest.approx(90.0)
+        assert updated.margin == pytest.approx(4.5)

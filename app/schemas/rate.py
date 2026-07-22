@@ -5,7 +5,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 from app.enums.country import Country
 from app.services.exchange import (
@@ -14,6 +14,7 @@ from app.services.exchange import (
     get_admin_final_rate,
     get_client_rate,
 )
+from app.services.rate_fetcher import INTERNAL_RATE_CURRENCIES
 
 
 class RateOut(BaseModel):
@@ -45,6 +46,15 @@ class RateCreate(BaseModel):
     price: float
     margin: float = Field(default=3.0, ge=0.0, le=100.0)
 
+    @field_validator("currency")
+    @classmethod
+    def reject_internal_currency(cls, value: str) -> str:
+        """Запрещает создание системных внутренних пар через admin API."""
+        normalized = value.upper()
+        if normalized in INTERNAL_RATE_CURRENCIES:
+            raise ValueError("Internal rate currency is reserved")
+        return normalized
+
 
 class RateUpdate(BaseModel):
     model_config = {"extra": "forbid"}
@@ -53,6 +63,17 @@ class RateUpdate(BaseModel):
     country: Country | None = None
     price: float | None = None
     margin: float | None = Field(default=None, ge=0.0, le=100.0)
+
+    @field_validator("currency")
+    @classmethod
+    def reject_internal_currency(cls, value: str | None) -> str | None:
+        """Запрещает переименование внешнего курса во внутреннюю пару."""
+        if value is None:
+            return None
+        normalized = value.upper()
+        if normalized in INTERNAL_RATE_CURRENCIES:
+            raise ValueError("Internal rate currency is reserved")
+        return normalized
 
 
 def build_rate_out(rate) -> RateOut:

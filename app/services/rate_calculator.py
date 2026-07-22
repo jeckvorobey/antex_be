@@ -49,12 +49,17 @@ def build_market_rates(
     """Строит рыночные курсы для сохранения в БД.
 
     Returns:
-        Пары USDTXXX и RUBXXX для всех переданных целевых валют без применения наценки.
+        Пары USDTXXX и RUBXXX для переданных целевых валют, а также внутренние
+        USDTRUB и RUBUSDT без применения наценки.
     """
     rates: dict[str, float] = {}
     for target_currency, usdt_target_rate in usdt_targets.items():
         currency = target_currency.upper()
         rates[f"USDT{currency}"] = usdt_target_rate
         rates[f"RUB{currency}"] = calculate_rub_cross_rate(usdt_target_rate, usdt_rub)
+
+    # Внутренние пары сохраняются как взаимно обратные рыночные значения.
+    rates["USDTRUB"] = usdt_rub
+    rates["RUBUSDT"] = calculate_cross_rate(usdt_rub, 1.0)
 
     return rates

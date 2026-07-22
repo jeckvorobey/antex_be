@@ -25,6 +25,18 @@ API_BASE_URL = "https://api.currencybeacon.com/v1"
 LATEST_ENDPOINT = "/latest"
 FRANKFURTER_RATES_URL = "https://api.frankfurter.dev/v2/rates"
 REQUEST_TIMEOUT_SECONDS = 10.0
+INTERNAL_RATE_CURRENCIES = frozenset({"USDTRUB", "RUBUSDT"})
+EXPECTED_RATE_CURRENCIES = frozenset(
+    {
+        "USDTTHB",
+        "USDTGEL",
+        "USDTVND",
+        "RUBTHB",
+        "RUBGEL",
+        "RUBVND",
+        *INTERNAL_RATE_CURRENCIES,
+    }
+)
 
 
 def _require_currencybeacon_api_key() -> str:
@@ -198,8 +210,8 @@ async def fetch_and_save_rates(db: AsyncSession) -> dict[str, float]:
         db: активная AsyncSession.
 
     Returns:
-        Словарь сохранённых рыночных курсов. RUB-пары не обновляются, если
-        CurrencyBeacon не вернул валидный RUB.
+        Словарь сохранённых внешних и внутренних рыночных курсов. Все
+        RUB-зависимые пары не обновляются без валидного RUB.
     """
     raw = await fetch_raw_rates()
     logger.debug(
@@ -229,7 +241,13 @@ async def fetch_and_save_rates(db: AsyncSession) -> dict[str, float]:
     exchange_service = ExchangeService()
     await repo.upsert_many(
         {
-            currency: (price, exchange_service.infer_country_from_pair(currency))
+            currency: (
+                price,
+                None
+                if currency in INTERNAL_RATE_CURRENCIES
+                else exchange_service.infer_country_from_pair(currency),
+                currency in INTERNAL_RATE_CURRENCIES,
+            )
             for currency, price in rates.items()
         }
     )

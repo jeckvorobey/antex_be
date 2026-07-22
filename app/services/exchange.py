@@ -148,7 +148,8 @@ class ExchangeService:
     """Доменный сервис обмена без привязки к конкретному клиенту."""
 
     async def load_rates(self, db: AsyncSession) -> list[Rate]:
-        return await RateRepository(db).get_all()
+        """Загружает только внешние курсы, доступные обменным сценариям."""
+        return await RateRepository(db).get_visible()
 
     async def list_pair_snapshots(self, db: AsyncSession) -> list[ExchangePairSnapshot]:
         return self.build_pair_snapshots(await self.load_rates(db))

@@ -1,4 +1,3 @@
-# ruff: noqa: RUF002
 """Сервис реферальной системы.
 
 Генерация referral-кода, валидация deep-link, связывание пользователей,
@@ -16,6 +15,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.exceptions import AntExException
 from app.models.aex import AexLedgerEntry
+from app.models.attribution import UserAcquisition
 from app.models.user import User
 from app.repositories.rate import RateRepository
 from app.repositories.user import UserRepository
@@ -72,46 +72,21 @@ class ReferralService:
         if user.referred_by is not None:
             return user
 
+        acquisition = await db.scalar(
+            select(UserAcquisition.id).where(UserAcquisition.user_id == user.id)
+        )
+        if acquisition is not None:
+            logger.info("Rejected public referral binding for existing user_id=%s", user.id)
+            raise AntExException(
+                "Referral can only be assigned during first registration",
+                code="REFERRAL_EXISTING_USER",
+                status_code=409,
+            )
+
         repo = UserRepository(db)
         self._validate_referral_code(referral_code)
         referrer = await repo.get_by_referral_code(referral_code)
 
-        if referrer is None:
-            raise self._invalid_referral_code_error()
-
-        if referrer.id == user.id:
-            raise AntExException(
-                "Cannot refer yourself",
-                code="SELF_REFERRAL",
-                status_code=422,
-            )
-
-        if referrer.referred_by == user.id:
-            raise AntExException(
-                "Cannot create mutual referral",
-                code="MUTUAL_REFERRAL",
-                status_code=422,
-            )
-
-        await repo.update(user, referred_by=referrer.id)
-        await db.refresh(user)
-        return user
-
-    async def set_referrer_by_code(
-        self,
-        db: AsyncSession,
-        user: User,
-        referral_code: str | None,
-    ) -> User:
-        """Admin-only смена привязки реферера с теми же доменными запретами."""
-        repo = UserRepository(db)
-        if referral_code is None or referral_code == "":
-            await repo.update(user, referred_by=None)
-            await db.refresh(user)
-            return user
-
-        self._validate_referral_code(referral_code)
-        referrer = await repo.get_by_referral_code(referral_code)
         if referrer is None:
             raise self._invalid_referral_code_error()
 

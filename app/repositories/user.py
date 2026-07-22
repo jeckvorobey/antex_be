@@ -6,6 +6,7 @@ from datetime import datetime
 from typing import ClassVar
 
 from sqlalchemy import func, or_, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import selectinload
 
 from app.enums.user import LEGACY_ADMIN_ROLE, UserRole
@@ -45,8 +46,21 @@ class UserRepository(BaseRepository[User]):
             await self.session.refresh(user)
             return user, False
         user = User(telegram_id=tg_id, **defaults)
-        self.session.add(user)
-        await self.session.flush()
+        try:
+            async with self.session.begin_nested():
+                self.session.add(user)
+                await self.session.flush()
+        except IntegrityError:
+            user = await self.session.scalar(select(User).where(User.telegram_id == tg_id))
+            if user is None:
+                raise
+            for field, value in defaults.items():
+                should_refresh = value is not None or field in self._nullable_refresh_fields
+                if should_refresh and hasattr(User, field):
+                    setattr(user, field, value)
+            await self.session.flush()
+            await self.session.refresh(user)
+            return user, False
         await self.session.refresh(user)
         return user, True
 

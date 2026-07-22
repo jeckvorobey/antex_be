@@ -14,8 +14,8 @@ from app.core.security import create_access_token
 from app.enums.country import Country
 from app.enums.order import OrderStatus
 from app.models.admin import Admin
+from app.models.attribution import MarketingTouch, OrderAttribution, UserAcquisition
 from app.models.marketing import (
-    MarketingAttribution,
     MarketingCampaign,
     MarketingCurrency,
     MarketingPlatform,
@@ -238,6 +238,39 @@ async def test_campaign_create_rejects_direct_code_and_patch_immutable_fields(
     assert updated.json()["status"] == "archived"
 
 
+async def test_campaign_detail_and_update_include_current_aggregates(
+    marketing_api_client,
+) -> None:
+    client, db_session, token = marketing_api_client
+    campaign_data = (await create_campaign(client, token)).json()
+    user, _ = await UserRepository(db_session).find_or_create(777000, first_name="Detail")
+    db_session.add(
+        UserAcquisition(
+            user_id=user.id,
+            source_type="campaign",
+            campaign_id=campaign_data["id"],
+        )
+    )
+    await db_session.flush()
+
+    detail = await client.get(
+        f"/api/admin/marketing/campaigns/{campaign_data['id']}",
+        headers=auth(token),
+    )
+    updated = await client.patch(
+        f"/api/admin/marketing/campaigns/{campaign_data['id']}",
+        headers=auth(token),
+        json={"name": "Updated metrics"},
+    )
+
+    assert detail.status_code == 200, detail.text
+    assert detail.json()["newUsers"] == 1
+    assert detail.json()["attributedUsers"] == 1
+    assert updated.status_code == 200, updated.text
+    assert updated.json()["newUsers"] == 1
+    assert updated.json()["attributedUsers"] == 1
+
+
 async def test_campaign_create_rejects_non_preview_token(marketing_api_client) -> None:
     """Обычный access token нельзя использовать вместо подписанного preview token."""
     client, _, token = marketing_api_client
@@ -329,29 +362,59 @@ async def test_daily_metrics_upsert_and_validation(marketing_api_client) -> None
     assert invalid.status_code == 422
 
 
-async def test_applications_and_dashboard_use_post_attribution_orders(marketing_api_client) -> None:
+async def test_applications_and_dashboard_use_order_attribution_snapshots(
+    marketing_api_client,
+) -> None:
     client, db_session, token = marketing_api_client
     campaign_data = (await create_campaign(client, token)).json()
     campaign = await db_session.get(MarketingCampaign, campaign_data["id"])
     assert campaign is not None
     user, _ = await UserRepository(db_session).find_or_create(777001, first_name="Applicant")
     attributed_at = datetime.now(UTC) - timedelta(days=2)
-    db_session.add(
-        MarketingAttribution(
-            user_id=user.id,
-            campaign_id=campaign.id,
-            attributed_at=attributed_at,
-        )
+    acquisition = UserAcquisition(
+        user_id=user.id,
+        source_type="campaign",
+        campaign_id=campaign.id,
+        acquired_at=attributed_at,
     )
+    new_touch = MarketingTouch(
+        user_id=user.id,
+        campaign_id=campaign.id,
+        touched_at=attributed_at,
+        user_state="new",
+    )
+    returning_touch = MarketingTouch(
+        user_id=user.id,
+        campaign_id=campaign.id,
+        touched_at=attributed_at + timedelta(hours=12),
+        user_state="returning",
+    )
+    first_order = _order(user.id, "POST000001", attributed_at + timedelta(hours=1))
+    second_order = _order(
+        user.id,
+        "POST000002",
+        attributed_at + timedelta(days=1),
+        status=OrderStatus.COMPLETED,
+    )
+    db_session.add_all([acquisition, new_touch, returning_touch, first_order, second_order])
+    await db_session.flush()
     db_session.add_all(
         [
-            _order(user.id, "PRE0000001", attributed_at - timedelta(hours=1)),
-            _order(user.id, "POST000001", attributed_at + timedelta(hours=1)),
-            _order(
-                user.id,
-                "POST000002",
-                attributed_at + timedelta(days=1),
-                status=OrderStatus.COMPLETED,
+            OrderAttribution(
+                order_id=first_order.id,
+                campaign_id=campaign.id,
+                marketing_touch_id=new_touch.id,
+                attribution_type="acquisition",
+                attributed_at=new_touch.touched_at,
+                lookback_days=7,
+            ),
+            OrderAttribution(
+                order_id=second_order.id,
+                campaign_id=campaign.id,
+                marketing_touch_id=returning_touch.id,
+                attribution_type="reengagement",
+                attributed_at=returning_touch.touched_at,
+                lookback_days=7,
             ),
         ]
     )
@@ -372,15 +435,49 @@ async def test_applications_and_dashboard_use_post_attribution_orders(marketing_
     assert applications.status_code == 200, applications.text
     row = applications.json()["items"][0]
     assert row["applications"] == 2
+    assert row["newUsers"] == 1
+    assert row["returningUsers"] == 1
+    assert row["touches"] == 2
+    assert row["newUserApplications"] == 1
+    assert row["returningUserApplications"] == 1
     assert row["uniqueApplicants"] == 1
     assert row["completedApplications"] == 1
     assert dashboard.status_code == 200, dashboard.text
     summary = dashboard.json()["summary"]
     assert summary["attributedUsers"] == 1
+    assert summary["newUsers"] == 1
+    assert summary["returningUsers"] == 1
+    assert summary["touches"] == 2
     assert summary["applications"] == 2
     assert summary["attributionToApplicationRate"] == 100
     assert summary["applicationCompletionRate"] == 50
-    assert len(dashboard.json()["timeSeries"]) == 6
+    time_series = dashboard.json()["timeSeries"]
+    assert len(time_series) == 6
+    assert sum(item["newUsers"] for item in time_series) == 1
+    assert sum(item["returningUsers"] for item in time_series) == 1
+    assert sum(item["touches"] for item in time_series) == 2
+
+    campaigns = await client.get("/api/admin/marketing/campaigns", headers=auth(token))
+    campaign_row = campaigns.json()["items"][0]
+    assert campaign_row["attributedUsers"] == campaign_row["newUsers"] == 1
+    assert campaign_row["returningUsers"] == 1
+    assert campaign_row["touches"] == 2
+    assert campaign_row["completedApplications"] == 1
+
+    details = await client.get(
+        "/api/admin/marketing/application-attributions",
+        headers=auth(token),
+        params=params,
+    )
+    assert details.status_code == 200, details.text
+    assert details.json()["total"] == 2
+    detail_rows = details.json()["items"]
+    assert {item["attributionType"] for item in detail_rows} == {
+        "acquisition",
+        "reengagement",
+    }
+    assert all(item["touchAt"] and item["applicationAt"] for item in detail_rows)
+    assert all(item["hoursToApplication"] >= 0 for item in detail_rows)
 
 
 async def test_dashboard_empty_period_returns_null_rates_and_rejects_bad_dates(
@@ -402,6 +499,124 @@ async def test_dashboard_empty_period_returns_null_rates_and_rejects_bad_dates(
     assert empty.json()["summary"]["attributionToApplicationRate"] is None
     assert empty.json()["summary"]["applicationCompletionRate"] is None
     assert invalid.status_code == 422
+
+    too_large = await client.get(
+        "/api/admin/marketing/dashboard",
+        headers=auth(token),
+        params={"dateFrom": "2025-01-01", "dateTo": "2026-07-02"},
+    )
+    assert too_large.status_code == 422
+    assert too_large.json()["code"] == "MARKETING_DATE_RANGE_TOO_LARGE"
+
+    overflowing = await client.get(
+        "/api/admin/marketing/dashboard",
+        headers=auth(token),
+        params={"dateFrom": "9999-12-30", "dateTo": "9999-12-31"},
+    )
+    assert overflowing.status_code == 422
+    assert overflowing.json()["code"] == "INVALID_MARKETING_DATE_RANGE"
+
+
+async def test_dashboard_unique_touched_users_is_distinct_across_campaigns(
+    marketing_api_client,
+) -> None:
+    client, db_session, token = marketing_api_client
+    first = (await create_campaign(client, token, name="First")).json()
+    second = (await create_campaign(client, token, name="Second")).json()
+    user, _ = await UserRepository(db_session).find_or_create(778001, first_name="Shared")
+    now = datetime.now(UTC)
+    first_touch = MarketingTouch(
+        user_id=user.id,
+        campaign_id=first["id"],
+        touched_at=now,
+        user_state="returning",
+    )
+    second_touch = MarketingTouch(
+        user_id=user.id,
+        campaign_id=second["id"],
+        touched_at=now,
+        user_state="returning",
+    )
+    first_order = _order(user.id, "SHARED0001", now)
+    second_order = _order(user.id, "SHARED0002", now)
+    db_session.add_all([first_touch, second_touch, first_order, second_order])
+    await db_session.flush()
+    db_session.add_all(
+        [
+            OrderAttribution(
+                order_id=first_order.id,
+                campaign_id=first["id"],
+                marketing_touch_id=first_touch.id,
+                attribution_type="reengagement",
+                attributed_at=now,
+                lookback_days=7,
+            ),
+            OrderAttribution(
+                order_id=second_order.id,
+                campaign_id=second["id"],
+                marketing_touch_id=second_touch.id,
+                attribution_type="reengagement",
+                attributed_at=now,
+                lookback_days=7,
+            ),
+        ]
+    )
+    await db_session.flush()
+
+    response = await client.get(
+        "/api/admin/marketing/dashboard",
+        headers=auth(token),
+        params={"dateFrom": str(date.today()), "dateTo": str(date.today()), "currency": "USDT"},
+    )
+
+    assert response.status_code == 200, response.text
+    assert response.json()["summary"]["touches"] == 2
+    assert response.json()["summary"]["returningUsers"] == 1
+    assert response.json()["summary"]["uniqueTouchedUsers"] == 1
+    assert response.json()["summary"]["uniqueApplicants"] == 1
+
+
+async def test_dashboard_reengagement_conversion_uses_unique_touched_users(
+    marketing_api_client,
+) -> None:
+    client, db_session, token = marketing_api_client
+    campaign_data = (await create_campaign(client, token)).json()
+    user, _ = await UserRepository(db_session).find_or_create(777099, first_name="Returning")
+    touched_at = datetime.now(UTC) - timedelta(hours=1)
+    touch = MarketingTouch(
+        user_id=user.id,
+        campaign_id=campaign_data["id"],
+        touched_at=touched_at,
+        user_state="returning",
+        session_key="dashboard-returning",
+    )
+    order = _order(user.id, "RETURN0001", datetime.now(UTC))
+    db_session.add_all([touch, order])
+    await db_session.flush()
+    db_session.add(
+        OrderAttribution(
+            order_id=order.id,
+            campaign_id=campaign_data["id"],
+            marketing_touch_id=touch.id,
+            attribution_type="reengagement",
+            attributed_at=touched_at,
+            lookback_days=7,
+        )
+    )
+    await db_session.flush()
+
+    response = await client.get(
+        "/api/admin/marketing/dashboard",
+        headers=auth(token),
+        params={"dateFrom": str(date.today()), "dateTo": str(date.today()), "currency": "USDT"},
+    )
+
+    assert response.status_code == 200, response.text
+    summary = response.json()["summary"]
+    assert summary["attributedUsers"] == 0
+    assert summary["uniqueTouchedUsers"] == 1
+    assert summary["uniqueApplicants"] == 1
+    assert summary["attributionToApplicationRate"] == 100
 
 
 async def test_dashboard_does_not_merge_mixed_currency_or_claim_roas(

@@ -14,6 +14,7 @@ from app.core.config import settings
 from app.core.reference_deletion import ReferenceDeletionService
 from app.core.security import create_access_token, decode_access_token
 from app.core.unique_code import generate_unique_code
+from app.enums.order import OrderStatus
 from app.exceptions import AntExException
 from app.models.marketing import MarketingCampaign, MarketingCurrency, MarketingPlatform
 from app.modules.marketing.admin_repository import MarketingAdminRepository
@@ -25,6 +26,7 @@ from app.modules.marketing.constants import (
 )
 from app.modules.marketing.repository import MarketingRepository
 from app.modules.marketing.schemas import (
+    ApplicationAttributionOut,
     ApplicationRowOut,
     CampaignCreate,
     CampaignOut,
@@ -138,7 +140,7 @@ class MarketingAdminService:
                     ) from error
                 continue
             await self.session.commit()
-            return self.campaign_out(await self.require_campaign(campaign.id))
+            return await self.campaign_out_with_aggregates(campaign.id)
 
         raise AntExException(
             "Unable to persist a unique marketing code",
@@ -173,7 +175,12 @@ class MarketingAdminService:
         for field, value in values.items():
             setattr(campaign, field, value)
         await self.session.commit()
-        return self.campaign_out(await self.require_campaign(campaign.id))
+        return await self.campaign_out_with_aggregates(campaign.id)
+
+    async def campaign_out_with_aggregates(self, campaign_id: int) -> CampaignOut:
+        campaign = await self.require_campaign(campaign_id)
+        aggregates = await self.repository.campaign_aggregates([campaign_id])
+        return self.campaign_out(campaign, aggregates.get(campaign_id))
 
     async def list_platforms(self) -> list[MarketingPlatformOut]:
         return [
@@ -244,9 +251,14 @@ class MarketingAdminService:
     @staticmethod
     def campaign_out(
         campaign: MarketingCampaign,
-        aggregates: dict[str, int] | None = None,
+        aggregates: dict[str, Any] | None = None,
     ) -> CampaignOut:
         username = (settings.telegram_bot_username or "").strip().removeprefix("@")
+        metrics = aggregates or {}
+        spend = float(metrics.get("spend", 0))
+        new_users = int(metrics.get("new_users", 0))
+        applications = int(metrics.get("applications", 0))
+        completed = int(metrics.get("completed_applications", 0))
         return CampaignOut(
             id=campaign.id,
             code=campaign.code,
@@ -264,8 +276,17 @@ class MarketingAdminService:
             marketParameter=f"market={campaign.code}",
             createdAt=campaign.createdAt,
             updatedAt=campaign.updatedAt,
-            attributedUsers=(aggregates or {}).get("attributed_users", 0),
-            applications=(aggregates or {}).get("applications", 0),
+            attributedUsers=metrics.get("attributed_users", 0),
+            newUsers=new_users,
+            returningUsers=metrics.get("returning_users", 0),
+            touches=metrics.get("touches", 0),
+            uniqueTouchedUsers=metrics.get("unique_touched_users", 0),
+            applications=applications,
+            completedApplications=completed,
+            spend=spend,
+            costPerNewUser=round(spend / new_users, 4) if new_users else None,
+            costPerApplication=round(spend / applications, 4) if applications else None,
+            costPerCompletedApplication=round(spend / completed, 4) if completed else None,
             campaignType="paid" if campaign.budget and campaign.budget > 0 else "free",
         )
 
@@ -336,6 +357,50 @@ class MarketingAdminService:
             _application_out(row, spend_by_campaign.get(row["campaign_id"], 0.0)) for row in rows
         ]
 
+    async def application_attribution_report(
+        self,
+        *,
+        date_from: date,
+        date_to: date,
+        campaign_id: int | None,
+        provider: str | None,
+        status: str | None,
+        currency: str | None,
+        limit: int,
+        offset: int,
+    ) -> tuple[list[ApplicationAttributionOut], int]:
+        start, end = _date_bounds(date_from, date_to)
+        rows, total = await self.repository.application_attribution_rows(
+            date_from=start,
+            date_to=end,
+            campaign_id=campaign_id,
+            provider=provider,
+            status=status,
+            currency=currency,
+            limit=limit,
+            offset=offset,
+        )
+        items = []
+        for row in rows:
+            delta = row["application_at"] - row["touch_at"]
+            items.append(
+                ApplicationAttributionOut(
+                    orderId=row["order_id"],
+                    publicNumber=row["public_number"],
+                    userId=row["user_id"],
+                    campaignId=row["campaign_id"],
+                    campaignName=row["campaign_name"],
+                    userState=row["user_state"],
+                    attributionType=row["attribution_type"],
+                    touchAt=row["touch_at"],
+                    applicationAt=row["application_at"],
+                    hoursToApplication=round(delta.total_seconds() / 3600, 2),
+                    status=row["status"],
+                    completed=row["status"] == int(OrderStatus.COMPLETED),
+                )
+            )
+        return items, total
+
     async def dashboard(
         self,
         *,
@@ -360,7 +425,7 @@ class MarketingAdminService:
             provider=provider,
             currency=currency,
         )
-        attribution_rows, order_rows, metric_rows = await self.repository.daily_series(
+        attribution_rows, touch_rows, order_rows, metric_rows = await self.repository.daily_series(
             date_from=date_from,
             date_to=date_to,
             campaign_id=campaign_id,
@@ -368,8 +433,21 @@ class MarketingAdminService:
             currency=currency,
         )
         attributed = sum(row.attributed_users for row in comparison)
+        new_users = sum(row.new_users for row in comparison)
+        touches = sum(row.touches for row in comparison)
+        start, end = _date_bounds(date_from, date_to)
+        (
+            unique_touched_users,
+            returning_users,
+            unique_applicants,
+        ) = await self.repository.dashboard_unique_counts(
+            date_from=start,
+            date_to=end,
+            campaign_id=campaign_id,
+            provider=provider,
+            currency=currency,
+        )
         applications = sum(row.applications for row in comparison)
-        unique_applicants = sum(row.unique_applicants for row in comparison)
         completed = sum(row.completed_applications for row in comparison)
         spend_by_currency: dict[str, float] = {}
         for row in spend_rows:
@@ -382,10 +460,14 @@ class MarketingAdminService:
         )
         summary = {
             "attributedUsers": attributed,
+            "newUsers": new_users,
+            "returningUsers": returning_users,
+            "touches": touches,
+            "uniqueTouchedUsers": unique_touched_users,
             "applications": applications,
             "uniqueApplicants": unique_applicants,
             "completedApplications": completed,
-            "attributionToApplicationRate": _rate(unique_applicants, attributed),
+            "attributionToApplicationRate": _rate(unique_applicants, unique_touched_users),
             "applicationCompletionRate": _rate(completed, applications),
             "spendTotal": spend_total,
             "costPerApplication": (
@@ -398,18 +480,30 @@ class MarketingAdminService:
                 if spend_total is not None and attributed > 0
                 else None
             ),
+            "costPerNewUser": (
+                round(spend_total / new_users, 4)
+                if spend_total is not None and new_users > 0
+                else None
+            ),
+            "costPerCompletedApplication": (
+                round(spend_total / completed, 4)
+                if spend_total is not None and completed > 0
+                else None
+            ),
         }
         time_series = _zero_filled_series(
             date_from,
             date_to,
             attribution_rows,
+            touch_rows,
             order_rows,
             metric_rows,
         )
         return {
             "summary": summary,
             "funnel": [
-                {"stage": "Attributed users", "value": attributed},
+                {"stage": "New users", "value": new_users},
+                {"stage": "Marketing touches", "value": touches},
                 {"stage": "Unique applicants", "value": unique_applicants},
                 {"stage": "Completed applications", "value": completed},
             ],
@@ -439,6 +533,13 @@ def _application_out(row: dict[str, Any], spend: float) -> ApplicationRowOut:
     attributed = int(row["attributed_users"] or 0)
     unique = int(row["unique_applicants"] or 0)
     completed = int(row["completed_applications"] or 0)
+    new_users = int(row["new_users"] or 0)
+    returning_users = int(row["returning_users"] or 0)
+    touches = int(row["touches"] or 0)
+    unique_touched = int(row["unique_touched_users"] or 0)
+    new_applications = int(row["new_user_applications"] or 0)
+    new_applicants = int(row["new_user_applicants"] or 0)
+    returning_applications = int(row["returning_user_applications"] or 0)
     return ApplicationRowOut(
         campaignId=row["campaign_id"],
         campaignName=row["campaign_name"],
@@ -447,13 +548,23 @@ def _application_out(row: dict[str, Any], spend: float) -> ApplicationRowOut:
         status=row["status"],
         currency=row["currency"],
         attributedUsers=attributed,
+        newUsers=new_users,
+        returningUsers=returning_users,
+        touches=touches,
+        uniqueTouchedUsers=unique_touched,
         applications=applications,
+        newUserApplications=new_applications,
+        returningUserApplications=returning_applications,
         uniqueApplicants=unique,
         completedApplications=completed,
-        attributionToApplicationRate=_rate(unique, attributed),
+        attributionToApplicationRate=_rate(unique, unique_touched),
+        newUserToApplicationRate=_rate(new_applicants, new_users),
+        touchToApplicationRate=_rate(applications, touches),
         applicationCompletionRate=_rate(completed, applications),
         spend=spend,
         costPerApplication=round(spend / applications, 4) if applications else None,
+        costPerNewUser=round(spend / new_users, 4) if new_users else None,
+        costPerCompletedApplication=round(spend / completed, 4) if completed else None,
     )
 
 
@@ -461,6 +572,7 @@ def _zero_filled_series(
     date_from: date,
     date_to: date,
     attribution_rows: list[dict[str, Any]],
+    touch_rows: list[dict[str, Any]],
     order_rows: list[dict[str, Any]],
     metric_rows: list[dict[str, Any]],
 ) -> list[dict[str, Any]]:
@@ -471,6 +583,9 @@ def _zero_filled_series(
         result[key] = {
             "date": key,
             "attributedUsers": 0,
+            "newUsers": 0,
+            "returningUsers": 0,
+            "touches": 0,
             "applications": 0,
             "completedApplications": 0,
             "impressions": 0,
@@ -484,6 +599,14 @@ def _zero_filled_series(
         bucket = result.get(day.isoformat() if hasattr(day, "isoformat") else str(day))
         if bucket is not None:
             bucket["attributedUsers"] = int(row["attributed_users"] or 0)
+            bucket["newUsers"] = int(row["new_users"] or 0)
+
+    for row in touch_rows:
+        day = row["day"]
+        bucket = result.get(day.isoformat() if hasattr(day, "isoformat") else str(day))
+        if bucket is not None:
+            bucket["returningUsers"] = int(row["returning_users"] or 0)
+            bucket["touches"] = int(row["touches"] or 0)
 
     for row in order_rows:
         day = row["day"]

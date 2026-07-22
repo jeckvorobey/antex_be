@@ -5,6 +5,7 @@ from unittest.mock import AsyncMock
 
 import pytest
 from httpx import ASGITransport, AsyncClient
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api import deps
@@ -111,6 +112,32 @@ async def test_admin_rates_include_base_and_final_values(
 
 
 @pytest.mark.asyncio
+async def test_admin_create_normalizes_external_currency_to_uppercase(
+    api_client: tuple[AsyncClient, AsyncSession],
+) -> None:
+    """Admin write сохраняет внешний код в canonical uppercase-форме."""
+    client, db_session = api_client
+    admin, _ = await seed_admin_exchange_data(db_session)
+    token = create_access_token({"sub": str(admin.id), "type": "admin"})
+
+    response = await client.post(
+        "/api/admin/rates",
+        headers={"Authorization": f"Bearer {token}"},
+        json={
+            "currency": "usdtgel",
+            "country": "georgia",
+            "price": 2.7,
+            "margin": 3.0,
+        },
+    )
+
+    assert response.status_code == 201
+    assert response.json()["currency"] == "USDTGEL"
+    stored = await db_session.scalar(select(Rate).where(Rate.currency == "USDTGEL"))
+    assert stored is not None
+
+
+@pytest.mark.asyncio
 async def test_admin_summary_returns_featured_rates(
     api_client: tuple[AsyncClient, AsyncSession],
 ) -> None:
@@ -129,6 +156,128 @@ async def test_admin_summary_returns_featured_rates(
     assert payload["usersTotal"] == 2
     assert payload["featuredRates"][0]["pairId"] == "rub-thb"
     assert payload["featuredRates"][0]["finalRateDisplay"] == "2.51"
+
+
+@pytest.mark.asyncio
+async def test_internal_rates_are_hidden_from_all_existing_rate_apis(
+    api_client: tuple[AsyncClient, AsyncSession],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Внутренние пары не раскрываются ни одним существующим rates endpoint."""
+    client, db_session = api_client
+    admin, customer = await seed_admin_exchange_data(db_session)
+    internal = Rate(
+        currency="USDTRUB",
+        price=90.0,
+        margin=4.5,
+        country=None,
+        is_internal=True,
+    )
+    db_session.add(internal)
+    await db_session.commit()
+
+    admin_token = create_access_token({"sub": str(admin.id), "type": "admin"})
+    user_token = create_access_token({"sub": str(customer.id), "role": customer.role})
+    admin_headers = {"Authorization": f"Bearer {admin_token}"}
+    user_headers = {"Authorization": f"Bearer {user_token}"}
+
+    public_response = await client.get("/public/rates")
+    miniapp_response = await client.get("/api/miniapp/rates", headers=user_headers)
+    admin_response = await client.get("/api/admin/rates", headers=admin_headers)
+    detail_response = await client.get(f"/api/admin/rates/{internal.id}", headers=admin_headers)
+    patch_response = await client.patch(
+        f"/api/admin/rates/{internal.id}",
+        headers=admin_headers,
+        json={"margin": 5.0},
+    )
+    delete_response = await client.delete(
+        f"/api/admin/rates/{internal.id}",
+        headers=admin_headers,
+    )
+
+    from app.services import rate_fetcher
+
+    monkeypatch.setattr(
+        rate_fetcher,
+        "fetch_and_save_rates",
+        AsyncMock(return_value={"USDTTHB": 36.0, "USDTRUB": 90.0, "RUBUSDT": 1 / 90.0}),
+    )
+    refresh_response = await client.post("/api/admin/rates/refresh", headers=admin_headers)
+
+    assert public_response.status_code == 200
+    assert miniapp_response.status_code == 200
+    assert admin_response.status_code == 200
+    assert {row["currency"] for row in public_response.json()} == {
+        "RUBTHB",
+        "RUBGEL",
+        "USDTTHB",
+    }
+    assert {row["currency"] for row in miniapp_response.json()["items"]} == {
+        "RUBTHB",
+        "RUBGEL",
+        "USDTTHB",
+    }
+    assert {row["currency"] for row in admin_response.json()} == {
+        "RUBTHB",
+        "RUBGEL",
+        "USDTTHB",
+    }
+    assert detail_response.status_code == 404
+    assert patch_response.status_code == 404
+    assert delete_response.status_code == 404
+    assert refresh_response.status_code == 200
+    assert set(refresh_response.json()["rates"]) == {"USDTTHB"}
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("reserved_currency", ["USDTRUB", "rubusdt"])
+async def test_admin_cannot_create_reserved_internal_rate(
+    api_client: tuple[AsyncClient, AsyncSession],
+    reserved_currency: str,
+) -> None:
+    """Admin API не создаёт внешнюю строку, использующую внутренний код."""
+    client, db_session = api_client
+    admin, _ = await seed_admin_exchange_data(db_session)
+    token = create_access_token({"sub": str(admin.id), "type": "admin"})
+
+    response = await client.post(
+        "/api/admin/rates",
+        headers={"Authorization": f"Bearer {token}"},
+        json={
+            "currency": reserved_currency,
+            "country": "thailand",
+            "price": 90.0,
+            "margin": 3.0,
+        },
+    )
+
+    assert response.status_code == 422
+    stored = await db_session.scalar(select(Rate).where(Rate.currency == reserved_currency.upper()))
+    assert stored is None
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("reserved_currency", ["USDTRUB", "rubusdt"])
+async def test_admin_cannot_rename_visible_rate_to_reserved_internal_rate(
+    api_client: tuple[AsyncClient, AsyncSession],
+    reserved_currency: str,
+) -> None:
+    """Admin API не переименовывает внешний курс во внутреннюю пару."""
+    client, db_session = api_client
+    admin, _ = await seed_admin_exchange_data(db_session)
+    token = create_access_token({"sub": str(admin.id), "type": "admin"})
+    visible = await db_session.scalar(select(Rate).where(Rate.currency == "USDTTHB"))
+    assert visible is not None
+
+    response = await client.patch(
+        f"/api/admin/rates/{visible.id}",
+        headers={"Authorization": f"Bearer {token}"},
+        json={"currency": reserved_currency},
+    )
+
+    assert response.status_code == 422
+    await db_session.refresh(visible)
+    assert visible.currency == "USDTTHB"
 
 
 @pytest.mark.asyncio

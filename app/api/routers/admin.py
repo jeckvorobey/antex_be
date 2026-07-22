@@ -37,7 +37,7 @@ from app.schemas.admin import (
     AdminTokenResponse,
     PaginatedUsersResponse,
 )
-from app.schemas.aex import AdminReferralGenerateResponse, AdminReferralReferredByRequest
+from app.schemas.aex import AdminReferralGenerateResponse
 from app.schemas.city import CityCreate, CityOut, CityUpdate, build_city_out
 from app.schemas.config import AppConfigOut, AppConfigUpdate
 from app.schemas.order import (
@@ -52,6 +52,7 @@ from app.schemas.site_lead import (
     build_site_lead_out,
 )
 from app.schemas.user import UserOut, UserUpdate, build_user_out
+from app.services.attribution import AttributionService
 from app.services.exchange import ExchangeService
 from app.services.order_status import update_order_status as apply_order_status
 from app.services.referral import ReferralService
@@ -285,8 +286,9 @@ async def list_users(
 ) -> PaginatedUsersResponse:
     repo = UserRepository(db)
     users, total = await repo.search_paginated(search, limit=limit, offset=offset)
+    attribution = await AttributionService(db).admin_summaries([user.id for user in users])
     return PaginatedUsersResponse(
-        items=[build_user_out(user) for user in users],
+        items=[build_user_out(user, attribution=attribution.get(user.id)) for user in users],
         total=total,
         limit=limit,
         offset=offset,
@@ -299,7 +301,8 @@ async def get_user(user_id: int, db: DbDep, _: AdminUser) -> UserOut:
     user = await repo.get_one(user_id)
     if not user:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
-    return build_user_out(user)
+    attribution = await AttributionService(db).admin_summaries([user.id])
+    return build_user_out(user, attribution=attribution.get(user.id))
 
 
 @router.patch("/users/{user_id}", response_model=UserOut)
@@ -329,7 +332,8 @@ async def update_user(user_id: int, body: UserUpdate, db: DbDep, _: AdminUser) -
     updated = await repo.update(user, **update_data)
     await db.commit()
     updated = await repo.get_one(updated.id)
-    return build_user_out(updated)
+    attribution = await AttributionService(db).admin_summaries([updated.id])
+    return build_user_out(updated, attribution=attribution.get(updated.id))
 
 
 @router.post(
@@ -354,25 +358,6 @@ async def generate_user_referral_code(
     )
     await db.commit()
     return AdminReferralGenerateResponse(ok=True, referral_code=code)
-
-
-@router.patch("/users/{user_id}/referred-by", response_model=UserOut)
-async def update_user_referred_by(
-    user_id: int,
-    body: AdminReferralReferredByRequest,
-    db: DbDep,
-    _: AdminUser,
-) -> UserOut:
-    """Admin-only ручная смена реферера пользователя."""
-    repo = UserRepository(db)
-    user = await repo.get_one(user_id)
-    if not user:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
-
-    updated = await ReferralService().set_referrer_by_code(db, user, body.referral_code)
-    await db.commit()
-    updated = await repo.get_one(updated.id)
-    return build_user_out(updated)
 
 
 @router.get("/orders", response_model=PaginatedOrdersResponse)
@@ -450,12 +435,12 @@ async def list_site_leads(
 
 @router.get("/rates", response_model=list[AdminRateOut])
 async def list_rates(db: DbDep, _: AdminUser) -> list[AdminRateOut]:
-    return [build_admin_rate_out(rate) for rate in await RateRepository(db).get_all()]
+    return [build_admin_rate_out(rate) for rate in await RateRepository(db).get_visible()]
 
 
 @router.get("/rates/{rate_id}", response_model=AdminRateOut)
 async def get_rate(rate_id: int, db: DbDep, _: AdminUser) -> AdminRateOut:
-    rate = await RateRepository(db).get_by_id(rate_id)
+    rate = await RateRepository(db).get_visible_by_id(rate_id)
     if not rate:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Rate not found")
     return build_admin_rate_out(rate)
@@ -471,7 +456,7 @@ async def create_rate(body: RateCreate, db: DbDep, _: AdminUser) -> AdminRateOut
 @router.patch("/rates/{rate_id}", response_model=AdminRateOut)
 async def update_rate(rate_id: int, body: RateUpdate, db: DbDep, _: AdminUser) -> AdminRateOut:
     repo = RateRepository(db)
-    rate = await repo.get_by_id(rate_id)
+    rate = await repo.get_visible_by_id(rate_id)
     if not rate:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Rate not found")
     updated = await repo.update(rate, **body.model_dump(exclude_none=True))
@@ -482,7 +467,7 @@ async def update_rate(rate_id: int, body: RateUpdate, db: DbDep, _: AdminUser) -
 @router.delete("/rates/{rate_id}")
 async def delete_rate(rate_id: int, db: DbDep, _: AdminUser) -> dict[str, bool]:
     repo = RateRepository(db)
-    rate = await repo.get_by_id(rate_id)
+    rate = await repo.get_visible_by_id(rate_id)
     if not rate:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Rate not found")
     await repo.delete(rate)
@@ -507,6 +492,7 @@ async def update_config(body: AppConfigUpdate, db: DbDep, _: AdminUser) -> AppCo
         referral_max_withdraw=body.referral_max_withdraw,
         aex_rate=body.aex_rate,
         aex_withdraw_limit=body.aex_withdraw_limit,
+        marketing_attribution_window_days=body.marketing_attribution_window_days,
         update_referral_max_withdraw="referral_max_withdraw" in body_fields
         or "referralMaxWithdraw" in body_fields,
     )
@@ -517,7 +503,12 @@ async def update_config(body: AppConfigUpdate, db: DbDep, _: AdminUser) -> AppCo
 
 @router.post("/rates/refresh")
 async def refresh_rates(db: DbDep, _: AdminUser) -> dict[str, object]:
-    from app.services.rate_fetcher import fetch_and_save_rates
+    from app.services.rate_fetcher import INTERNAL_RATE_CURRENCIES, fetch_and_save_rates
 
     rates = await fetch_and_save_rates(db)
-    return {"ok": True, "rates": rates}
+    visible_rates = {
+        currency: price
+        for currency, price in rates.items()
+        if currency not in INTERNAL_RATE_CURRENCIES
+    }
+    return {"ok": True, "rates": visible_rates}

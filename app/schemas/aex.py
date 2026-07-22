@@ -196,10 +196,6 @@ class AdminReferralGenerateResponse(BaseModel):
     referral_code: str
 
 
-class AdminReferralReferredByRequest(BaseModel):
-    referral_code: str | None = None
-
-
 # ── Builders ─────────────────────────────────────────────────────────
 
 

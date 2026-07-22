@@ -7,6 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.user import User
 from app.repositories.user import UserRepository
+from app.services.attribution import AttributionService
 
 
 async def check_user(db: AsyncSession, tg_user: TgUser) -> tuple[User, bool]:
@@ -20,4 +21,6 @@ async def check_user(db: AsyncSession, tg_user: TgUser) -> tuple[User, bool]:
         is_bot=tg_user.is_bot,
         is_premium=getattr(tg_user, "is_premium", False) or False,
     )
+    if created:
+        await AttributionService(db).ensure_acquisition(user.id, source_type="direct")
     return user, created

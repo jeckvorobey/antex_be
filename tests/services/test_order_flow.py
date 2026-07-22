@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+from datetime import UTC, datetime
 from unittest.mock import AsyncMock
 
 import pytest
@@ -10,10 +11,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.enums.country import Country
 from app.enums.user import UserRole
 from app.exceptions import AntExException
+from app.models.attribution import MarketingTouch, OrderAttribution
 from app.models.city import City
+from app.models.marketing import MarketingCampaign, MarketingCurrency, MarketingPlatform
 from app.models.order import Order
 from app.models.rate import Rate
 from app.models.user import User
+from app.repositories.config import ConfigRepository
 from app.schemas.miniapp import MiniappOrderCreate
 from app.services import order_flow
 
@@ -64,6 +68,65 @@ async def test_create_order_for_user_passes_global_manager_to_notification(
     _, _, notified_manager = notify_mock.await_args.args
     assert notified_manager is not None
     assert notified_manager.id == manager.id
+
+
+@pytest.mark.asyncio
+async def test_create_order_snapshots_latest_marketing_touch_and_window(
+    db_session: AsyncSession,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    city = City(name="Phuket", country=Country.THAILAND)
+    customer = User(telegram_id=700020, username="snapshot", first_name="Snapshot")
+    rate = Rate(currency="RUBTHB", price=0.41, margin=3.0, country=Country.THAILAND)
+    platform = MarketingPlatform(slug="snapshot_ads", name="Snapshot Ads")
+    currency = MarketingCurrency(code="TST", name="Test")
+    db_session.add_all([city, customer, rate, platform, currency])
+    await db_session.flush()
+    campaign = MarketingCampaign(
+        code="SNAPSHOT01",
+        name="Snapshot",
+        platform_id=platform.id,
+        currency_id=currency.id,
+        status="active",
+    )
+    db_session.add(campaign)
+    await db_session.flush()
+    touch = MarketingTouch(
+        user_id=customer.id,
+        campaign_id=campaign.id,
+        user_state="returning",
+        touched_at=datetime.now(UTC),
+    )
+    db_session.add(touch)
+    await db_session.flush()
+    monkeypatch.setattr(order_flow, "notify_order_created", AsyncMock())
+    payload = MiniappOrderCreate(
+        country=Country.THAILAND,
+        cityId=city.id,
+        currencySell="RUB",
+        amountSell=30_000,
+        currencyBuy="THB",
+        amountBuy=12_000,
+        rate=0.4,
+        methodGet="cash",
+    )
+
+    order = await order_flow.create_order_for_user(db_session, customer, payload)
+
+    snapshot = await db_session.scalar(
+        select(OrderAttribution).where(OrderAttribution.order_id == order.id)
+    )
+    assert snapshot is not None
+    assert snapshot.marketing_touch_id == touch.id
+    assert snapshot.campaign_id == campaign.id
+    assert snapshot.attribution_type == "reengagement"
+    assert snapshot.lookback_days == 7
+
+    config = await ConfigRepository(db_session).get_or_create()
+    config.marketing_attribution_window_days = 14
+    await db_session.commit()
+    await db_session.refresh(snapshot)
+    assert snapshot.lookback_days == 7
 
 
 @pytest.mark.asyncio
