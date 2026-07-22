@@ -46,6 +46,9 @@ async def telegram_auth(db: AsyncSession, init_data: str) -> TokenResponse:
         is_bot=user_data.get("is_bot", False),
         is_premium=user_data.get("is_premium", False),
     )
+    if is_new_user:
+        await ReferralService().get_or_create_referral_code(db, user)
+
     referral_code = extract_referral_code_from_start_param(parsed.get("start_param"))
     if referral_code and is_new_user:
         try:
