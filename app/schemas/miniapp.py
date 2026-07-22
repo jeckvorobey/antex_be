@@ -126,11 +126,22 @@ class MiniappCalculatorState(BaseModel):
     amountSell: int
 
 
+class MiniappAexPayoutOption(BaseModel):
+    """Рассчитанный вариант выплаты ATXG без раскрытия внутренней строки Rates."""
+
+    currencyBuy: Literal["USDT", "RUB"]
+    rate: float
+    rateDisplay: str
+    rateText: str
+    availableMethods: list[str]
+
+
 class MiniappExchangeScreenResponse(BaseModel):
     calculator: MiniappCalculatorState
     chips: list[str]
     pairs: list[MiniappRateCard]
     quote: MiniappQuoteResponse
+    aexPayoutOptions: list[MiniappAexPayoutOption]
 
 
 class MiniappMenuItem(BaseModel):

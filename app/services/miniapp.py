@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 from decimal import Decimal
+from typing import Literal
 
 from sqlalchemy import select
 
@@ -12,9 +13,11 @@ from app.models.order import Order
 from app.repositories.city import CityRepository
 from app.repositories.config import ConfigRepository
 from app.repositories.order import OrderRepository
+from app.repositories.rate import RateRepository
 from app.repositories.user import UserRepository
 from app.schemas.city import build_city_out
 from app.schemas.miniapp import (
+    MiniappAexPayoutOption,
     MiniappAexReferralResponse,
     MiniappAexReferralsResponse,
     MiniappAexReferralUserItem,
@@ -56,6 +59,8 @@ from app.services.exchange import (
     ExchangeQuote,
     ExchangeQuoteInput,
     ExchangeService,
+    format_rate_value,
+    get_client_rate,
 )
 from app.services.order_notifications import build_chat_url_for_user
 from app.services.referral import ReferralService, build_referral_link
@@ -346,6 +351,37 @@ async def get_miniapp_exchange(db) -> MiniappExchangeScreenResponse:
         chips=_build_currency_chips(featured),
         pairs=featured,
         quote=quote,
+        aexPayoutOptions=await _build_aex_payout_options(db),
+    )
+
+
+async def _build_aex_payout_options(db) -> list[MiniappAexPayoutOption]:
+    """Строит безопасные итоговые курсы ATXG-выплаты для Mini App."""
+    config = await ConfigRepository(db).get_or_create()
+    aex_usdt_rate = float(config.aex_rate)
+    options = [_build_aex_payout_option("USDT", aex_usdt_rate)]
+
+    internal_rub_rate = await RateRepository(db).find_internal_by_currency("USDTRUB")
+    if internal_rub_rate is not None:
+        rub_rate = aex_usdt_rate * get_client_rate(internal_rub_rate)
+        if rub_rate > 0:
+            options.append(_build_aex_payout_option("RUB", rub_rate))
+    return options
+
+
+def _build_aex_payout_option(
+    currency_buy: Literal["USDT", "RUB"],
+    rate: float,
+) -> MiniappAexPayoutOption:
+    """Форматирует один рассчитанный вариант ATXG-выплаты."""
+    rounded_rate = round(rate, 2)
+    rate_display = format_rate_value(rounded_rate)
+    return MiniappAexPayoutOption(
+        currencyBuy=currency_buy,
+        rate=rounded_rate,
+        rateDisplay=rate_display,
+        rateText=f"1 ATXG = {rate_display} {currency_buy}",
+        availableMethods=["bank_account"],
     )
 
 

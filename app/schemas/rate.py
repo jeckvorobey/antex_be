@@ -59,6 +59,13 @@ class RateCreate(BaseModel):
             raise ValueError("Internal rate currency is reserved")
         return normalized
 
+    @field_validator("country")
+    @classmethod
+    def reject_internal_country(cls, value: Country) -> Country:
+        if value is Country.INTERNAL:
+            raise ValueError("Internal exchange country is reserved")
+        return value
+
 
 class RateUpdate(BaseModel):
     model_config = {"extra": "forbid"}
@@ -78,6 +85,13 @@ class RateUpdate(BaseModel):
         if normalized in INTERNAL_RATE_CURRENCIES:
             raise ValueError("Internal rate currency is reserved")
         return normalized
+
+    @field_validator("country")
+    @classmethod
+    def reject_internal_country(cls, value: Country | None) -> Country | None:
+        if value is Country.INTERNAL:
+            raise ValueError("Internal exchange country is reserved")
+        return value
 
 
 def build_rate_out(rate) -> RateOut:

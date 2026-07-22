@@ -15,10 +15,11 @@ from app.exceptions import AntExException
 from app.repositories.city import CityRepository
 from app.repositories.config import ConfigRepository
 from app.repositories.order import OrderRepository
+from app.repositories.rate import RateRepository
 from app.repositories.user import UserRepository
 from app.schemas.miniapp import MiniappOrderCreate
 from app.services.aex import AexService
-from app.services.exchange import CANONICAL_BUY_CURRENCIES, ExchangeService
+from app.services.exchange import CANONICAL_BUY_CURRENCIES, ExchangeService, get_client_rate
 from app.services.notifications import notify_order_created
 from app.services.order_numbers import OrderNumberService
 
@@ -26,6 +27,7 @@ logger = logging.getLogger(__name__)
 MAX_ACTIVE_ORDERS_PER_USER = 10
 TOKEN_CURRENCY = "ATXG"
 TOKEN_RATE_BASE_CURRENCY = "USDT"
+INTERNAL_PAYOUT_CURRENCIES = frozenset({"USDT", "RUB"})
 
 MIN_AMOUNT_BY_METHOD: dict[str, dict[str, int]] = {
     MethodGet.CASH: {"RUB": 25_000, "USDT": 500},
@@ -70,6 +72,9 @@ async def create_order_for_user(
     await _validate_rate_pair_exists(db, payload)
     currency_sell = _normalize_token_currency(payload.currency_sell)
     currency_buy = payload.currency_buy.upper()
+    server_quote = await _get_internal_aex_quote(db, payload)
+    amount_buy = server_quote[0] if server_quote else payload.amount_buy
+    rate = server_quote[1] if server_quote else payload.rate
     _validate_quote_country(payload.country, currency_buy)
     await _validate_aex_withdrawal_balance(db, user.id, payload)
 
@@ -90,8 +95,8 @@ async def create_order_for_user(
             currencySell=currency_sell,
             amountSell=payload.amount_sell,
             currencyBuy=currency_buy,
-            amountBuy=payload.amount_buy,
-            rate=payload.rate,
+            amountBuy=amount_buy,
+            rate=rate,
             status=int(OrderStatus.CREATED),
             contactTelegram=user.username or None,
             methodGet=payload.method_get,
@@ -160,6 +165,21 @@ async def create_order_for_user(
 
 
 async def _validate_rate_pair_exists(db: AsyncSession, payload: MiniappOrderCreate) -> None:
+    if _is_internal_aex_payout(payload):
+        if payload.currency_buy.upper() == "USDT":
+            config = await ConfigRepository(db).get_or_create()
+            if config.aex_rate > 0:
+                return
+        else:
+            internal_rate = await RateRepository(db).find_internal_by_currency("USDTRUB")
+            if internal_rate is not None and get_client_rate(internal_rate) > 0:
+                return
+        raise AntExException(
+            "Rate pair is unavailable",
+            code="RATE_PAIR_UNAVAILABLE",
+            status_code=422,
+        )
+
     exchange_service = ExchangeService()
     direct_key = _resolve_rate_pair_key(exchange_service, payload)
     if direct_key is None:
@@ -178,6 +198,36 @@ async def _validate_rate_pair_exists(db: AsyncSession, payload: MiniappOrderCrea
         )
 
 
+async def _get_internal_aex_quote(
+    db: AsyncSession,
+    payload: MiniappOrderCreate,
+) -> tuple[float, float] | None:
+    """Возвращает серверную котировку и сумму внутренней выплаты ATXG."""
+    if not _is_internal_aex_payout(payload):
+        return None
+
+    if payload.currency_buy.upper() == "USDT":
+        config = await ConfigRepository(db).get_or_create()
+        rate = round(float(config.aex_rate), 2)
+    else:
+        internal_rate = await RateRepository(db).find_internal_by_currency("USDTRUB")
+        if internal_rate is None:
+            raise AntExException(
+                "Rate pair is unavailable",
+                code="RATE_PAIR_UNAVAILABLE",
+                status_code=422,
+            )
+        rate = get_client_rate(internal_rate)
+
+    if rate <= 0:
+        raise AntExException(
+            "Rate pair is unavailable",
+            code="RATE_PAIR_UNAVAILABLE",
+            status_code=422,
+        )
+    return round(float(payload.amount_sell) * rate, 2), rate
+
+
 async def _resolve_city(
     db: AsyncSession,
     payload: MiniappOrderCreate,
@@ -193,6 +243,26 @@ async def _resolve_city(
 
 
 def _validate_country_and_method(payload: MiniappOrderCreate, city) -> None:
+    if _is_internal_aex_payout(payload):
+        if (
+            payload.country != Country.INTERNAL
+            or payload.method_get != MethodGet.BANK_ACCOUNT
+            or payload.city_id is not None
+        ):
+            raise AntExException(
+                "Invalid internal payout contract",
+                code="INTERNAL_PAYOUT_CONTRACT_INVALID",
+                status_code=422,
+            )
+        return
+
+    if payload.country == Country.INTERNAL:
+        raise AntExException(
+            "Internal country is reserved for ATXG payouts",
+            code="INTERNAL_PAYOUT_CONTRACT_INVALID",
+            status_code=422,
+        )
+
     if payload.method_get == MethodGet.CASH:
         if payload.city_id is None:
             raise AntExException(
@@ -225,6 +295,8 @@ def _validate_country_and_method(payload: MiniappOrderCreate, city) -> None:
 
 
 def _validate_quote_country(country: Country, currency_buy: str) -> None:
+    if country == Country.INTERNAL and currency_buy.upper() in INTERNAL_PAYOUT_CURRENCIES:
+        return
     expected_country = {
         "THB": Country.THAILAND,
         "GEL": Country.GEORGIA,
@@ -273,6 +345,8 @@ def _resolve_rate_pair_key(
     """Вернуть ключ пары в `Rates` для заявки, включая ATXG через USDT-базу."""
     if _is_aex_withdrawal(payload):
         buy = payload.currency_buy.upper()
+        if buy in INTERNAL_PAYOUT_CURRENCIES:
+            return buy
         if buy not in CANONICAL_BUY_CURRENCIES:
             return None
         return f"{TOKEN_RATE_BASE_CURRENCY}{buy}"
@@ -286,6 +360,13 @@ def _resolve_rate_pair_key(
 def _is_aex_withdrawal(payload: MiniappOrderCreate) -> bool:
     """Проверить, что заявка выводит внутренний токен."""
     return payload.currency_sell.upper() == TOKEN_CURRENCY
+
+
+def _is_internal_aex_payout(payload: MiniappOrderCreate) -> bool:
+    """Проверить внутреннюю выплату ATXG в USDT или RUB."""
+    return (
+        _is_aex_withdrawal(payload) and payload.currency_buy.upper() in INTERNAL_PAYOUT_CURRENCIES
+    )
 
 
 def _normalize_token_currency(currency: str) -> str:

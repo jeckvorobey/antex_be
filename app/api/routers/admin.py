@@ -456,10 +456,16 @@ async def create_rate(body: RateCreate, db: DbDep, _: AdminUser) -> AdminRateOut
 @router.patch("/rates/{rate_id}", response_model=AdminRateOut)
 async def update_rate(rate_id: int, body: RateUpdate, db: DbDep, _: AdminUser) -> AdminRateOut:
     repo = RateRepository(db)
-    rate = await repo.get_visible_by_id(rate_id)
+    rate = await repo.get_by_id(rate_id)
     if not rate:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Rate not found")
-    updated = await repo.update(rate, **body.model_dump(exclude_none=True))
+    update_data = body.model_dump(exclude_unset=True, exclude_none=True)
+    if rate.is_internal and (set(update_data) != {"margin"}):
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Only margin can be changed for an internal rate",
+        )
+    updated = await repo.update(rate, **update_data)
     await db.commit()
     return build_admin_rate_out(updated)
 
