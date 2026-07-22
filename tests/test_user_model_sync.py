@@ -95,6 +95,10 @@ async def test_check_user_refreshes_user_from_start_command(db_session) -> None:
     acquisition = await AttributionService(db_session).get_acquisition(user.id)
     assert acquisition is not None and acquisition.source_type == "direct"
     assert created is True
+    assert user.referral_code is not None
+    assert len(user.referral_code) == 8
+    assert user.referral_code.isascii()
+    assert user.referral_code.isalnum()
 
     refreshed_tg_user = TgUser(
         id=555,
@@ -136,6 +140,12 @@ async def test_telegram_auth_refreshes_existing_user(
 
     first_token = await telegram_auth(db_session, "init-data")
     assert first_token.access_token == "token-1"
+    registered_user = await UserRepository(db_session).get_one(1)
+    assert registered_user is not None
+    assert registered_user.referral_code is not None
+    assert len(registered_user.referral_code) == 8
+    assert registered_user.referral_code.isascii()
+    assert registered_user.referral_code.isalnum()
 
     monkeypatch.setattr(
         "app.services.auth.validate_telegram_init_data",

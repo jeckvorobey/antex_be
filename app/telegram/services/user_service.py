@@ -8,6 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.models.user import User
 from app.repositories.user import UserRepository
 from app.services.attribution import AttributionService
+from app.services.referral import ReferralService
 
 
 async def check_user(db: AsyncSession, tg_user: TgUser) -> tuple[User, bool]:
@@ -22,5 +23,6 @@ async def check_user(db: AsyncSession, tg_user: TgUser) -> tuple[User, bool]:
         is_premium=getattr(tg_user, "is_premium", False) or False,
     )
     if created:
+        await ReferralService().get_or_create_referral_code(db, user)
         await AttributionService(db).ensure_acquisition(user.id, source_type="direct")
     return user, created
