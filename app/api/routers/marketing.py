@@ -127,7 +127,7 @@ async def list_campaigns(
 @router.get("/campaigns/{campaign_id}", response_model=CampaignOut)
 async def get_campaign(campaign_id: int, db: DbDep, _: AdminUser) -> CampaignOut:
     service = MarketingAdminService(db)
-    return service.campaign_out(await service.require_campaign(campaign_id))
+    return await service.campaign_out_with_aggregates(campaign_id)
 
 
 @router.patch("/campaigns/{campaign_id}", response_model=CampaignOut)

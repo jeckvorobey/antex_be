@@ -74,6 +74,8 @@ class AttributionService:
         touched_at: datetime | None = None,
         session_key: str | None = None,
     ) -> MarketingTouch:
+        if not session_key:
+            raise ValueError("MARKETING_SESSION_KEY_REQUIRED")
         campaign = await self.session.scalar(
             select(MarketingCampaign).where(MarketingCampaign.code == code)
         )
@@ -88,16 +90,15 @@ class AttributionService:
                 reason="inactive_campaign",
             )
             raise ValueError("MARKETING_CAMPAIGN_INACTIVE")
-        if session_key is not None:
-            existing = await self.session.scalar(
-                select(MarketingTouch).where(
-                    MarketingTouch.user_id == user_id,
-                    MarketingTouch.campaign_id == campaign.id,
-                    MarketingTouch.session_key == session_key,
-                )
+        existing = await self.session.scalar(
+            select(MarketingTouch).where(
+                MarketingTouch.user_id == user_id,
+                MarketingTouch.campaign_id == campaign.id,
+                MarketingTouch.session_key == session_key,
             )
-            if existing is not None:
-                return existing
+        )
+        if existing is not None:
+            return existing
         touch = MarketingTouch(
             user_id=user_id,
             campaign_id=campaign.id,
@@ -111,8 +112,6 @@ class AttributionService:
                 self.session.add(touch)
                 await self.session.flush()
         except IntegrityError:
-            if session_key is None:
-                raise
             existing = await self.session.scalar(
                 select(MarketingTouch).where(
                     MarketingTouch.user_id == user_id,

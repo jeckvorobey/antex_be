@@ -65,6 +65,31 @@ async def test_existing_acquired_user_cannot_bind_referrer_through_public_servic
     assert existing.referred_by is None
 
 
+async def test_referral_bind_replay_remains_idempotent_after_trusted_auth(
+    db_session,
+) -> None:
+    from app.services.referral import ReferralService
+
+    referrer = User(telegram_id=23, referral_code="REPLAY01")
+    referred = User(telegram_id=24)
+    db_session.add_all([referrer, referred])
+    await db_session.flush()
+    referred.referred_by = referrer.id
+    db_session.add(
+        UserAcquisition(
+            user_id=referred.id,
+            source_type="referral",
+            referrer_user_id=referrer.id,
+        )
+    )
+    await db_session.flush()
+
+    result = await ReferralService().bind_referral(db_session, referred, referrer.referral_code)
+
+    assert result.id == referred.id
+    assert result.referred_by == referrer.id
+
+
 async def test_new_user_receives_referrer_and_referral_acquisition(db_session, monkeypatch) -> None:
     from app.services import auth
     from app.services.attribution import AttributionService
@@ -162,11 +187,30 @@ async def test_campaign_touches_do_not_overwrite_referral_acquisition(db_session
 
     service = AttributionService(db_session)
     await service.ensure_acquisition(user.id, source_type="referral", referrer_user_id=referrer.id)
-    touch = await service.record_marketing_touch(user.id, campaign.code, is_new_user=False)
+    touch = await service.record_marketing_touch(
+        user.id,
+        campaign.code,
+        is_new_user=False,
+        session_key="referral-campaign-touch",
+    )
 
     acquisition = await service.get_acquisition(user.id)
     assert acquisition is not None and acquisition.source_type == "referral"
     assert touch.user_state == "returning"
+
+
+async def test_marketing_touch_requires_trusted_session_key(db_session) -> None:
+    from app.services.attribution import AttributionService
+
+    user, _ = await UserRepository(db_session).find_or_create(12)
+    campaign = await _campaign(db_session, "SESSION0001")
+
+    with pytest.raises(ValueError, match="MARKETING_SESSION_KEY_REQUIRED"):
+        await AttributionService(db_session).record_marketing_touch(
+            user.id,
+            campaign.code,
+            is_new_user=False,
+        )
 
 
 async def test_last_touch_within_window_creates_reengagement_snapshot(db_session) -> None:
@@ -178,9 +222,18 @@ async def test_last_touch_within_window_creates_reengagement_snapshot(db_session
     service = AttributionService(db_session)
     await service.ensure_acquisition(user.id, source_type="direct")
     await service.record_marketing_touch(
-        user.id, first.code, is_new_user=False, touched_at=datetime.now(UTC) - timedelta(days=2)
+        user.id,
+        first.code,
+        is_new_user=False,
+        touched_at=datetime.now(UTC) - timedelta(days=2),
+        session_key="old-touch",
     )
-    last = await service.record_marketing_touch(user.id, second.code, is_new_user=False)
+    last = await service.record_marketing_touch(
+        user.id,
+        second.code,
+        is_new_user=False,
+        session_key="last-touch",
+    )
 
     result = await service.resolve_order_attribution(user.id, datetime.now(UTC), 7)
 
@@ -203,7 +256,11 @@ async def test_touch_outside_window_has_none_attribution(db_session) -> None:
     service = AttributionService(db_session)
     await service.ensure_acquisition(user.id, source_type="direct")
     await service.record_marketing_touch(
-        user.id, campaign.code, is_new_user=False, touched_at=datetime.now(UTC) - timedelta(days=8)
+        user.id,
+        campaign.code,
+        is_new_user=False,
+        touched_at=datetime.now(UTC) - timedelta(days=8),
+        session_key="outside-window",
     )
 
     result = await service.resolve_order_attribution(user.id, datetime.now(UTC), 7)

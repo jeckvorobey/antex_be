@@ -69,6 +69,9 @@ class ReferralService:
         - Нельзя менять уже установленную пользовательскую привязку
         - Код должен существовать
         """
+        if user.referred_by is not None:
+            return user
+
         acquisition = await db.scalar(
             select(UserAcquisition.id).where(UserAcquisition.user_id == user.id)
         )
@@ -79,8 +82,6 @@ class ReferralService:
                 code="REFERRAL_EXISTING_USER",
                 status_code=409,
             )
-        if user.referred_by is not None:
-            return user
 
         repo = UserRepository(db)
         self._validate_referral_code(referral_code)

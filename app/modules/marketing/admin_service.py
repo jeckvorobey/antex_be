@@ -140,7 +140,7 @@ class MarketingAdminService:
                     ) from error
                 continue
             await self.session.commit()
-            return self.campaign_out(await self.require_campaign(campaign.id))
+            return await self.campaign_out_with_aggregates(campaign.id)
 
         raise AntExException(
             "Unable to persist a unique marketing code",
@@ -175,7 +175,12 @@ class MarketingAdminService:
         for field, value in values.items():
             setattr(campaign, field, value)
         await self.session.commit()
-        return self.campaign_out(await self.require_campaign(campaign.id))
+        return await self.campaign_out_with_aggregates(campaign.id)
+
+    async def campaign_out_with_aggregates(self, campaign_id: int) -> CampaignOut:
+        campaign = await self.require_campaign(campaign_id)
+        aggregates = await self.repository.campaign_aggregates([campaign_id])
+        return self.campaign_out(campaign, aggregates.get(campaign_id))
 
     async def list_platforms(self) -> list[MarketingPlatformOut]:
         return [
@@ -462,7 +467,7 @@ class MarketingAdminService:
             "applications": applications,
             "uniqueApplicants": unique_applicants,
             "completedApplications": completed,
-            "attributionToApplicationRate": _rate(unique_applicants, attributed),
+            "attributionToApplicationRate": _rate(unique_applicants, unique_touched_users),
             "applicationCompletionRate": _rate(completed, applications),
             "spendTotal": spend_total,
             "costPerApplication": (
@@ -552,7 +557,7 @@ def _application_out(row: dict[str, Any], spend: float) -> ApplicationRowOut:
         returningUserApplications=returning_applications,
         uniqueApplicants=unique,
         completedApplications=completed,
-        attributionToApplicationRate=_rate(unique, attributed),
+        attributionToApplicationRate=_rate(unique, unique_touched),
         newUserToApplicationRate=_rate(new_applicants, new_users),
         touchToApplicationRate=_rate(applications, touches),
         applicationCompletionRate=_rate(completed, applications),

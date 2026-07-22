@@ -238,6 +238,39 @@ async def test_campaign_create_rejects_direct_code_and_patch_immutable_fields(
     assert updated.json()["status"] == "archived"
 
 
+async def test_campaign_detail_and_update_include_current_aggregates(
+    marketing_api_client,
+) -> None:
+    client, db_session, token = marketing_api_client
+    campaign_data = (await create_campaign(client, token)).json()
+    user, _ = await UserRepository(db_session).find_or_create(777000, first_name="Detail")
+    db_session.add(
+        UserAcquisition(
+            user_id=user.id,
+            source_type="campaign",
+            campaign_id=campaign_data["id"],
+        )
+    )
+    await db_session.flush()
+
+    detail = await client.get(
+        f"/api/admin/marketing/campaigns/{campaign_data['id']}",
+        headers=auth(token),
+    )
+    updated = await client.patch(
+        f"/api/admin/marketing/campaigns/{campaign_data['id']}",
+        headers=auth(token),
+        json={"name": "Updated metrics"},
+    )
+
+    assert detail.status_code == 200, detail.text
+    assert detail.json()["newUsers"] == 1
+    assert detail.json()["attributedUsers"] == 1
+    assert updated.status_code == 200, updated.text
+    assert updated.json()["newUsers"] == 1
+    assert updated.json()["attributedUsers"] == 1
+
+
 async def test_campaign_create_rejects_non_preview_token(marketing_api_client) -> None:
     """Обычный access token нельзя использовать вместо подписанного preview token."""
     client, _, token = marketing_api_client
@@ -541,6 +574,49 @@ async def test_dashboard_unique_touched_users_is_distinct_across_campaigns(
     assert response.json()["summary"]["returningUsers"] == 1
     assert response.json()["summary"]["uniqueTouchedUsers"] == 1
     assert response.json()["summary"]["uniqueApplicants"] == 1
+
+
+async def test_dashboard_reengagement_conversion_uses_unique_touched_users(
+    marketing_api_client,
+) -> None:
+    client, db_session, token = marketing_api_client
+    campaign_data = (await create_campaign(client, token)).json()
+    user, _ = await UserRepository(db_session).find_or_create(777099, first_name="Returning")
+    touched_at = datetime.now(UTC) - timedelta(hours=1)
+    touch = MarketingTouch(
+        user_id=user.id,
+        campaign_id=campaign_data["id"],
+        touched_at=touched_at,
+        user_state="returning",
+        session_key="dashboard-returning",
+    )
+    order = _order(user.id, "RETURN0001", datetime.now(UTC))
+    db_session.add_all([touch, order])
+    await db_session.flush()
+    db_session.add(
+        OrderAttribution(
+            order_id=order.id,
+            campaign_id=campaign_data["id"],
+            marketing_touch_id=touch.id,
+            attribution_type="reengagement",
+            attributed_at=touched_at,
+            lookback_days=7,
+        )
+    )
+    await db_session.flush()
+
+    response = await client.get(
+        "/api/admin/marketing/dashboard",
+        headers=auth(token),
+        params={"dateFrom": str(date.today()), "dateTo": str(date.today()), "currency": "USDT"},
+    )
+
+    assert response.status_code == 200, response.text
+    summary = response.json()["summary"]
+    assert summary["attributedUsers"] == 0
+    assert summary["uniqueTouchedUsers"] == 1
+    assert summary["uniqueApplicants"] == 1
+    assert summary["attributionToApplicationRate"] == 100
 
 
 async def test_dashboard_does_not_merge_mixed_currency_or_claim_roas(

@@ -76,7 +76,7 @@ async def telegram_auth(db: AsyncSession, init_data: str) -> TokenResponse:
                 user.id,
                 code,
                 is_new_user=is_new_user,
-                session_key=_marketing_session_key(parsed, tg_id, start_param),
+                session_key=_marketing_session_key(init_data, tg_id, start_param),
             )
             marketing_touch_created = True
             if is_new_user:
@@ -118,13 +118,9 @@ def extract_referral_code_from_start_param(start_param: object) -> str | None:
     return referral_code or None
 
 
-def _marketing_session_key(parsed: dict, telegram_id: int, start_param: str) -> str | None:
+def _marketing_session_key(init_data: str, telegram_id: int, start_param: str) -> str:
     """Дедуплицирует replay одного trusted Telegram initData без хранения initData."""
-    query_id = parsed.get("query_id")
-    auth_date = parsed.get("auth_date")
-    if not isinstance(query_id, str) and not isinstance(auth_date, str | int):
-        return None
-    material = f"{telegram_id}:{query_id or ''}:{auth_date or ''}:{start_param}"
+    material = f"{telegram_id}:{start_param}:{init_data}"
     return hashlib.sha256(material.encode()).hexdigest()
 
 
