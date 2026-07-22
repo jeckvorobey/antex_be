@@ -230,6 +230,10 @@ async def test_internal_rates_are_visible_only_in_admin_list(
     assert admin_rows["USDTRUB"]["countryRuName"] is None
     assert admin_rows["USDTRUB"]["isInternal"] is True
     assert admin_rows["RUBUSDT"]["isInternal"] is True
+    assert admin_rows["RUBUSDT"]["baseRate"] == pytest.approx(1 / 90.0)
+    assert admin_rows["RUBUSDT"]["baseRateDisplay"] == "0.011111"
+    assert admin_rows["RUBUSDT"]["finalRate"] == pytest.approx(0.010778)
+    assert admin_rows["RUBUSDT"]["finalRateDisplay"] == "0.010778"
     assert detail_response.status_code == 404
     assert patch_response.status_code == 404
     assert delete_response.status_code == 404

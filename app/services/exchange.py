@@ -20,6 +20,7 @@ from app.repositories.rate import RateRepository
 from app.services.rate_calculator import apply_margin_to_rate
 
 RATE_PRECISION = 2
+ADMIN_INVERSE_RATE_PRECISION = 6
 HOME_RATE_PREVIEW_LIMIT = 3
 FEATURED_PAIR_PRIORITY = ("rub-thb", "usdt-thb", "usdt-gel")
 HOME_CHIP_PRIORITY = ("USDT", "THB", "RUB", "GEL", "VND")
@@ -59,6 +60,15 @@ def round_rate_value(rate: float) -> float:
 
 def format_rate_value(rate: float) -> str:
     return f"{round_rate_value(rate):.{RATE_PRECISION}f}"
+
+
+def is_admin_inverse_rate(rate: Rate) -> bool:
+    return rate.is_internal and rate.currency.upper() == "RUBUSDT"
+
+
+def format_admin_rate_value(rate: Rate, value: float) -> str:
+    precision = ADMIN_INVERSE_RATE_PRECISION if is_admin_inverse_rate(rate) else RATE_PRECISION
+    return f"{round(value, precision):.{precision}f}"
 
 
 def is_rub_cross_pair(currency: str) -> bool:
@@ -103,6 +113,11 @@ def get_admin_base_rate(rate: Rate) -> float:
 
 
 def get_admin_final_rate(rate: Rate) -> float:
+    if is_admin_inverse_rate(rate):
+        return round(
+            apply_margin_to_rate(rate.price, rate.margin),
+            ADMIN_INVERSE_RATE_PRECISION,
+        )
     return get_display_final_rate(rate)
 
 
