@@ -191,6 +191,11 @@ async def test_internal_rates_are_visible_only_in_admin_list(
         headers=admin_headers,
         json={"margin": 5.0},
     )
+    protected_patch_response = await client.patch(
+        f"/api/admin/rates/{internal.id}",
+        headers=admin_headers,
+        json={"price": 100.0},
+    )
     delete_response = await client.delete(
         f"/api/admin/rates/{internal.id}",
         headers=admin_headers,
@@ -235,7 +240,10 @@ async def test_internal_rates_are_visible_only_in_admin_list(
     assert admin_rows["RUBUSDT"]["finalRate"] == pytest.approx(0.010778)
     assert admin_rows["RUBUSDT"]["finalRateDisplay"] == "0.010778"
     assert detail_response.status_code == 404
-    assert patch_response.status_code == 404
+    assert patch_response.status_code == 200
+    assert patch_response.json()["margin"] == 5.0
+    assert patch_response.json()["finalRate"] == pytest.approx(85.5)
+    assert protected_patch_response.status_code == 422
     assert delete_response.status_code == 404
     assert refresh_response.status_code == 200
     assert set(refresh_response.json()["rates"]) == {"USDTTHB"}
@@ -290,6 +298,47 @@ async def test_admin_cannot_rename_visible_rate_to_reserved_internal_rate(
     assert response.status_code == 422
     await db_session.refresh(visible)
     assert visible.currency == "USDTTHB"
+
+
+@pytest.mark.asyncio
+async def test_admin_cannot_assign_internal_country_to_external_entities(
+    api_client: tuple[AsyncClient, AsyncSession],
+) -> None:
+    """Техническая страна доступна только заявкам внутреннего обмена."""
+    client, db_session = api_client
+    admin, _ = await seed_admin_exchange_data(db_session)
+    token = create_access_token({"sub": str(admin.id), "type": "admin"})
+    headers = {"Authorization": f"Bearer {token}"}
+    visible_rate = await db_session.scalar(select(Rate).where(Rate.currency == "USDTTHB"))
+    city = await db_session.scalar(select(City).where(City.name == "Bangkok"))
+    assert visible_rate is not None
+    assert city is not None
+
+    create_city = await client.post(
+        "/api/admin/cities",
+        headers=headers,
+        json={"name": "Internal", "country": "internal"},
+    )
+    update_city = await client.patch(
+        f"/api/admin/cities/{city.id}",
+        headers=headers,
+        json={"country": "internal"},
+    )
+    create_rate = await client.post(
+        "/api/admin/rates",
+        headers=headers,
+        json={"currency": "USDTXXX", "country": "internal", "price": 1.0},
+    )
+    update_rate = await client.patch(
+        f"/api/admin/rates/{visible_rate.id}",
+        headers=headers,
+        json={"country": "internal"},
+    )
+
+    assert create_city.status_code == 422
+    assert update_city.status_code == 422
+    assert create_rate.status_code == 422
+    assert update_rate.status_code == 422
 
 
 @pytest.mark.asyncio

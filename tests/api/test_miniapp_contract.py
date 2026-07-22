@@ -109,6 +109,8 @@ async def test_miniapp_home_and_exchange_are_backend_driven(
 ) -> None:
     client, db_session = api_client
     city, _, customer = await seed_exchange_data(db_session)
+    db_session.add(Rate(currency="USDTRUB", price=80.0, margin=5.0, country=None, is_internal=True))
+    await db_session.flush()
     token = create_access_token({"sub": str(customer.id), "role": customer.role})
 
     home_response = await client.get(
@@ -180,9 +182,44 @@ async def test_miniapp_home_and_exchange_are_backend_driven(
     assert exchange["pairs"][0]["calculationRate"] == pytest.approx(0.4)
     assert exchange["pairs"][0]["rateDisplay"] == "2.51"
     assert exchange["pairs"][0]["rateText"] == "1 THB = 2.51 RUB"
+    assert exchange["aexPayoutOptions"] == [
+        {
+            "currencyBuy": "USDT",
+            "rate": 1.0,
+            "rateDisplay": "1.00",
+            "rateText": "1 ATXG = 1.00 USDT",
+            "availableMethods": ["bank_account"],
+        },
+        {
+            "currencyBuy": "RUB",
+            "rate": 76.0,
+            "rateDisplay": "76.00",
+            "rateText": "1 ATXG = 76.00 RUB",
+            "availableMethods": ["bank_account"],
+        },
+    ]
     assert {"rub-gel", "rub-vnd", "usdt-gel", "usdt-vnd"} <= {
         pair["id"] for pair in exchange["pairs"]
     }
+
+
+@pytest.mark.asyncio
+async def test_miniapp_exchange_omits_rub_payout_without_internal_rate(
+    api_client: tuple[AsyncClient, AsyncSession],
+) -> None:
+    """RUB не предлагается, когда системный USDTRUB ещё не получен."""
+    client, db_session = api_client
+    _, _, customer = await seed_exchange_data(db_session)
+    token = create_access_token({"sub": str(customer.id), "role": customer.role})
+
+    response = await client.get(
+        "/api/miniapp/exchange",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+
+    assert response.status_code == 200
+    assert [item["currencyBuy"] for item in response.json()["aexPayoutOptions"]] == ["USDT"]
+    assert "USDTRUB" not in response.text
 
 
 @pytest.mark.asyncio
@@ -1090,6 +1127,157 @@ async def test_miniapp_order_accepts_atxg_withdrawal_via_usdt_based_pair(
     assert [(entry.entry_type, entry.amount, entry.reference_type) for entry in entries] == [
         ("hold", 400, "order_withdraw_hold")
     ]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("currency_buy", "amount_buy", "rate"),
+    [("USDT", 400.0, 1.0), ("RUB", 30400.0, 76.0)],
+)
+async def test_miniapp_order_accepts_internal_atxg_payout(
+    api_client: tuple[AsyncClient, AsyncSession],
+    currency_buy: str,
+    amount_buy: float,
+    rate: float,
+) -> None:
+    """Внутренняя ATXG-выплата сохраняет псевдострану и резервирует баланс."""
+    client, db_session = api_client
+    _, _, customer = await seed_exchange_data(db_session)
+    db_session.add(Rate(currency="USDTRUB", price=80.0, margin=5.0, country=None, is_internal=True))
+    await credit_aex_wallet(db_session, customer.id, 1000)
+    token = create_access_token({"sub": str(customer.id), "role": customer.role})
+
+    response = await client.post(
+        "/api/miniapp/orders",
+        headers={"Authorization": f"Bearer {token}"},
+        json={
+            "country": "internal",
+            "cityId": None,
+            "currencySell": "ATXG",
+            "amountSell": 400,
+            "currencyBuy": currency_buy,
+            "amountBuy": amount_buy,
+            "rate": rate,
+            "methodGet": "bank_account",
+        },
+    )
+
+    assert response.status_code == 201
+    assert response.json()["country"] == "internal"
+    assert response.json()["methodGet"] == "bank_account"
+    wallet = await db_session.scalar(select(AexWallet).where(AexWallet.user_id == customer.id))
+    assert wallet is not None
+    assert wallet.balance_available == 600
+    assert wallet.balance_reserved == 400
+
+
+@pytest.mark.asyncio
+async def test_miniapp_internal_payout_recalculates_client_quote(
+    api_client: tuple[AsyncClient, AsyncSession],
+) -> None:
+    """Внутренняя выплата не должна принимать курс и сумму из payload клиента."""
+    client, db_session = api_client
+    _, _, customer = await seed_exchange_data(db_session)
+    await credit_aex_wallet(db_session, customer.id, 1000)
+    token = create_access_token({"sub": str(customer.id), "role": customer.role})
+
+    response = await client.post(
+        "/api/miniapp/orders",
+        headers={"Authorization": f"Bearer {token}"},
+        json={
+            "country": "internal",
+            "cityId": None,
+            "currencySell": "ATXG",
+            "amountSell": 400,
+            "currencyBuy": "USDT",
+            "amountBuy": 999999,
+            "rate": 999999,
+            "methodGet": "bank_account",
+        },
+    )
+
+    assert response.status_code == 201
+    assert response.json()["amountBuy"] == pytest.approx(400)
+    assert response.json()["rate"] == pytest.approx(1)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "overrides",
+    [
+        {"currencySell": "RUB"},
+        {"country": "thailand"},
+        {"methodGet": "qrcode"},
+        {"cityId": 1},
+        {"currencyBuy": "THB"},
+    ],
+)
+async def test_miniapp_order_rejects_invalid_internal_payout_contract(
+    api_client: tuple[AsyncClient, AsyncSession],
+    overrides: dict[str, object],
+) -> None:
+    """Внутренняя страна не должна обходить ограничения пары, метода и города."""
+    client, db_session = api_client
+    city, _, customer = await seed_exchange_data(db_session)
+    await credit_aex_wallet(db_session, customer.id, 1000)
+    token = create_access_token({"sub": str(customer.id), "role": customer.role})
+    payload: dict[str, object] = {
+        "country": "internal",
+        "cityId": None,
+        "currencySell": "ATXG",
+        "amountSell": 400,
+        "currencyBuy": "USDT",
+        "amountBuy": 400,
+        "rate": 1.0,
+        "methodGet": "bank_account",
+    }
+    payload.update(overrides)
+    if overrides.get("cityId") == 1:
+        payload["cityId"] = city.id
+
+    response = await client.post(
+        "/api/miniapp/orders",
+        headers={"Authorization": f"Bearer {token}"},
+        json=payload,
+    )
+
+    assert response.status_code == 422
+    assert await db_session.scalar(select(func.count(Order.id))) == 0
+
+
+@pytest.mark.asyncio
+async def test_miniapp_order_rejects_non_positive_internal_rub_rate(
+    api_client: tuple[AsyncClient, AsyncSession],
+) -> None:
+    """Нулевая внутренняя пара не разрешает прямой API-обход Mini App."""
+    client, db_session = api_client
+    _, _, customer = await seed_exchange_data(db_session)
+    db_session.add(Rate(currency="USDTRUB", price=0.0, margin=3.0, country=None, is_internal=True))
+    await credit_aex_wallet(db_session, customer.id, 1000)
+    token = create_access_token({"sub": str(customer.id), "role": customer.role})
+
+    response = await client.post(
+        "/api/miniapp/orders",
+        headers={"Authorization": f"Bearer {token}"},
+        json={
+            "country": "internal",
+            "cityId": None,
+            "currencySell": "ATXG",
+            "amountSell": 400,
+            "currencyBuy": "RUB",
+            "amountBuy": 1,
+            "rate": 1,
+            "methodGet": "bank_account",
+        },
+    )
+
+    assert response.status_code == 422
+    assert response.json()["code"] == "RATE_PAIR_UNAVAILABLE"
+    assert await db_session.scalar(select(func.count(Order.id))) == 0
+    wallet = await db_session.scalar(select(AexWallet).where(AexWallet.user_id == customer.id))
+    assert wallet is not None
+    assert wallet.balance_available == 1000
+    assert wallet.balance_reserved == 0
 
 
 @pytest.mark.asyncio

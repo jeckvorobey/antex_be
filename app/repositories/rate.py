@@ -39,6 +39,16 @@ class RateRepository(BaseRepository[Rate]):
         )
         return result.scalar_one_or_none()
 
+    async def find_internal_by_currency(self, currency: str) -> Rate | None:
+        """Ищет системный курс по коду без расширения публичных выборок."""
+        result = await self.session.execute(
+            select(Rate).where(
+                func.upper(Rate.currency) == currency.upper(),
+                Rate.is_internal.is_(True),
+            )
+        )
+        return result.scalar_one_or_none()
+
     async def get_visible(self) -> list[Rate]:
         """Возвращает только внешние курсы, разрешённые для API и UI."""
         result = await self.session.execute(

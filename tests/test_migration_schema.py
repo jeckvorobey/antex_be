@@ -130,6 +130,24 @@ def test_internal_rates_migration_hides_existing_reserved_pairs() -> None:
     assert "currency IN ('USDTRUB', 'RUBUSDT')" in result.stdout
 
 
+def test_internal_exchange_country_migration_extends_shared_enum() -> None:
+    """Migration 025 должна добавить псевдострану внутренних заявок."""
+    env = os.environ.copy()
+    env["DATABASE_URL"] = "postgresql+asyncpg://antex:antex@localhost:5432/antex"
+
+    result = subprocess.run(
+        [sys.executable, "-m", "alembic", "upgrade", "head", "--sql"],
+        cwd=BACK_ROOT,
+        env=env,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert "ALTER TYPE country_enum ADD VALUE IF NOT EXISTS 'internal'" in result.stdout
+
+
 def test_alembic_load_models_includes_all_tables() -> None:
     """Проверяет, что env.py подхватывает общий экспорт моделей backend."""
     alembic_env = load_alembic_env_module()

@@ -9,6 +9,7 @@ class Country(StrEnum):
     THAILAND = "thailand"
     VIETNAM = "vietnam"
     GEORGIA = "georgia"
+    INTERNAL = "internal"
 
     @property
     def ru_name(self) -> str:
@@ -16,6 +17,7 @@ class Country(StrEnum):
             Country.THAILAND: "Таиланд",
             Country.VIETNAM: "Вьетнам",
             Country.GEORGIA: "Грузия",
+            Country.INTERNAL: "Внутренний обмен",
         }[self]
 
     @property
@@ -24,6 +26,7 @@ class Country(StrEnum):
             Country.THAILAND: "th",
             Country.VIETNAM: "vn",
             Country.GEORGIA: "ge",
+            Country.INTERNAL: "internal",
         }[self]
 
     @property
@@ -32,4 +35,5 @@ class Country(StrEnum):
             Country.THAILAND: "🇹🇭",
             Country.VIETNAM: "🇻🇳",
             Country.GEORGIA: "🇬🇪",
+            Country.INTERNAL: "",
         }[self]

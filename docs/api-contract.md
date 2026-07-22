@@ -23,7 +23,9 @@ Miniapp использует backend-driven namespace `/api/miniapp/*`.
   описание операции возвращается на русском с публичным номером заявки
   `Order.publicNumber`, без внутреннего `Order.id`.
 - `GET /api/miniapp/exchange` возвращает начальное состояние калькулятора,
-  chips, доступные пары и стартовый quote.
+  chips, доступные пары, стартовый quote и рассчитанные `aexPayoutOptions` для
+  доступных внутренних выплат `ATXG → USDT/RUB`. Внутренние строки курсов в
+  response не раскрываются.
 - `GET /api/miniapp/exchange/quote?currencySell=&currencyBuy=&amountSell=`
   рассчитывает quote на сервере. Клиент не считает итоговый курс сам.
 - `POST /api/miniapp/orders` принимает `cityId` опционально, валюты, сумму,
@@ -32,6 +34,9 @@ Miniapp использует backend-driven namespace `/api/miniapp/*`.
 - Для вывода внутреннего токена `POST /api/miniapp/orders` принимает
   `currencySell = ATXG` и локальные валюты получения `THB`, `GEL`, `VND`;
   расчет и проверка пары выполняются через соответствующую USDT-based пару.
+- Для внутреннего обмена `ATXG → USDT/RUB` заявка передаёт
+  `country = internal`, `methodGet = bank_account` и не передаёт `cityId`.
+  Техническая страна `internal` запрещена для обычных городов и внешних курсов.
 - `POST /api/miniapp/orders` возвращает полный `MiniappOrderItem`.
   Клиентские `rate` и `amountBuy`, если переданы, игнорируются.
 
@@ -55,7 +60,9 @@ Refresh token с типом `admin_refresh` допускается исключ�
   `ordersToday`, `usersTotal`, `rubThbRate`.
 - `GET /api/admin/rates` возвращает административное представление курсов:
   базовый `price` и `margin` по каждой паре.
-- `PATCH /api/admin/rates/{rate_id}` позволяет менять `margin` конкретной пары.
+- `PATCH /api/admin/rates/{rate_id}` позволяет менять `margin` любой пары,
+  включая системные `USDTRUB` и `RUBUSDT`; остальные поля внутренних пар
+  изменять нельзя.
 - `GET /api/admin/orders` возвращает список заявок с пользователем и городом.
 - `PATCH /api/admin/orders/{order_id}/status` меняет статус заявки и возвращает
   обновлённую заявку.
