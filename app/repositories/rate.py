@@ -46,6 +46,11 @@ class RateRepository(BaseRepository[Rate]):
         )
         return list(result.scalars().all())
 
+    async def get_admin_list(self) -> list[Rate]:
+        """Возвращает полный список курсов для административного просмотра."""
+        result = await self.session.execute(select(Rate).order_by(Rate.id))
+        return list(result.scalars().all())
+
     async def get_visible_by_id(self, rate_id: int) -> Rate | None:
         """Ищет внешний курс по id, не раскрывая внутренние строки."""
         result = await self.session.execute(

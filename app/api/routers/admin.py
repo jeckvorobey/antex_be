@@ -435,7 +435,7 @@ async def list_site_leads(
 
 @router.get("/rates", response_model=list[AdminRateOut])
 async def list_rates(db: DbDep, _: AdminUser) -> list[AdminRateOut]:
-    return [build_admin_rate_out(rate) for rate in await RateRepository(db).get_visible()]
+    return [build_admin_rate_out(rate) for rate in await RateRepository(db).get_admin_list()]
 
 
 @router.get("/rates/{rate_id}", response_model=AdminRateOut)
