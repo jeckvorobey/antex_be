@@ -159,21 +159,22 @@ async def test_admin_summary_returns_featured_rates(
 
 
 @pytest.mark.asyncio
-async def test_internal_rates_are_hidden_from_all_existing_rate_apis(
+async def test_internal_rates_are_visible_only_in_admin_list(
     api_client: tuple[AsyncClient, AsyncSession],
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Внутренние пары не раскрываются ни одним существующим rates endpoint."""
+    """Внутренние пары видны в admin list и скрыты от остальных readers."""
     client, db_session = api_client
     admin, customer = await seed_admin_exchange_data(db_session)
-    internal = Rate(
-        currency="USDTRUB",
-        price=90.0,
-        margin=4.5,
+    internal = Rate(currency="USDTRUB", price=90.0, margin=4.5, country=None, is_internal=True)
+    inverse = Rate(
+        currency="RUBUSDT",
+        price=1 / 90.0,
+        margin=3.0,
         country=None,
         is_internal=True,
     )
-    db_session.add(internal)
+    db_session.add_all([internal, inverse])
     await db_session.commit()
 
     admin_token = create_access_token({"sub": str(admin.id), "type": "admin"})
@@ -217,11 +218,22 @@ async def test_internal_rates_are_hidden_from_all_existing_rate_apis(
         "RUBGEL",
         "USDTTHB",
     }
-    assert {row["currency"] for row in admin_response.json()} == {
+    admin_rows = {row["currency"]: row for row in admin_response.json()}
+    assert set(admin_rows) == {
         "RUBTHB",
         "RUBGEL",
         "USDTTHB",
+        "USDTRUB",
+        "RUBUSDT",
     }
+    assert admin_rows["USDTRUB"]["country"] is None
+    assert admin_rows["USDTRUB"]["countryRuName"] is None
+    assert admin_rows["USDTRUB"]["isInternal"] is True
+    assert admin_rows["RUBUSDT"]["isInternal"] is True
+    assert admin_rows["RUBUSDT"]["baseRate"] == pytest.approx(1 / 90.0)
+    assert admin_rows["RUBUSDT"]["baseRateDisplay"] == "0.011111"
+    assert admin_rows["RUBUSDT"]["finalRate"] == pytest.approx(0.010778)
+    assert admin_rows["RUBUSDT"]["finalRateDisplay"] == "0.010778"
     assert detail_response.status_code == 404
     assert patch_response.status_code == 404
     assert delete_response.status_code == 404

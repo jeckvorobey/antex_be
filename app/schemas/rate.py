@@ -9,6 +9,7 @@ from pydantic import BaseModel, Field, field_validator
 
 from app.enums.country import Country
 from app.services.exchange import (
+    format_admin_rate_value,
     format_rate_value,
     get_admin_base_rate,
     get_admin_final_rate,
@@ -31,6 +32,9 @@ class RateOut(BaseModel):
 
 
 class AdminRateOut(RateOut):
+    country: Country | None
+    countryRuName: str | None
+    isInternal: bool
     baseRate: float
     baseRateDisplay: str
     finalRate: float
@@ -97,13 +101,14 @@ def build_admin_rate_out(rate) -> AdminRateOut:
         id=rate.id,
         currency=rate.currency,
         country=rate.country,
-        countryRuName=rate.country.ru_name,
+        countryRuName=rate.country.ru_name if rate.country else None,
+        isInternal=rate.is_internal,
         price=final_price,
-        priceDisplay=format_rate_value(final_price),
+        priceDisplay=format_admin_rate_value(rate, final_price),
         baseRate=base_price,
-        baseRateDisplay=format_rate_value(base_price),
+        baseRateDisplay=format_admin_rate_value(rate, base_price),
         finalRate=final_price,
-        finalRateDisplay=format_rate_value(final_price),
+        finalRateDisplay=format_admin_rate_value(rate, final_price),
         margin=rate.margin,
         createdAt=rate.createdAt,
         updatedAt=rate.updatedAt,

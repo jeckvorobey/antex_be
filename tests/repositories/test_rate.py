@@ -86,6 +86,24 @@ async def test_visible_queries_exclude_internal_rates(db_session) -> None:
     assert await repo.get_visible_by_id(internal.id) is None
 
 
+async def test_admin_list_includes_internal_rates(db_session) -> None:
+    """Административная выборка возвращает внешние и внутренние строки."""
+    repo = RateRepository(db_session)
+    visible = await repo.create(
+        currency="USDTTHB",
+        price=36.2,
+        country=Country.THAILAND,
+    )
+    internal = await repo.create(
+        currency="USDTRUB",
+        price=91.2,
+        country=None,
+        is_internal=True,
+    )
+
+    assert await repo.get_admin_list() == [visible, internal]
+
+
 async def test_has_all_currencies_requires_complete_set(db_session) -> None:
     """Проверка полноты различает частичный и полный набор пар."""
     repo = RateRepository(db_session)
