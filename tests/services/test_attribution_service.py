@@ -199,6 +199,43 @@ async def test_campaign_touches_do_not_overwrite_referral_acquisition(db_session
     assert touch.user_state == "returning"
 
 
+async def test_repeated_touch_for_primary_campaign_stays_new_for_that_campaign(db_session) -> None:
+    from app.services.attribution import AttributionService
+
+    user, _ = await UserRepository(db_session).find_or_create(13)
+    campaign = await _campaign(db_session, "PRIMARY000")
+    service = AttributionService(db_session)
+    await service.ensure_acquisition(user.id, source_type="campaign", campaign_id=campaign.id)
+
+    touch = await service.record_marketing_touch(
+        user.id,
+        campaign.code,
+        is_new_user=False,
+        session_key="primary-campaign-repeat",
+    )
+
+    assert touch.user_state == "new"
+
+
+async def test_touch_for_another_campaign_remains_returning(db_session) -> None:
+    from app.services.attribution import AttributionService
+
+    user, _ = await UserRepository(db_session).find_or_create(14)
+    primary = await _campaign(db_session, "PRIMARY000")
+    another = await _campaign(db_session, "ANOTHER000")
+    service = AttributionService(db_session)
+    await service.ensure_acquisition(user.id, source_type="campaign", campaign_id=primary.id)
+
+    touch = await service.record_marketing_touch(
+        user.id,
+        another.code,
+        is_new_user=False,
+        session_key="another-campaign-touch",
+    )
+
+    assert touch.user_state == "returning"
+
+
 async def test_marketing_touch_requires_trusted_session_key(db_session) -> None:
     from app.services.attribution import AttributionService
 
