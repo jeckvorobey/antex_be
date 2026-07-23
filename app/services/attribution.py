@@ -99,10 +99,16 @@ class AttributionService:
         )
         if existing is not None:
             return existing
+        acquisition = await self.get_acquisition(user_id)
+        is_primary_campaign = (
+            acquisition is not None
+            and acquisition.source_type == "campaign"
+            and acquisition.campaign_id == campaign.id
+        )
         touch = MarketingTouch(
             user_id=user_id,
             campaign_id=campaign.id,
-            user_state="new" if is_new_user else "returning",
+            user_state="new" if is_new_user or is_primary_campaign else "returning",
             touched_at=touched_at or datetime.now(UTC),
             session_key=session_key,
             metadata_={"source": "telegram_init_data", "start_param": f"market_{code}"},
