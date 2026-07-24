@@ -19,7 +19,7 @@ from app.enums.user import UserRole
 from app.exceptions import AntExException
 from app.models.admin import Admin
 from app.models.aex import AexLedgerEntry, AexPersonalRate, AexWallet
-from app.models.attribution import MarketingTouch
+from app.models.attribution import MarketingTouch, UserAcquisition
 from app.models.city import City
 from app.models.config import Config
 from app.models.marketing import MarketingCampaign, MarketingCurrency, MarketingPlatform
@@ -235,9 +235,12 @@ async def test_miniapp_aex_referral_returns_ready_link(
         telegram_id=700003,
         username="invited",
         first_name="Invited",
-        referred_by=customer.id,
     )
     db_session.add(referred)
+    await db_session.flush()
+    db_session.add(
+        UserAcquisition(user_id=referred.id, source_type="referral", referrer_user_id=customer.id)
+    )
     await db_session.flush()
     order = Order(
         UserId=referred.id,
@@ -304,7 +307,6 @@ async def test_miniapp_aex_referrals_returns_paginated_safe_list(
         first_name="First",
         last_name="Referral",
         phone="+79990000001",
-        referred_by=customer.id,
         photo_url="https://t.me/i/userpic/320/first.jpg",
     )
     second = User(
@@ -313,19 +315,29 @@ async def test_miniapp_aex_referrals_returns_paginated_safe_list(
         first_name="Second",
         last_name=None,
         phone="+79990000002",
-        referred_by=customer.id,
     )
     other_referrer = User(telegram_id=700013, username="other_referrer")
-    db_session.add(other_referrer)
+    db_session.add_all([first, second, other_referrer])
     await db_session.flush()
     unrelated = User(
         telegram_id=700014,
         username="unrelated_ref",
         first_name="Other",
-        referred_by=other_referrer.id,
     )
     wallet = AexWallet(user_id=customer.id)
-    db_session.add_all([first, second, unrelated, wallet])
+    db_session.add_all([unrelated, wallet])
+    await db_session.flush()
+    db_session.add_all(
+        [
+            UserAcquisition(user_id=first.id, source_type="referral", referrer_user_id=customer.id),
+            UserAcquisition(
+                user_id=second.id, source_type="referral", referrer_user_id=customer.id
+            ),
+            UserAcquisition(
+                user_id=unrelated.id, source_type="referral", referrer_user_id=other_referrer.id
+            ),
+        ]
+    )
     await db_session.flush()
     db_session.add_all(
         [
@@ -508,10 +520,13 @@ async def test_miniapp_aex_transactions_describes_referral_reward_by_public_orde
         telegram_id=700004,
         username="referred",
         first_name="Referred",
-        referred_by=customer.id,
     )
     wallet = AexWallet(user_id=customer.id)
     db_session.add_all([referred, wallet])
+    await db_session.flush()
+    db_session.add(
+        UserAcquisition(user_id=referred.id, source_type="referral", referrer_user_id=customer.id)
+    )
     await db_session.flush()
     order = Order(
         UserId=referred.id,
@@ -720,9 +735,15 @@ async def test_miniapp_referral_apply_binds_once(
 
     assert first.status_code == 200
     assert first.json() == {"success": True}
-    assert second.status_code == 200
+    assert second.status_code == 409
     await db_session.refresh(customer)
-    assert customer.referred_by == referrer_one.id
+    ua = (
+        await db_session.execute(
+            select(UserAcquisition).where(UserAcquisition.user_id == customer.id)
+        )
+    ).scalar_one_or_none()
+    assert ua is not None
+    assert ua.referrer_user_id == referrer_one.id
 
 
 @pytest.mark.asyncio
@@ -1658,7 +1679,9 @@ async def test_completed_aex_order_does_not_credit_referral_bonus(
     referrer = User(telegram_id=700003, username="referrer", first_name="Referrer")
     db_session.add(referrer)
     await db_session.flush()
-    customer.referred_by = referrer.id
+    db_session.add(
+        UserAcquisition(user_id=customer.id, source_type="referral", referrer_user_id=referrer.id)
+    )
     await credit_aex_wallet(db_session, customer.id, 1000)
     token = create_access_token({"sub": str(customer.id), "role": customer.role})
     monkeypatch.setattr(order_status, "notify_order_status_changed", AsyncMock())
@@ -1701,7 +1724,9 @@ async def test_reengagement_order_keeps_referral_bonus_without_marketing_ledger(
     currency = MarketingCurrency(code="MKT", name="Marketing Test")
     db_session.add_all([referrer, platform, currency])
     await db_session.flush()
-    customer.referred_by = referrer.id
+    db_session.add(
+        UserAcquisition(user_id=customer.id, source_type="referral", referrer_user_id=referrer.id)
+    )
     campaign = MarketingCampaign(
         code="REENGAGE01",
         name="Reengagement",

@@ -6,10 +6,12 @@ import hashlib
 import json
 import logging
 
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.security import create_access_token, validate_telegram_init_data
 from app.exceptions import AntExException
+from app.models.attribution import UserAcquisition
 from app.repositories.user import UserRepository
 from app.schemas.auth import TokenResponse, TrustedContactResponse, build_trusted_contact
 from app.services.referral import ReferralService
@@ -98,10 +100,17 @@ async def telegram_auth(db: AsyncSession, init_data: str) -> TokenResponse:
     if is_new_user:
         from app.services.attribution import AttributionService
 
-        if referral_code and user.referred_by is not None:
-            await AttributionService(db).ensure_acquisition(
-                user.id, source_type="referral", referrer_user_id=user.referred_by
+        if referral_code:
+            acquisition = await db.scalar(
+                select(UserAcquisition.referrer_user_id).where(
+                    UserAcquisition.user_id == user.id,
+                    UserAcquisition.source_type == "referral",
+                )
             )
+            if acquisition is not None:
+                await AttributionService(db).ensure_acquisition(
+                    user.id, source_type="referral", referrer_user_id=acquisition
+                )
         elif not marketing_touch_created:
             await AttributionService(db).ensure_acquisition(user.id, source_type="direct")
 

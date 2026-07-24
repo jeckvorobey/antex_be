@@ -10,6 +10,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import selectinload
 
 from app.enums.user import LEGACY_ADMIN_ROLE, UserRole
+from app.models.attribution import UserAcquisition
 from app.models.user import User
 from app.repositories.base import BaseRepository
 
@@ -174,7 +175,11 @@ class UserRepository(BaseRepository[User]):
     async def get_referrals(self, user_id: int) -> list[User]:
         result = await self.session.execute(
             select(User)
-            .where(User.referred_by == user_id)
+            .join(UserAcquisition, UserAcquisition.user_id == User.id)
+            .where(
+                UserAcquisition.referrer_user_id == user_id,
+                UserAcquisition.source_type == "referral",
+            )
             .options(selectinload(User.city))
             .order_by(User.id)
         )
@@ -187,15 +192,23 @@ class UserRepository(BaseRepository[User]):
         limit: int,
         offset: int,
     ) -> tuple[list[User], int]:
+        base_filter = (
+            select(UserAcquisition.user_id)
+            .where(
+                UserAcquisition.referrer_user_id == user_id,
+                UserAcquisition.source_type == "referral",
+            )
+            .subquery()
+        )
         statement = (
             select(User)
-            .where(User.referred_by == user_id)
+            .where(User.id.in_(select(base_filter.c.user_id)))
             .options(selectinload(User.city))
             .order_by(User.id)
             .limit(limit)
             .offset(offset)
         )
-        count_statement = select(func.count(User.id)).where(User.referred_by == user_id)
+        count_statement = select(func.count()).select_from(base_filter)
 
         result = await self.session.execute(statement)
         total_result = await self.session.execute(count_statement)
@@ -203,7 +216,10 @@ class UserRepository(BaseRepository[User]):
 
     async def count_referrals(self, user_id: int) -> int:
         result = await self.session.execute(
-            select(func.count(User.id)).where(User.referred_by == user_id)
+            select(func.count(UserAcquisition.user_id)).where(
+                UserAcquisition.referrer_user_id == user_id,
+                UserAcquisition.source_type == "referral",
+            )
         )
         return result.scalar_one()
 

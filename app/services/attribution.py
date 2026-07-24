@@ -179,6 +179,7 @@ class AttributionService:
                 primary_campaign_id=acquisition.campaign_id,
                 primary_campaign_name=campaign_name,
                 source_status="fixed",
+                referrer_user_id=acquisition.referrer_user_id,
             )
 
         ranked_touches = (
