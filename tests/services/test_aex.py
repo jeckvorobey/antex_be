@@ -5,8 +5,10 @@ from __future__ import annotations
 from decimal import Decimal
 
 import pytest
+from sqlalchemy import select
 
 from app.enums.country import Country
+from app.models.attribution import UserAcquisition
 from app.models.rate import Rate
 from app.models.user import User
 from app.repositories.aex import (
@@ -65,15 +67,28 @@ class TestReferralBinding:
         service = ReferralService()
         await service.bind_referral(db_session, referred, "A7kP2mX9")
 
-        assert referred.referred_by == referrer.id
+        ua = (
+            await db_session.execute(
+                select(UserAcquisition).where(UserAcquisition.user_id == referred.id)
+            )
+        ).scalar_one_or_none()
+        assert ua is not None
+        assert ua.referrer_user_id == referrer.id
 
     async def test_bind_referral_already_bound(self, db_session):
         referrer = await create_user(db_session, telegram_id=300003, referral_code="hF84LmQz")
-        referred = await create_user(db_session, telegram_id=300004, referred_by=referrer.id)
+        referred = await create_user(db_session, telegram_id=300004)
+        db_session.add(
+            UserAcquisition(
+                user_id=referred.id, source_type="referral", referrer_user_id=referrer.id
+            )
+        )
+        await db_session.flush()
 
         service = ReferralService()
-        result = await service.bind_referral(db_session, referred, "hF84LmQz")
-        assert result.referred_by == referrer.id
+        with pytest.raises(Exception) as exc_info:
+            await service.bind_referral(db_session, referred, "hF84LmQz")
+        assert exc_info.value.code == "REFERRAL_EXISTING_USER"
 
     async def test_bind_referral_invalid_code(self, db_session):
         user = await create_user(db_session, telegram_id=300005)
@@ -91,8 +106,19 @@ class TestReferralBinding:
 
     async def test_get_referral_list(self, db_session):
         referrer = await create_user(db_session, telegram_id=300007, referral_code="pQ7Rk91T")
-        await create_user(db_session, telegram_id=300008, referred_by=referrer.id)
-        await create_user(db_session, telegram_id=300009, referred_by=referrer.id)
+        referred1 = await create_user(db_session, telegram_id=300008)
+        referred2 = await create_user(db_session, telegram_id=300009)
+        db_session.add(
+            UserAcquisition(
+                user_id=referred1.id, source_type="referral", referrer_user_id=referrer.id
+            )
+        )
+        db_session.add(
+            UserAcquisition(
+                user_id=referred2.id, source_type="referral", referrer_user_id=referrer.id
+            )
+        )
+        await db_session.flush()
 
         service = ReferralService()
         referrals = await service.get_referral_list(db_session, referrer)
@@ -253,7 +279,13 @@ class TestAexRateService:
 class TestReferralBonus:
     async def test_credit_referral_bonus(self, db_session):
         referrer = await create_user(db_session, telegram_id=700001, referral_code="BONUS1")
-        referred = await create_user(db_session, telegram_id=700002, referred_by=referrer.id)
+        referred = await create_user(db_session, telegram_id=700002)
+        db_session.add(
+            UserAcquisition(
+                user_id=referred.id, source_type="referral", referrer_user_id=referrer.id
+            )
+        )
+        await db_session.flush()
 
         service = ReferralService()
         aex_amount = await service.credit_referral_bonus(
@@ -272,7 +304,13 @@ class TestReferralBonus:
 
     async def test_credit_referral_bonus_rub_order_uses_usdt_equivalent(self, db_session):
         referrer = await create_user(db_session, telegram_id=700010, referral_code="BONUSRUB")
-        referred = await create_user(db_session, telegram_id=700011, referred_by=referrer.id)
+        referred = await create_user(db_session, telegram_id=700011)
+        db_session.add(
+            UserAcquisition(
+                user_id=referred.id, source_type="referral", referrer_user_id=referrer.id
+            )
+        )
+        await db_session.flush()
         db_session.add_all(
             [
                 Rate(currency="USDTTHB", price=35.5, margin=3.0, country=Country.THAILAND),
@@ -306,7 +344,13 @@ class TestReferralBonus:
 
     async def test_credit_referral_bonus_personal_rate(self, db_session):
         referrer = await create_user(db_session, telegram_id=700004, referral_code="BONUS2")
-        referred = await create_user(db_session, telegram_id=700005, referred_by=referrer.id)
+        referred = await create_user(db_session, telegram_id=700005)
+        db_session.add(
+            UserAcquisition(
+                user_id=referred.id, source_type="referral", referrer_user_id=referrer.id
+            )
+        )
+        await db_session.flush()
 
         # Set personal rate to 1%
         rate_service = AexRateService()
@@ -324,7 +368,13 @@ class TestReferralBonus:
 
     async def test_credit_referral_bonus_creates_ledger(self, db_session):
         referrer = await create_user(db_session, telegram_id=700006, referral_code="BONUS3")
-        referred = await create_user(db_session, telegram_id=700007, referred_by=referrer.id)
+        referred = await create_user(db_session, telegram_id=700007)
+        db_session.add(
+            UserAcquisition(
+                user_id=referred.id, source_type="referral", referrer_user_id=referrer.id
+            )
+        )
+        await db_session.flush()
 
         service = ReferralService()
         await service.credit_referral_bonus(
@@ -345,7 +395,13 @@ class TestReferralBonus:
 
     async def test_credit_referral_bonus_is_idempotent_by_order(self, db_session):
         referrer = await create_user(db_session, telegram_id=700008, referral_code="BONUS4")
-        referred = await create_user(db_session, telegram_id=700009, referred_by=referrer.id)
+        referred = await create_user(db_session, telegram_id=700009)
+        db_session.add(
+            UserAcquisition(
+                user_id=referred.id, source_type="referral", referrer_user_id=referrer.id
+            )
+        )
+        await db_session.flush()
 
         service = ReferralService()
         first = await service.credit_referral_bonus(

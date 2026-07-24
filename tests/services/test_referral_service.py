@@ -5,9 +5,11 @@ from __future__ import annotations
 from decimal import Decimal
 
 import pytest
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.exceptions import AntExException
+from app.models.attribution import UserAcquisition
 from app.models.user import User
 from app.services.aex import AexService
 from app.services.referral import ReferralService, build_referral_link
@@ -130,9 +132,15 @@ class TestReferralBinding:
         service: ReferralService,
     ) -> None:
         code = await service.get_or_create_referral_code(db_session, referrer)
-        result = await service.bind_referral(db_session, referred, code)
+        await service.bind_referral(db_session, referred, code)
 
-        assert result.referred_by == referrer.id
+        acq = await db_session.scalar(
+            select(UserAcquisition.referrer_user_id).where(
+                UserAcquisition.user_id == referred.id,
+                UserAcquisition.source_type == "referral",
+            )
+        )
+        assert acq == referrer.id
 
     async def test_bind_rejects_self_referral(
         self,
@@ -155,9 +163,9 @@ class TestReferralBinding:
         code = await service.get_or_create_referral_code(db_session, referrer)
         await service.bind_referral(db_session, referred, code)
 
-        result = await service.bind_referral(db_session, referred, code)
-
-        assert result.referred_by == referrer.id
+        with pytest.raises(AntExException) as exc_info:
+            await service.bind_referral(db_session, referred, code)
+        assert exc_info.value.code == "REFERRAL_EXISTING_USER"
 
     async def test_bind_rejects_invalid_code(
         self,
@@ -189,9 +197,10 @@ class TestReferralBinding:
         await db_session.flush()
 
         await service.bind_referral(db_session, referred, "hF84LmQz")
-        result = await service.bind_referral(db_session, referred, "N2vX8aBc")
 
-        assert result.referred_by == referrer_one.id
+        with pytest.raises(AntExException) as exc_info:
+            await service.bind_referral(db_session, referred, "N2vX8aBc")
+        assert exc_info.value.code == "REFERRAL_EXISTING_USER"
 
     async def test_bind_rejects_direct_mutual_referral(
         self,
@@ -223,8 +232,20 @@ class TestReferralBinding:
         await service.bind_referral(db_session, user_b, "3KdVq7Rn")
         await service.bind_referral(db_session, user_c, "Y9mNc2Lp")
 
-        assert user_b.referred_by == user_a.id
-        assert user_c.referred_by == user_b.id
+        acq_b = await db_session.scalar(
+            select(UserAcquisition.referrer_user_id).where(
+                UserAcquisition.user_id == user_b.id,
+                UserAcquisition.source_type == "referral",
+            )
+        )
+        acq_c = await db_session.scalar(
+            select(UserAcquisition.referrer_user_id).where(
+                UserAcquisition.user_id == user_c.id,
+                UserAcquisition.source_type == "referral",
+            )
+        )
+        assert acq_b == user_a.id
+        assert acq_c == user_b.id
 
 
 class TestReferralStats:

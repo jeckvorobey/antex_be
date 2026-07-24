@@ -43,7 +43,13 @@ async def test_existing_user_cannot_receive_referrer_from_public_start_param(
     await auth.telegram_auth(db_session, "trusted")
 
     await db_session.refresh(existing)
-    assert existing.referred_by is None
+    acquisition = await db_session.scalar(
+        select(UserAcquisition.referrer_user_id).where(
+            UserAcquisition.user_id == existing.id,
+            UserAcquisition.source_type == "referral",
+        )
+    )
+    assert acquisition is None
 
 
 async def test_existing_acquired_user_cannot_bind_referrer_through_public_service(
@@ -62,7 +68,13 @@ async def test_existing_acquired_user_cannot_bind_referrer_through_public_servic
         await ReferralService().bind_referral(db_session, existing, "PUBLIC01")
 
     assert error.value.code == "REFERRAL_EXISTING_USER"
-    assert existing.referred_by is None
+    acquisition = await db_session.scalar(
+        select(UserAcquisition.referrer_user_id).where(
+            UserAcquisition.user_id == existing.id,
+            UserAcquisition.source_type == "referral",
+        )
+    )
+    assert acquisition is None
 
 
 async def test_referral_bind_replay_remains_idempotent_after_trusted_auth(
@@ -74,7 +86,6 @@ async def test_referral_bind_replay_remains_idempotent_after_trusted_auth(
     referred = User(telegram_id=24)
     db_session.add_all([referrer, referred])
     await db_session.flush()
-    referred.referred_by = referrer.id
     db_session.add(
         UserAcquisition(
             user_id=referred.id,
@@ -84,10 +95,10 @@ async def test_referral_bind_replay_remains_idempotent_after_trusted_auth(
     )
     await db_session.flush()
 
-    result = await ReferralService().bind_referral(db_session, referred, referrer.referral_code)
+    with pytest.raises(AntExException) as error:
+        await ReferralService().bind_referral(db_session, referred, referrer.referral_code)
 
-    assert result.id == referred.id
-    assert result.referred_by == referrer.id
+    assert error.value.code == "REFERRAL_EXISTING_USER"
 
 
 async def test_new_user_receives_referrer_and_referral_acquisition(db_session, monkeypatch) -> None:
@@ -106,7 +117,7 @@ async def test_new_user_receives_referrer_and_referral_acquisition(db_session, m
     await auth.telegram_auth(db_session, "trusted")
 
     user = await UserRepository(db_session).get_by_telegram_id(102)
-    assert user is not None and user.referred_by == referrer.id
+    assert user is not None
     acquisition = await AttributionService(db_session).get_acquisition(user.id)
     assert acquisition is not None
     assert acquisition.source_type == "referral"
@@ -127,7 +138,14 @@ async def test_campaign_registration_never_sets_referrer(db_session, monkeypatch
     await auth.telegram_auth(db_session, "trusted")
 
     user = await UserRepository(db_session).get_by_telegram_id(103)
-    assert user is not None and user.referred_by is None
+    assert user is not None
+    referral_acq = await db_session.scalar(
+        select(UserAcquisition.referrer_user_id).where(
+            UserAcquisition.user_id == user.id,
+            UserAcquisition.source_type == "referral",
+        )
+    )
+    assert referral_acq is None
     acquisition = await AttributionService(db_session).get_acquisition(user.id)
     assert acquisition is not None
     assert acquisition.source_type == "campaign"
@@ -180,7 +198,7 @@ async def test_campaign_touches_do_not_overwrite_referral_acquisition(db_session
     from app.services.attribution import AttributionService
 
     referrer = User(telegram_id=10)
-    user = User(telegram_id=11, referred_by=1)
+    user = User(telegram_id=11)
     db_session.add_all([referrer, user])
     await db_session.flush()
     campaign = await _campaign(db_session, "AAAAAAAAAA")

@@ -288,7 +288,14 @@ async def list_users(
     users, total = await repo.search_paginated(search, limit=limit, offset=offset)
     attribution = await AttributionService(db).admin_summaries([user.id for user in users])
     return PaginatedUsersResponse(
-        items=[build_user_out(user, attribution=attribution.get(user.id)) for user in users],
+        items=[
+            build_user_out(
+                user,
+                attribution=attribution.get(user.id),
+                referred_by=attribution.get(user.id, {}).get("referrer_user_id"),
+            )
+            for user in users
+        ],
         total=total,
         limit=limit,
         offset=offset,
@@ -302,7 +309,11 @@ async def get_user(user_id: int, db: DbDep, _: AdminUser) -> UserOut:
     if not user:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
     attribution = await AttributionService(db).admin_summaries([user.id])
-    return build_user_out(user, attribution=attribution.get(user.id))
+    return build_user_out(
+        user,
+        attribution=attribution.get(user.id),
+        referred_by=attribution.get(user.id, {}).get("referrer_user_id"),
+    )
 
 
 @router.patch("/users/{user_id}", response_model=UserOut)
@@ -333,7 +344,11 @@ async def update_user(user_id: int, body: UserUpdate, db: DbDep, _: AdminUser) -
     await db.commit()
     updated = await repo.get_one(updated.id)
     attribution = await AttributionService(db).admin_summaries([updated.id])
-    return build_user_out(updated, attribution=attribution.get(updated.id))
+    return build_user_out(
+        updated,
+        attribution=attribution.get(updated.id),
+        referred_by=attribution.get(updated.id, {}).get("referrer_user_id"),
+    )
 
 
 @router.post(

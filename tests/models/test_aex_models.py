@@ -8,6 +8,7 @@ import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.aex import AexLedgerEntry, AexPartnerRate, AexPersonalRate, AexRate, AexWallet
+from app.models.attribution import UserAcquisition
 from app.models.user import User
 
 
@@ -255,30 +256,25 @@ class TestUserReferralFields:
 
         assert user.referral_code == "ABC12345"
 
-    async def test_user_referred_by(self, db_session: AsyncSession) -> None:
+    async def test_referrer_is_stored_in_user_acquisition(self, db_session: AsyncSession) -> None:
         referrer = User(telegram_id=444, username="referrer2", referral_code="REF12345")
         db_session.add(referrer)
         await db_session.flush()
 
-        referred = User(telegram_id=555, username="referred", referred_by=referrer.id)
+        referred = User(telegram_id=555, username="referred")
         db_session.add(referred)
         await db_session.flush()
         await db_session.refresh(referred)
 
-        assert referred.referred_by == referrer.id
-
-    async def test_user_referrer_relationship(self, db_session: AsyncSession) -> None:
-        referrer = User(telegram_id=666, username="referrer3", referral_code="REF34567")
-        db_session.add(referrer)
+        acquisition = UserAcquisition(
+            user_id=referred.id,
+            source_type="referral",
+            referrer_user_id=referrer.id,
+        )
+        db_session.add(acquisition)
         await db_session.flush()
 
-        referred = User(telegram_id=777, username="referred2", referred_by=referrer.id)
-        db_session.add(referred)
-        await db_session.flush()
-        await db_session.refresh(referred)
-
-        assert referred.referrer is not None
-        assert referred.referrer.id == referrer.id
+        assert "referred_by" not in User.__table__.c
 
     async def test_user_referral_code_nullable(self, db_session: AsyncSession) -> None:
         user = User(telegram_id=888, username="noreferral")
@@ -287,4 +283,3 @@ class TestUserReferralFields:
         await db_session.refresh(user)
 
         assert user.referral_code is None
-        assert user.referred_by is None

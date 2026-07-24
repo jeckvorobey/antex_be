@@ -121,11 +121,9 @@ async def test_admin_user_contract_separates_fixed_acquisition_from_referrer(
         telegram_id=811002,
         username="attributed_user",
         first_name="User",
-        referred_by=referrer.id,
     )
     db_session.add_all([admin, referrer])
     await db_session.flush()
-    user.referred_by = referrer.id
     db_session.add(user)
     await db_session.flush()
     db_session.add(

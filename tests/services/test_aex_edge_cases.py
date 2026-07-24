@@ -13,9 +13,11 @@ from __future__ import annotations
 from decimal import Decimal
 
 import pytest
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.exceptions import AntExException
+from app.models.attribution import UserAcquisition
 from app.models.user import User
 from app.repositories.aex import AexWalletRepository
 from app.services.aex import AexService
@@ -79,8 +81,18 @@ class TestReferralBindingEdgeCases:
         code_b = await service.get_or_create_referral_code(db_session, user_b)
         await service.bind_referral(db_session, user_c, code_b)
 
-        assert user_b.referred_by == user_a.id
-        assert user_c.referred_by == user_b.id
+        ua_b = (
+            await db_session.execute(
+                select(UserAcquisition).where(UserAcquisition.user_id == user_b.id)
+            )
+        ).scalar_one_or_none()
+        ua_c = (
+            await db_session.execute(
+                select(UserAcquisition).where(UserAcquisition.user_id == user_c.id)
+            )
+        ).scalar_one_or_none()
+        assert ua_b is not None and ua_b.referrer_user_id == user_a.id
+        assert ua_c is not None and ua_c.referrer_user_id == user_b.id
 
     async def test_bind_same_code_by_two_users(self, db_session: AsyncSession) -> None:
         """Два разных пользователя привязываются к одному рефереру."""
@@ -92,8 +104,18 @@ class TestReferralBindingEdgeCases:
         await service.bind_referral(db_session, user1, "3KdVq7Rn")
         await service.bind_referral(db_session, user2, "3KdVq7Rn")
 
-        assert user1.referred_by == referrer.id
-        assert user2.referred_by == referrer.id
+        ua1 = (
+            await db_session.execute(
+                select(UserAcquisition).where(UserAcquisition.user_id == user1.id)
+            )
+        ).scalar_one_or_none()
+        ua2 = (
+            await db_session.execute(
+                select(UserAcquisition).where(UserAcquisition.user_id == user2.id)
+            )
+        ).scalar_one_or_none()
+        assert ua1 is not None and ua1.referrer_user_id == referrer.id
+        assert ua2 is not None and ua2.referrer_user_id == referrer.id
 
         referrals = await service.get_referral_list(db_session, referrer)
         assert len(referrals) == 2
@@ -119,7 +141,13 @@ class TestAexCalculationEdgeCases:
     async def test_referral_bonus_zero_order_amount(self, db_session: AsyncSession) -> None:
         """Заказ на 0 → бонус 0 (не начисляется)."""
         referrer = await create_user(db_session, telegram_id=902001, referral_code="ZEROBON")
-        referred = await create_user(db_session, telegram_id=902002, referred_by=referrer.id)
+        referred = await create_user(db_session, telegram_id=902002)
+        db_session.add(
+            UserAcquisition(
+                user_id=referred.id, source_type="referral", referrer_user_id=referrer.id
+            )
+        )
+        await db_session.flush()
 
         service = ReferralService()
         aex_amount = await service.credit_referral_bonus(
@@ -135,7 +163,13 @@ class TestAexCalculationEdgeCases:
     ) -> None:
         """Очень маленький заказ, при котором бонус округляется до 0."""
         referrer = await create_user(db_session, telegram_id=902003, referral_code="SMALLBN")
-        referred = await create_user(db_session, telegram_id=902004, referred_by=referrer.id)
+        referred = await create_user(db_session, telegram_id=902004)
+        db_session.add(
+            UserAcquisition(
+                user_id=referred.id, source_type="referral", referrer_user_id=referrer.id
+            )
+        )
+        await db_session.flush()
 
         # rate=0.002, amount=0.01 → bonus=0.00002 → quantize to 0.000000 → <= 0 → 0
         service = ReferralService()
@@ -151,7 +185,13 @@ class TestAexCalculationEdgeCases:
     async def test_referral_bonus_fractional_amount(self, db_session: AsyncSession) -> None:
         """Дробная сумма заказа → корректный расчёт."""
         referrer = await create_user(db_session, telegram_id=902005, referral_code="FRACBN")
-        referred = await create_user(db_session, telegram_id=902006, referred_by=referrer.id)
+        referred = await create_user(db_session, telegram_id=902006)
+        db_session.add(
+            UserAcquisition(
+                user_id=referred.id, source_type="referral", referrer_user_id=referrer.id
+            )
+        )
+        await db_session.flush()
 
         service = ReferralService()
         aex_amount = await service.credit_referral_bonus(
@@ -166,7 +206,13 @@ class TestAexCalculationEdgeCases:
     async def test_referral_bonus_large_amount(self, db_session: AsyncSession) -> None:
         """Огромная сумма заказа → корректный расчёт без переполнения."""
         referrer = await create_user(db_session, telegram_id=902007, referral_code="LARGEBN")
-        referred = await create_user(db_session, telegram_id=902008, referred_by=referrer.id)
+        referred = await create_user(db_session, telegram_id=902008)
+        db_session.add(
+            UserAcquisition(
+                user_id=referred.id, source_type="referral", referrer_user_id=referrer.id
+            )
+        )
+        await db_session.flush()
 
         service = ReferralService()
         aex_amount = await service.credit_referral_bonus(
@@ -185,7 +231,13 @@ class TestAexCalculationEdgeCases:
     async def test_referral_bonus_with_very_high_rate(self, db_session: AsyncSession) -> None:
         """Персональная ставка 10% → корректный расчёт."""
         referrer = await create_user(db_session, telegram_id=902009, referral_code="HIGHRT")
-        referred = await create_user(db_session, telegram_id=902010, referred_by=referrer.id)
+        referred = await create_user(db_session, telegram_id=902010)
+        db_session.add(
+            UserAcquisition(
+                user_id=referred.id, source_type="referral", referrer_user_id=referrer.id
+            )
+        )
+        await db_session.flush()
 
         rate_service = AexRateService()
         await rate_service.set_personal_rate(db_session, referrer.id, Decimal("0.10"))
@@ -314,7 +366,13 @@ class TestRatePriorityEdgeCases:
     async def test_referral_bonus_uses_correct_rate(self, db_session: AsyncSession) -> None:
         """Реферальный бонус использует эффективную ставку реферера, а не реферала."""  # noqa: RUF002
         referrer = await create_user(db_session, telegram_id=904010, referral_code="RATETST")
-        referred = await create_user(db_session, telegram_id=904011, referred_by=referrer.id)
+        referred = await create_user(db_session, telegram_id=904011)
+        db_session.add(
+            UserAcquisition(
+                user_id=referred.id, source_type="referral", referrer_user_id=referrer.id
+            )
+        )
+        await db_session.flush()
 
         rate_service = AexRateService()
         # Персональная ставка для реферера = 5%
@@ -342,7 +400,13 @@ class TestCancellationCompensation:
     async def test_referral_bonus_reversal_on_cancel(self, db_session: AsyncSession) -> None:
         """При отмене заказа бонус реферера списывается."""
         referrer = await create_user(db_session, telegram_id=905001, referral_code="CANCEL1")
-        referred = await create_user(db_session, telegram_id=905002, referred_by=referrer.id)
+        referred = await create_user(db_session, telegram_id=905002)
+        db_session.add(
+            UserAcquisition(
+                user_id=referred.id, source_type="referral", referrer_user_id=referrer.id
+            )
+        )
+        await db_session.flush()
 
         referral_service = ReferralService()
         aex_service = AexService()
@@ -414,7 +478,13 @@ class TestCancellationCompensation:
     ) -> None:
         """Если бонус уже потрачен, reversal не списывает баланс в минус."""
         referrer = await create_user(db_session, telegram_id=905004, referral_code="SPENT001")
-        referred = await create_user(db_session, telegram_id=905005, referred_by=referrer.id)
+        referred = await create_user(db_session, telegram_id=905005)
+        db_session.add(
+            UserAcquisition(
+                user_id=referred.id, source_type="referral", referrer_user_id=referrer.id
+            )
+        )
+        await db_session.flush()
 
         referral_service = ReferralService()
         aex_service = AexService()
@@ -469,7 +539,13 @@ class TestCancellationCompensation:
     async def test_multiple_orders_cancel_one(self, db_session: AsyncSession) -> None:
         """Two orders, cancel one - deduct only its bonus."""
         referrer = await create_user(db_session, telegram_id=905010, referral_code="MULTORD")
-        referred = await create_user(db_session, telegram_id=905011, referred_by=referrer.id)
+        referred = await create_user(db_session, telegram_id=905011)
+        db_session.add(
+            UserAcquisition(
+                user_id=referred.id, source_type="referral", referrer_user_id=referrer.id
+            )
+        )
+        await db_session.flush()
 
         referral_service = ReferralService()
         aex_service = AexService()
@@ -596,8 +672,19 @@ class TestReferralStatsEdgeCases:
     async def test_stats_after_multiple_bonuses(self, db_session: AsyncSession) -> None:
         """Статистика учитывает все бонусы от разных рефералов."""
         referrer = await create_user(db_session, telegram_id=907001, referral_code="STATS1")
-        referred1 = await create_user(db_session, telegram_id=907002, referred_by=referrer.id)
-        referred2 = await create_user(db_session, telegram_id=907003, referred_by=referrer.id)
+        referred1 = await create_user(db_session, telegram_id=907002)
+        referred2 = await create_user(db_session, telegram_id=907003)
+        db_session.add(
+            UserAcquisition(
+                user_id=referred1.id, source_type="referral", referrer_user_id=referrer.id
+            )
+        )
+        db_session.add(
+            UserAcquisition(
+                user_id=referred2.id, source_type="referral", referrer_user_id=referrer.id
+            )
+        )
+        await db_session.flush()
 
         service = ReferralService()
         await service.credit_referral_bonus(

@@ -75,3 +75,14 @@ def test_attribution_migration_does_not_invent_acquisition_from_legacy_marketing
     acquisition_backfill = migration.split('INSERT INTO "MarketingTouches"', maxsplit=1)[0]
     assert 'FROM "MarketingAttributions"' not in acquisition_backfill
     assert "never derive a campaign acquisition" in migration
+
+
+def test_referral_ssot_migration_backfills_acquisition_and_drops_users_duplicate() -> None:
+    migration = (BACK_ROOT / "alembic/versions/026_remove_users_referred_by.py").read_text()
+
+    assert 'UPDATE "UserAcquisitions"' in migration
+    assert 'FROM "Users"' in migration
+    assert 'drop_column("Users", "referred_by")' in migration
+    assert migration.index('UPDATE "UserAcquisitions"') < migration.index(
+        'drop_column("Users", "referred_by")'
+    )

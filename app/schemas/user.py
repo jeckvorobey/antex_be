@@ -97,6 +97,7 @@ def build_user_out(
     *,
     referral_rate: Decimal | None = None,
     attribution: dict[str, object] | None = None,
+    referred_by: int | None = None,
 ) -> UserOut:
     from app.schemas.city import build_city_out
 
@@ -129,7 +130,7 @@ def build_user_out(
         trusted_contact_source=trusted_contact.source,
         trusted_contact_ready=trusted_contact.ready,
         referral_code=getattr(user, "referral_code", None),
-        referred_by=getattr(user, "referred_by", None),
+        referred_by=referred_by,
         referral_rate=_format_referral_rate(effective_referral_rate),
         referral_rate_percent=_format_referral_rate_percent(effective_referral_rate),
         aex_balance=aex_balance,

@@ -315,7 +315,13 @@ async def test_telegram_auth_rejects_existing_user_referral_start_param(
     await telegram_auth(db_session, "init-data")
 
     await db_session.refresh(existing_user)
-    assert existing_user.referred_by is None
+    referral_acq = await db_session.scalar(
+        select(UserAcquisition.referrer_user_id).where(
+            UserAcquisition.user_id == existing_user.id,
+            UserAcquisition.source_type == "referral",
+        )
+    )
+    assert referral_acq is None
     audit = (
         await db_session.execute(
             select(AttributionAuditEvent).where(
@@ -344,7 +350,13 @@ async def test_telegram_auth_does_not_rewrite_existing_referral_from_start_param
     existing_user = User(telegram_id=2013, username="auth_already_referred")
     db_session.add_all([original_referrer, new_referrer, existing_user])
     await db_session.flush()
-    existing_user.referred_by = original_referrer.id
+    db_session.add(
+        UserAcquisition(
+            user_id=existing_user.id,
+            source_type="referral",
+            referrer_user_id=original_referrer.id,
+        )
+    )
     await db_session.flush()
 
     monkeypatch.setattr(
@@ -366,7 +378,13 @@ async def test_telegram_auth_does_not_rewrite_existing_referral_from_start_param
     await telegram_auth(db_session, "init-data")
 
     await db_session.refresh(existing_user)
-    assert existing_user.referred_by == original_referrer.id
+    referral_acq = await db_session.scalar(
+        select(UserAcquisition.referrer_user_id).where(
+            UserAcquisition.user_id == existing_user.id,
+            UserAcquisition.source_type == "referral",
+        )
+    )
+    assert referral_acq == original_referrer.id
 
 
 async def test_users_username_is_unique(db_session) -> None:

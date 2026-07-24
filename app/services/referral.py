@@ -69,13 +69,10 @@ class ReferralService:
         - Нельзя менять уже установленную пользовательскую привязку
         - Код должен существовать
         """
-        if user.referred_by is not None:
-            return user
-
-        acquisition = await db.scalar(
+        existing_acquisition = await db.scalar(
             select(UserAcquisition.id).where(UserAcquisition.user_id == user.id)
         )
-        if acquisition is not None:
+        if existing_acquisition is not None:
             logger.info("Rejected public referral binding for existing user_id=%s", user.id)
             raise AntExException(
                 "Referral can only be assigned during first registration",
@@ -97,14 +94,24 @@ class ReferralService:
                 status_code=422,
             )
 
-        if referrer.referred_by == user.id:
+        referrer_acquisition = await db.scalar(
+            select(UserAcquisition.referrer_user_id).where(
+                UserAcquisition.user_id == referrer.id,
+                UserAcquisition.source_type == "referral",
+            )
+        )
+        if referrer_acquisition == user.id:
             raise AntExException(
                 "Cannot create mutual referral",
                 code="MUTUAL_REFERRAL",
                 status_code=422,
             )
 
-        await repo.update(user, referred_by=referrer.id)
+        from app.services.attribution import AttributionService
+
+        await AttributionService(db).ensure_acquisition(
+            user.id, source_type="referral", referrer_user_id=referrer.id
+        )
         await db.refresh(user)
         return user
 
@@ -199,10 +206,19 @@ class ReferralService:
         """
         user_repo = UserRepository(db)
         referred_user = await user_repo.get_one(referred_user_id)
-        if referred_user is None or referred_user.referred_by is None:
+        if referred_user is None:
             return Decimal("0")
 
-        referrer_id = referred_user.referred_by
+        acquisition = await db.scalar(
+            select(UserAcquisition.referrer_user_id).where(
+                UserAcquisition.user_id == referred_user_id,
+                UserAcquisition.source_type == "referral",
+            )
+        )
+        if acquisition is None:
+            return Decimal("0")
+
+        referrer_id = acquisition
         existing_entry = await self._get_referral_bonus_entry(db, order_id)
         if existing_entry is not None:
             return existing_entry.amount

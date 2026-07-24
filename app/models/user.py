@@ -44,11 +44,6 @@ class User(Base, TimestampMixin):
         unique=True,
         nullable=True,
     )
-    referred_by: Mapped[int | None] = mapped_column(
-        Integer,
-        ForeignKey("Users.id"),
-        nullable=True,
-    )
 
     orders: Mapped[list[Order]] = relationship("Order", back_populates="user")
     city: Mapped[City | None] = relationship("City", back_populates="users")
@@ -66,9 +61,4 @@ class User(Base, TimestampMixin):
         "AexPartnerRate",
         back_populates="user",
         uselist=False,
-    )
-    referrer: Mapped[User | None] = relationship(
-        "User",
-        remote_side="User.id",
-        foreign_keys=[referred_by],
     )
