@@ -566,7 +566,8 @@ async def test_dashboard_unique_touched_users_is_distinct_across_campaigns(
     response = await client.get(
         "/api/admin/marketing/dashboard",
         headers=auth(token),
-        params={"dateFrom": str(date.today()), "dateTo": str(date.today()), "currency": "USDT"},
+        # Dashboard applies date bounds in UTC, therefore the fixture and filter share UTC date.
+        params={"dateFrom": str(now.date()), "dateTo": str(now.date()), "currency": "USDT"},
     )
 
     assert response.status_code == 200, response.text
@@ -582,7 +583,8 @@ async def test_dashboard_reengagement_conversion_uses_unique_touched_users(
     client, db_session, token = marketing_api_client
     campaign_data = (await create_campaign(client, token)).json()
     user, _ = await UserRepository(db_session).find_or_create(777099, first_name="Returning")
-    touched_at = datetime.now(UTC) - timedelta(hours=1)
+    now = datetime.now(UTC)
+    touched_at = now
     touch = MarketingTouch(
         user_id=user.id,
         campaign_id=campaign_data["id"],
@@ -590,7 +592,7 @@ async def test_dashboard_reengagement_conversion_uses_unique_touched_users(
         user_state="returning",
         session_key="dashboard-returning",
     )
-    order = _order(user.id, "RETURN0001", datetime.now(UTC))
+    order = _order(user.id, "RETURN0001", now)
     db_session.add_all([touch, order])
     await db_session.flush()
     db_session.add(
@@ -608,7 +610,8 @@ async def test_dashboard_reengagement_conversion_uses_unique_touched_users(
     response = await client.get(
         "/api/admin/marketing/dashboard",
         headers=auth(token),
-        params={"dateFrom": str(date.today()), "dateTo": str(date.today()), "currency": "USDT"},
+        # Dashboard applies UTC calendar boundaries, not the local developer date.
+        params={"dateFrom": str(now.date()), "dateTo": str(now.date()), "currency": "USDT"},
     )
 
     assert response.status_code == 200, response.text

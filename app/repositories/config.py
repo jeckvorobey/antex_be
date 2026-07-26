@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from datetime import time
 from decimal import Decimal
 
 from app.models.config import Config
@@ -58,5 +59,26 @@ class ConfigRepository(BaseRepository[Config]):
             config.aex_withdraw_limit = aex_withdraw_limit
         if marketing_attribution_window_days is not None:
             config.marketing_attribution_window_days = marketing_attribution_window_days
+        await self.session.flush()
+        return config
+
+    async def update_manager_schedule(
+        self,
+        *,
+        enabled: bool | None = None,
+        working_days_utc: list[int] | None = None,
+        start_time_utc: time | None = None,
+        end_time_utc: time | None = None,
+    ) -> Config:
+        """Обновляет единую UTC-конфигурацию режима работы менеджеров."""
+        config = await self.get_or_create()
+        if enabled is not None:
+            config.manager_schedule_enabled = enabled
+        if working_days_utc is not None:
+            config.manager_working_days_utc = working_days_utc
+        if start_time_utc is not None:
+            config.manager_start_time_utc = start_time_utc
+        if end_time_utc is not None:
+            config.manager_end_time_utc = end_time_utc
         await self.session.flush()
         return config

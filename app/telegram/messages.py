@@ -394,8 +394,11 @@ def order_created(
     *,
     translator: Translate | None = None,
     locale: str | None = None,
+    managers_offline: bool = False,
 ) -> str:
-    return _resolve_translator(translator, locale)("order-created", id=order_id)
+    translate = _resolve_translator(translator, locale)
+    text = translate("order-created", id=order_id)
+    return f"{text}\n\n{translate('order-created-offline')}" if managers_offline else text
 
 
 def order_creation_failed(

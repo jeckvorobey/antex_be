@@ -40,6 +40,7 @@ from app.schemas.miniapp import (
     MiniappRatesSection,
     MiniappReferralProgramConfig,
     MiniappServiceItem,
+    build_miniapp_manager_availability,
     build_miniapp_order_item,
     build_miniapp_profile_summary,
 )
@@ -62,6 +63,7 @@ from app.services.exchange import (
     format_rate_value,
     get_client_rate,
 )
+from app.services.manager_working_hours import ManagerWorkingHoursService
 from app.services.order_notifications import build_chat_url_for_user
 from app.services.referral import ReferralService, build_referral_link
 from app.telegram.i18n import get_translator
@@ -352,6 +354,11 @@ async def get_miniapp_exchange(db) -> MiniappExchangeScreenResponse:
         pairs=featured,
         quote=quote,
         aexPayoutOptions=await _build_aex_payout_options(db),
+        managerAvailability=build_miniapp_manager_availability(
+            ManagerWorkingHoursService().get_availability(
+                await ConfigRepository(db).get_or_create()
+            )
+        ),
     )
 
 
@@ -427,6 +434,11 @@ async def get_miniapp_profile_screen(db, user) -> MiniappProfileScreenResponse:
             ),
         ],
         version="1.0.0",
+        managerAvailability=build_miniapp_manager_availability(
+            ManagerWorkingHoursService().get_availability(
+                await ConfigRepository(db).get_or_create()
+            )
+        ),
     )
 
 

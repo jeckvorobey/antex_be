@@ -126,6 +126,20 @@ class MiniappCalculatorState(BaseModel):
     amountSell: int
 
 
+class MiniappManagerAvailability(BaseModel):
+    """Backend-снимок доступности менеджеров для всех Mini App сценариев."""
+
+    status: Literal["working", "offline", "unknown"]
+    scheduleEnabled: bool
+    workingDaysUtc: list[int]
+    startTimeUtc: str
+    endTimeUtc: str
+    currentStartAt: datetime | None = None
+    currentEndAt: datetime | None = None
+    nextStartAt: datetime | None = None
+    businessHoursText: str
+
+
 class MiniappAexPayoutOption(BaseModel):
     """Рассчитанный вариант выплаты ATXG без раскрытия внутренней строки Rates."""
 
@@ -142,6 +156,7 @@ class MiniappExchangeScreenResponse(BaseModel):
     pairs: list[MiniappRateCard]
     quote: MiniappQuoteResponse
     aexPayoutOptions: list[MiniappAexPayoutOption]
+    managerAvailability: MiniappManagerAvailability
 
 
 class MiniappMenuItem(BaseModel):
@@ -157,6 +172,7 @@ class MiniappProfileScreenResponse(BaseModel):
     user: MiniappProfileSummary
     menu: list[MiniappMenuItem]
     version: str
+    managerAvailability: MiniappManagerAvailability
 
 
 class MiniappReferralProgramConfig(BaseModel):
@@ -254,6 +270,7 @@ class MiniappOrderItem(BaseModel):
     createdAt: datetime
     updatedAt: datetime
     city: CityOut | None = None
+    managerAvailability: MiniappManagerAvailability | None = None
 
 
 class MiniappOrdersResponse(BaseModel):
@@ -325,7 +342,22 @@ def build_miniapp_profile(user) -> MiniappProfileResponse:
     )
 
 
-def build_miniapp_order_item(order) -> MiniappOrderItem:
+def build_miniapp_manager_availability(availability) -> MiniappManagerAvailability:
+    """Преобразует сервисный UTC-снимок в стабильный Mini App DTO."""
+    return MiniappManagerAvailability(
+        status=availability.status,
+        scheduleEnabled=availability.schedule_enabled,
+        workingDaysUtc=availability.working_days_utc,
+        startTimeUtc=availability.start_time_utc.strftime("%H:%M"),
+        endTimeUtc=availability.end_time_utc.strftime("%H:%M"),
+        currentStartAt=availability.current_start_at,
+        currentEndAt=availability.current_end_at,
+        nextStartAt=availability.next_start_at,
+        businessHoursText=availability.business_hours_text,
+    )
+
+
+def build_miniapp_order_item(order, *, manager_availability=None) -> MiniappOrderItem:
     """Строит карточку заявки miniapp из ORM-модели."""
     from app.schemas.city import build_city_out
 
@@ -345,4 +377,9 @@ def build_miniapp_order_item(order) -> MiniappOrderItem:
         createdAt=order.createdAt,
         updatedAt=order.updatedAt,
         city=build_city_out(order.city) if order.city else None,
+        managerAvailability=(
+            build_miniapp_manager_availability(manager_availability)
+            if manager_availability is not None
+            else None
+        ),
     )
