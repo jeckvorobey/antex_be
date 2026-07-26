@@ -136,8 +136,12 @@ order-completed-bottom =
 order-cancelled = ❌ Заявка #{ $id } отменена.
 manager-chat-open-text = Здравствуйте! Вы оставляли заявку #{ $id } на обмен { $amount } { $currency }. Готовы продолжить?
 user-chat-open-text = Здравствуйте! По заявке #{ $id } на сумму { $amount } { $currency } подтверждаю готовность к обмену.
-referral-bonus-credited = 🎁 Начислено { $amount } ATXG за заявку #{ $order_id }.
-referral-bonus-reversed = 💸 Списано { $amount } ATXG за отмену заявки #{ $order_id }.
+referral-bonus-credited =
+    🎁 Вознаграждение по реферальной программе: +{ $amount } ATXG
+    За успешно завершённую заявку #{ $order_id }.
+referral-bonus-reversed =
+    💸 Вознаграждение по реферальной программе списано: -{ $amount } ATXG
+    Заявка #{ $order_id } отменена.
 miniapp-aex-referral-reward = Реферальное начисление
 miniapp-aex-referral-reward-with-order = Реферальное начисление по заявке { $order_number }
 miniapp-aex-withdraw-hold = Зарезервировано

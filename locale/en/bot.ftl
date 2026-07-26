@@ -118,8 +118,12 @@ order-completed-bottom = Thanks for using our service! If you have a minute, we�
 order-cancelled = ❌ Order #{ $id } cancelled.
 manager-chat-open-text = Hello! You had left order #{ $id } for exchanging { $amount } { $currency }. Are you ready to continue?
 user-chat-open-text = Hello! For order #{ $id } in the amount of { $amount } { $currency }, I confirm I’m ready to exchange.
-referral-bonus-credited = 🎁 { $amount } ATXG credited for order #{ $order_id }.
-referral-bonus-reversed = 💸 { $amount } ATXG deducted for cancelled order #{ $order_id }.
+referral-bonus-credited =
+    🎁 Referral program reward: +{ $amount } ATXG
+    For completed order #{ $order_id }.
+referral-bonus-reversed =
+    💸 Referral program reward reversed: -{ $amount } ATXG
+    Order #{ $order_id } was cancelled.
 miniapp-aex-referral-reward = Referral reward
 miniapp-aex-referral-reward-with-order = Referral reward for order { $order_number }
 miniapp-aex-withdraw-hold = Reserved
