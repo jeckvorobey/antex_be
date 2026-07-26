@@ -48,6 +48,22 @@ def test_service_finds_next_enabled_day_and_overnight_interval() -> None:
     assert night.current_end_at == datetime(2026, 7, 28, 3, tzinfo=UTC)
 
 
+def test_service_formats_business_hours_from_actual_utc_schedule_in_msk() -> None:
+    service = ManagerWorkingHoursService()
+    custom_schedule = _config(
+        manager_working_days_utc=[1, 2, 3, 4, 5],
+        manager_start_time_utc=time(7),
+        manager_end_time_utc=time(19),
+    )
+
+    availability = service.get_availability(
+        custom_schedule,
+        now=datetime(2026, 7, 27, 8, tzinfo=UTC),
+    )
+
+    assert availability.business_hours_text == "Пн–Пт с 10:00 до 22:00 МСК"  # noqa: RUF001
+
+
 def test_service_returns_unknown_for_disabled_or_invalid_schedule() -> None:
     service = ManagerWorkingHoursService()
 

@@ -1,4 +1,5 @@
 """Единый UTC-расчёт режима работы менеджеров."""
+# ruff: noqa: RUF001, RUF002
 
 from __future__ import annotations
 
@@ -7,6 +8,16 @@ from datetime import UTC, datetime, time, timedelta
 from typing import Literal, Protocol
 
 AvailabilityStatus = Literal["working", "offline", "unknown"]
+_MSK_UTC_OFFSET_HOURS = 3
+_WEEKDAY_LABELS = {
+    1: "Пн",
+    2: "Вт",
+    3: "Ср",
+    4: "Чт",
+    5: "Пт",
+    6: "Сб",
+    7: "Вс",
+}
 
 
 class ManagerScheduleConfig(Protocol):
@@ -30,7 +41,7 @@ class ManagerAvailability:
     current_start_at: datetime | None
     current_end_at: datetime | None
     next_start_at: datetime | None
-    business_hours_text: str = "Ежедневно с 09:00 до 21:00 МСК"  # noqa: RUF001
+    business_hours_text: str = "Ежедневно с 09:00 до 21:00 МСК"
 
 
 class ManagerWorkingHoursService:
@@ -61,17 +72,51 @@ class ManagerWorkingHoursService:
             return ManagerAvailability("unknown", False, [], time(0), time(0), None, None, None)
 
         if not enabled:
-            return ManagerAvailability("unknown", False, days, start, end, None, None, None)
+            return ManagerAvailability(
+                "unknown",
+                False,
+                days,
+                start,
+                end,
+                None,
+                None,
+                None,
+                self._format_business_hours(days, start, end),
+            )
 
         current = (now or datetime.now(UTC)).astimezone(UTC)
+        business_hours_text = self._format_business_hours(days, start, end)
         interval = self._find_containing_interval(current, days, start, end)
         if interval is not None:
             return ManagerAvailability(
-                "working", True, days, start, end, interval[0], interval[1], None
+                "working",
+                True,
+                days,
+                start,
+                end,
+                interval[0],
+                interval[1],
+                None,
+                business_hours_text,
             )
 
         next_start = self._find_next_start(current, days, start, end)
-        return ManagerAvailability("offline", True, days, start, end, None, None, next_start)
+        return ManagerAvailability(
+            "offline", True, days, start, end, None, None, next_start, business_hours_text
+        )
+
+    @staticmethod
+    def _format_business_hours(days: list[int], start: time, end: time) -> str:
+        """Формирует пользовательскую МСК-строку из сохранённого UTC-расписания."""
+        start_msk = (datetime.combine(datetime.min.date(), start) + timedelta(hours=3)).time()
+        end_msk = (datetime.combine(datetime.min.date(), end) + timedelta(hours=3)).time()
+        if days == list(range(1, 8)):
+            days_text = "Ежедневно"
+        elif days == [1, 2, 3, 4, 5]:
+            days_text = "Пн–Пт"
+        else:
+            days_text = ", ".join(_WEEKDAY_LABELS[day] for day in days)
+        return f"{days_text} с {start_msk:%H:%M} до {end_msk:%H:%M} МСК"
 
     @staticmethod
     def _interval_for_date(day: datetime.date, start: time, end: time) -> tuple[datetime, datetime]:
