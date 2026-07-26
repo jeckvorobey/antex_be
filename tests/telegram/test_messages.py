@@ -33,16 +33,30 @@ def test_referral_bonus_credited_is_short_and_formats_amount_with_two_decimals()
     ru_text = messages.referral_bonus_credited(amount="0.2", order_id=17, locale="ru")
     en_text = messages.referral_bonus_credited(amount=Decimal("2"), order_id=17, locale="en")
 
-    assert _strip_bidi_marks(ru_text) == "🎁 Начислено 0.20 ATXG за заявку #17."
-    assert _strip_bidi_marks(en_text) == "🎁 2.00 ATXG credited for order #17."
+    assert (
+        _strip_bidi_marks(ru_text)
+        == "🎁 Вознаграждение по реферальной программе: +0.20 ATXG\n"
+        "За успешно завершённую заявку #17."
+    )
+    assert (
+        _strip_bidi_marks(en_text)
+        == "🎁 Referral program reward: +2.00 ATXG\nFor completed order #17."
+    )
 
 
 def test_referral_bonus_reversed_is_short_and_formats_amount_with_two_decimals() -> None:
     ru_text = messages.referral_bonus_reversed(amount=Decimal("100.456"), order_id=17, locale="ru")
     en_text = messages.referral_bonus_reversed(amount="0.25", order_id=17, locale="en")
 
-    assert _strip_bidi_marks(ru_text) == "💸 Списано 100.46 ATXG за отмену заявки #17."
-    assert _strip_bidi_marks(en_text) == "💸 0.25 ATXG deducted for cancelled order #17."
+    assert (
+        _strip_bidi_marks(ru_text)
+        == "💸 Вознаграждение по реферальной программе списано: -100.46 ATXG\n"
+        "Заявка #17 отменена."
+    )
+    assert (
+        _strip_bidi_marks(en_text)
+        == "💸 Referral program reward reversed: -0.25 ATXG\nOrder #17 was cancelled."
+    )
 
 
 def test_exchange_confirm_summary_uses_human_currency_labels() -> None:
