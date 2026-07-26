@@ -10,6 +10,7 @@ from app.enums.order import OrderStatus
 from app.repositories import aex as aex_repositories
 from app.services import aex as aex_service_module
 from app.services import order_status
+from app.services import referral as referral_service_module
 from app.services.order_status import update_order_status
 
 
@@ -124,10 +125,100 @@ async def test_update_order_status_keeps_success_when_notification_fails(monkeyp
 
 
 @pytest.mark.asyncio
+async def test_update_order_status_passes_public_number_to_referral_notification(
+    monkeypatch,
+) -> None:
+    initial_order = SimpleNamespace(
+        id=5,
+        status=int(OrderStatus.PROCESSING),
+        publicNumber="2026070068",
+        amountSell=Decimal("100"),
+        UserId=42,
+        currencySell="USDT",
+        currencyBuy="VND",
+    )
+    updated_order = SimpleNamespace(id=5, status=int(OrderStatus.COMPLETED))
+    hydrated_order = SimpleNamespace(
+        id=5,
+        status=int(OrderStatus.COMPLETED),
+        publicNumber="2026070068",
+        amountSell=Decimal("100"),
+        UserId=42,
+        currencySell="USDT",
+        currencyBuy="VND",
+    )
+    commit_mock = AsyncMock()
+    first_get_done = False
+    credit_referral_bonus = AsyncMock(return_value=Decimal("5.00"))
+    status_notify_mock = AsyncMock()
+    manager = SimpleNamespace(telegram_id=700001, username="manager")
+
+    class _FakeRepo:
+        def __init__(self, db) -> None:
+            self.db = db
+
+        async def get_one(self, order_id: int):
+            nonlocal first_get_done
+            assert order_id == 5
+            if not first_get_done:
+                first_get_done = True
+                return initial_order
+            return hydrated_order
+
+        async def update_status(self, order_id: int, status: int):
+            assert order_id == 5
+            assert status == int(OrderStatus.COMPLETED)
+            return updated_order
+
+    class _FakeUserRepo:
+        def __init__(self, db) -> None:
+            self.db = db
+
+        async def get_manager(self):
+            return manager
+
+    class _FakeReferralService:
+        def __init__(self) -> None:
+            self.credit_referral_bonus = credit_referral_bonus
+
+    db = SimpleNamespace(commit=commit_mock, rollback=AsyncMock())
+
+    monkeypatch.setattr(order_status, "OrderRepository", _FakeRepo)
+    monkeypatch.setattr(order_status, "UserRepository", _FakeUserRepo)
+    monkeypatch.setattr(referral_service_module, "ReferralService", _FakeReferralService)
+    monkeypatch.setattr(order_status, "notify_order_status_changed", status_notify_mock)
+
+    updated = await update_order_status(
+        db,
+        order_id=5,
+        status=OrderStatus.COMPLETED,
+    )
+
+    assert updated is hydrated_order
+    credit_referral_bonus.assert_awaited_once_with(
+        db,
+        order_id=5,
+        order_public_number="2026070068",
+        order_amount=Decimal("100"),
+        referred_user_id=42,
+        currency_sell="USDT",
+        currency_buy="VND",
+    )
+    status_notify_mock.assert_awaited_once_with(
+        hydrated_order,
+        manager_chat_url="https://t.me/manager",
+    )
+
+
+@pytest.mark.asyncio
 async def test_update_order_status_sends_referral_reversal_notification(monkeypatch) -> None:
     initial_order = SimpleNamespace(id=5, status=int(OrderStatus.PROCESSING))
     updated_order = SimpleNamespace(id=5, status=int(OrderStatus.CANCELLED))
-    hydrated_order = SimpleNamespace(id=5, status=int(OrderStatus.CANCELLED))
+    hydrated_order = SimpleNamespace(
+        id=5,
+        status=int(OrderStatus.CANCELLED),
+        publicNumber="2026070068",
+    )
     referral_entry = SimpleNamespace(wallet_id=77, amount=Decimal("12.345"))
     wallet = SimpleNamespace(user_id=77, balance_available=Decimal("100"))
     commit_mock = AsyncMock()
@@ -206,6 +297,7 @@ async def test_update_order_status_sends_referral_reversal_notification(monkeypa
         db,
         referrer_id=77,
         order_id=5,
+        order_public_number="2026070068",
         amount=Decimal("12.345"),
     )
     status_notify_mock.assert_awaited_once_with(
@@ -220,7 +312,11 @@ async def test_update_order_status_ignores_referral_reversal_notification_failur
 ) -> None:
     initial_order = SimpleNamespace(id=5, status=int(OrderStatus.PROCESSING))
     updated_order = SimpleNamespace(id=5, status=int(OrderStatus.CANCELLED))
-    hydrated_order = SimpleNamespace(id=5, status=int(OrderStatus.CANCELLED))
+    hydrated_order = SimpleNamespace(
+        id=5,
+        status=int(OrderStatus.CANCELLED),
+        publicNumber="2026070068",
+    )
     referral_entry = SimpleNamespace(wallet_id=77, amount=Decimal("12.345"))
     wallet = SimpleNamespace(user_id=77, balance_available=Decimal("100"))
     commit_mock = AsyncMock()
@@ -299,6 +395,7 @@ async def test_update_order_status_ignores_referral_reversal_notification_failur
         db,
         referrer_id=77,
         order_id=5,
+        order_public_number="2026070068",
         amount=Decimal("12.345"),
     )
     status_notify_mock.assert_awaited_once_with(

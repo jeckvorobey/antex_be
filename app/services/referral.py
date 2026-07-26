@@ -194,6 +194,7 @@ class ReferralService:
         db: AsyncSession,
         *,
         order_id: int,
+        order_public_number: int | str | None = None,
         order_amount: Decimal,
         referred_user_id: int,
         currency_sell: str = "USDT",
@@ -255,6 +256,7 @@ class ReferralService:
             db,
             referrer_id=referrer_id,
             order_id=order_id,
+            order_public_number=order_public_number,
             amount=aex_amount,
         )
 
@@ -408,6 +410,7 @@ class ReferralService:
         *,
         referrer_id: int,
         order_id: int,
+        order_public_number: int | str | None = None,
         amount: Decimal,
     ) -> None:
         """Best-effort Telegram-уведомление рефереру после начисления."""
@@ -427,7 +430,7 @@ class ReferralService:
                 chat_id=referrer.telegram_id,
                 text=messages.referral_bonus_credited(
                     amount=amount,
-                    order_id=order_id,
+                    order_id=order_public_number or order_id,
                     translator=translate,
                 ),
             )

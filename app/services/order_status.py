@@ -28,6 +28,7 @@ async def _notify_referral_reversal(
     *,
     referrer_id: int,
     order_id: int,
+    order_public_number: int | str | None = None,
     amount: Decimal,
 ) -> None:
     """Best-effort Telegram notification for referral bonus reversal."""
@@ -47,7 +48,7 @@ async def _notify_referral_reversal(
             chat_id=referrer.telegram_id,
             text=messages.referral_bonus_reversed(
                 amount=amount,
-                order_id=order_id,
+                order_id=order_public_number or order_id,
                 translator=translate,
             ),
         )
@@ -103,6 +104,7 @@ async def update_order_status(
             await referral_service.credit_referral_bonus(
                 db,
                 order_id=hydrated.id,
+                order_public_number=getattr(hydrated, "publicNumber", hydrated.id),
                 order_amount=order_amount,
                 referred_user_id=hydrated.UserId,
                 currency_sell=str(hydrated.currencySell),
@@ -166,6 +168,11 @@ async def update_order_status(
                             db,
                             referrer_id=wallet.user_id,
                             order_id=order_id,
+                            order_public_number=getattr(
+                                hydrated,
+                                "publicNumber",
+                                order_id,
+                            ),
                             amount=referral_entry.amount,
                         )
                     else:
