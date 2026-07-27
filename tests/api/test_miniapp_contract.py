@@ -570,6 +570,33 @@ async def test_admin_config_rejects_non_numeric_or_duplicate_manager_working_day
 
 
 @pytest.mark.asyncio
+async def test_admin_config_allows_empty_manager_days_only_when_schedule_disabled(
+    api_client: tuple[AsyncClient, AsyncSession],
+) -> None:
+    client, db_session = api_client
+    admin = Admin(username="admin", password_hash="unused")
+    db_session.add_all([admin, Config(id=1, enabled=True)])
+    await db_session.flush()
+    token = create_access_token({"sub": str(admin.id), "type": "admin"})
+
+    enabled_response = await client.patch(
+        "/api/admin/config",
+        json={"managerScheduleEnabled": True, "managerWorkingDaysUtc": []},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    disabled_response = await client.patch(
+        "/api/admin/config",
+        json={"managerScheduleEnabled": False, "managerWorkingDaysUtc": []},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+
+    assert enabled_response.status_code == 422
+    assert disabled_response.status_code == 200
+    assert disabled_response.json()["managerScheduleEnabled"] is False
+    assert disabled_response.json()["managerWorkingDaysUtc"] == []
+
+
+@pytest.mark.asyncio
 async def test_miniapp_aex_transactions_returns_offset_pagination_contract(
     api_client: tuple[AsyncClient, AsyncSession],
 ) -> None:

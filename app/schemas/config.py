@@ -7,7 +7,14 @@ from datetime import datetime, time
 from decimal import Decimal
 from typing import Annotated
 
-from pydantic import BaseModel, ConfigDict, Field, field_serializer, field_validator
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    field_serializer,
+    field_validator,
+    model_validator,
+)
 
 
 class AppConfigOut(BaseModel):
@@ -69,7 +76,6 @@ class AppConfigUpdate(BaseModel):
     manager_working_days_utc: list[Annotated[int, Field(strict=True, ge=1, le=7)]] | None = Field(
         default=None,
         alias="managerWorkingDaysUtc",
-        min_length=1,
         max_length=7,
     )
     manager_start_time_utc: time | None = Field(default=None, alias="managerStartTimeUtc")
@@ -96,3 +102,10 @@ class AppConfigUpdate(BaseModel):
         if value is not None and (value.second or value.microsecond):
             raise ValueError("Manager working time must use minute precision")
         return value
+
+    @model_validator(mode="after")
+    def validate_enabled_manager_schedule_days(self) -> AppConfigUpdate:
+        """Пустой набор дней допустим только при явном выключении расписания."""
+        if self.manager_schedule_enabled is True and self.manager_working_days_utc == []:
+            raise ValueError("Manager working days are required when schedule is enabled")
+        return self
