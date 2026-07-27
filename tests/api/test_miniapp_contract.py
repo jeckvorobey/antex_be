@@ -487,6 +487,25 @@ async def test_admin_manager_schedule_is_reflected_in_miniapp_profile_and_exchan
 
 
 @pytest.mark.asyncio
+async def test_admin_manager_schedule_rejects_offset_bearing_utc_times(
+    api_client: tuple[AsyncClient, AsyncSession],
+) -> None:
+    client, db_session = api_client
+    admin = Admin(username="admin", password_hash="unused")
+    db_session.add_all([admin, Config(id=1, enabled=True)])
+    await db_session.flush()
+    admin_token = create_access_token({"sub": str(admin.id), "type": "admin"})
+
+    response = await client.patch(
+        "/api/admin/config",
+        json={"managerStartTimeUtc": "06:00+03:00"},
+        headers={"Authorization": f"Bearer {admin_token}"},
+    )
+
+    assert response.status_code == 422
+
+
+@pytest.mark.asyncio
 async def test_admin_config_rejects_negative_aex_withdraw_limit(
     api_client: tuple[AsyncClient, AsyncSession],
 ) -> None:

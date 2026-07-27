@@ -86,3 +86,11 @@ class AppConfigUpdate(BaseModel):
         if len(set(value)) != len(value):
             raise ValueError("Manager working days must not contain duplicates")
         return value
+
+    @field_validator("manager_start_time_utc", "manager_end_time_utc")
+    @classmethod
+    def validate_manager_utc_time(cls, value: time | None) -> time | None:
+        """Принимает только time-only UTC: offset был бы проигнорирован планировщиком."""
+        if value is not None and value.tzinfo is not None:
+            raise ValueError("Manager working time must be a UTC time without an offset")
+        return value
