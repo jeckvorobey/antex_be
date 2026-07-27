@@ -42,6 +42,8 @@ async def create_order_for_user(
     db: AsyncSession,
     user,
     payload: MiniappOrderCreate,
+    *,
+    notify_user: bool = True,
 ) -> object:
     """Создаёт предварительную заявку с клиентским расчётом miniapp."""
     order_repo = OrderRepository(db)
@@ -151,7 +153,7 @@ async def create_order_for_user(
             getattr(manager, "id", None),
             getattr(manager, "telegram_id", None),
         )
-        await notify_order_created(hydrated, user, manager)
+        await notify_order_created(hydrated, user, manager, notify_user=notify_user)
         logger.info(
             "Order notification completed: order_id=%s public_number=%s",
             order.id,

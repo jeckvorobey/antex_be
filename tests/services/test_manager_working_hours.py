@@ -29,6 +29,18 @@ def test_service_returns_working_at_start_and_offline_at_end() -> None:
     assert ended.next_start_at == datetime(2026, 7, 28, 6, tzinfo=UTC)
 
 
+def test_service_marks_0550_msk_as_offline_before_default_opening() -> None:
+    service = ManagerWorkingHoursService()
+
+    availability = service.get_availability(
+        _config(),
+        now=datetime(2026, 7, 27, 2, 50, tzinfo=UTC),
+    )
+
+    assert availability.status == "offline"
+    assert availability.next_start_at == datetime(2026, 7, 27, 6, tzinfo=UTC)
+
+
 def test_service_finds_next_enabled_day_and_overnight_interval() -> None:
     service = ManagerWorkingHoursService()
     weekdays = _config(manager_working_days_utc=[1, 3, 5])

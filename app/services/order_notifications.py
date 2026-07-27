@@ -58,7 +58,7 @@ async def send_or_replace_user_status_message(
     return sent.message_id
 
 
-async def notify_order_created(order, user, manager) -> None:
+async def notify_order_created(order, user, manager, *, notify_user: bool = True) -> None:
     bot = _get_telegram_bot()
     if bot is None:
         logger.warning(
@@ -68,7 +68,7 @@ async def notify_order_created(order, user, manager) -> None:
         )
         return
 
-    if getattr(user, "telegram_id", None):
+    if notify_user and getattr(user, "telegram_id", None):
         logger.info(
             "Sending order notification to user: order_id=%s public_number=%s "
             "user_id=%s telegram_id=%s",
@@ -96,7 +96,7 @@ async def notify_order_created(order, user, manager) -> None:
             getattr(order, "publicNumber", None),
             getattr(user, "telegram_id", None),
         )
-    else:
+    elif notify_user:
         logger.warning(
             "Order user notification skipped: user chat is unavailable order_id=%s "
             "public_number=%s user_id=%s",
