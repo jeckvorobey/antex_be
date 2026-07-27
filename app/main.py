@@ -14,11 +14,14 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.routers import (
     admin,
+    aex,
     auth,
     broadcasts,
+    marketing,
     miniapp,
     orders,
     public,
+    referral,
     telegram,
     users,
 )
@@ -41,12 +44,12 @@ async def _initialize_rates_if_needed(
     *,
     fetch_rates: Callable[[AsyncSession], Awaitable[dict[str, float]]] | None = None,
 ) -> bool:
-    """Заполняет курсы на старте только если таблица rates пуста."""
+    """Обновляет курсы на старте, если обязательный набор пар неполон."""
     from app.repositories.rate import RateRepository
-    from app.services.rate_fetcher import fetch_and_save_rates
+    from app.services.rate_fetcher import EXPECTED_RATE_CURRENCIES, fetch_and_save_rates
 
-    if await RateRepository(db).has_any():
-        logger.info("Курсы уже есть в БД, стартовый парсинг пропущен")
+    if await RateRepository(db).has_all_currencies(EXPECTED_RATE_CURRENCIES):
+        logger.info("Полный набор курсов уже есть в БД, стартовый парсинг пропущен")
         return False
 
     rates = await (fetch_rates or fetch_and_save_rates)(db)
@@ -155,7 +158,11 @@ app.include_router(users.router)
 app.include_router(orders.router)
 app.include_router(miniapp.router)
 app.include_router(admin.router)
+app.include_router(aex.router)
+app.include_router(aex.admin_router)
+app.include_router(referral.router)
 app.include_router(broadcasts.router)
+app.include_router(marketing.router)
 app.include_router(public.router)
 app.include_router(telegram.router)
 

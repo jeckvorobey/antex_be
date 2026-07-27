@@ -53,9 +53,11 @@ class TestBuildMarketRates:
             "USDTTHB",
             "USDTGEL",
             "USDTVND",
+            "USDTRUB",
             "RUBTHB",
             "RUBGEL",
             "RUBVND",
+            "RUBUSDT",
         }
 
     def test_usdtthb_keeps_market_price(self) -> None:
@@ -84,3 +86,14 @@ class TestBuildMarketRates:
         )
         assert rates["USDTGEL"] == pytest.approx(2.72, rel=1e-6)
         assert rates["USDTVND"] == pytest.approx(25500.0, rel=1e-6)
+
+    def test_builds_direct_and_inverse_rub_usdt_market_rates(self) -> None:
+        """Проверяет взаимно обратные внутренние курсы без применения маржи."""
+        rates = build_market_rates(
+            usdt_targets={"THB": 35.5, "GEL": 2.72, "VND": 25500.0},
+            usdt_rub=91.2,
+        )
+
+        assert rates["USDTRUB"] == pytest.approx(91.2, rel=1e-6)
+        assert rates["RUBUSDT"] == pytest.approx(1 / 91.2, rel=1e-6)
+        assert rates["USDTRUB"] * rates["RUBUSDT"] == pytest.approx(1.0, rel=1e-6)

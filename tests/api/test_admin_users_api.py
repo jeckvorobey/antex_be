@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import AsyncIterator
+from decimal import Decimal
 
 import pytest
 from httpx import ASGITransport, AsyncClient
@@ -10,6 +11,7 @@ from app.api import deps
 from app.core.security import create_access_token
 from app.enums.user import UserRole
 from app.models.admin import Admin
+from app.models.attribution import UserAcquisition
 from app.models.user import User
 
 
@@ -65,12 +67,8 @@ async def test_admin_cannot_assign_second_global_manager(
 ) -> None:
     client, db_session = admin_users_api_client
     admin = Admin(username="admin", password_hash="unused")
-    user1 = User(
-        telegram_id=800009, username="user1", first_name="Alice", role=int(UserRole.USER)
-    )
-    user2 = User(
-        telegram_id=800010, username="user2", first_name="Bob", role=int(UserRole.USER)
-    )
+    user1 = User(telegram_id=800009, username="user1", first_name="Alice", role=int(UserRole.USER))
+    user2 = User(telegram_id=800010, username="user2", first_name="Bob", role=int(UserRole.USER))
     db_session.add_all([admin, user1, user2])
     await db_session.flush()
     token = create_access_token({"sub": str(admin.id), "type": "admin"})
@@ -83,8 +81,11 @@ async def test_admin_cannot_assign_second_global_manager(
 
     assert response.status_code == 200
     data = response.json()
-    assert len(data) == 1
-    assert data[0]["id"] == user1.id
+    assert data["total"] == 1
+    assert data["limit"] == 50
+    assert data["offset"] == 0
+    assert len(data["items"]) == 1
+    assert data["items"][0]["id"] == user1.id
 
 
 @pytest.mark.asyncio
@@ -93,9 +94,7 @@ async def test_admin_list_users_search_no_results(
 ) -> None:
     client, db_session = admin_users_api_client
     admin = Admin(username="admin", password_hash="unused")
-    user = User(
-        telegram_id=800011, username="alice", first_name="Alice", role=int(UserRole.USER)
-    )
+    user = User(telegram_id=800011, username="alice", first_name="Alice", role=int(UserRole.USER))
     db_session.add_all([admin, user])
     await db_session.flush()
     token = create_access_token({"sub": str(admin.id), "type": "admin"})
@@ -108,4 +107,264 @@ async def test_admin_list_users_search_no_results(
 
     assert response.status_code == 200
     data = response.json()
-    assert len(data) == 0
+    assert data == {"items": [], "total": 0, "limit": 50, "offset": 0}
+
+
+@pytest.mark.asyncio
+async def test_admin_user_contract_separates_fixed_acquisition_from_referrer(
+    admin_users_api_client: tuple[AsyncClient, AsyncSession],
+) -> None:
+    client, db_session = admin_users_api_client
+    admin = Admin(username="attribution-admin", password_hash="unused")
+    referrer = User(telegram_id=811001, username="referrer", first_name="Ref")
+    user = User(
+        telegram_id=811002,
+        username="attributed_user",
+        first_name="User",
+    )
+    db_session.add_all([admin, referrer])
+    await db_session.flush()
+    db_session.add(user)
+    await db_session.flush()
+    db_session.add(
+        UserAcquisition(
+            user_id=user.id,
+            source_type="referral",
+            referrer_user_id=referrer.id,
+        )
+    )
+    await db_session.flush()
+    token = create_access_token({"sub": str(admin.id), "type": "admin"})
+
+    response = await client.get(
+        f"/api/admin/users/{user.id}",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+
+    assert response.status_code == 200, response.text
+    data = response.json()
+    assert data["referred_by"] == referrer.id
+    assert data["attribution"]["sourceType"] == "referral"
+    assert data["attribution"]["sourceStatus"] == "fixed"
+    assert data["attribution"]["primaryCampaignId"] is None
+
+    updated = await client.patch(
+        f"/api/admin/users/{user.id}",
+        headers={"Authorization": f"Bearer {token}"},
+        json={"role": int(UserRole.USER)},
+    )
+    assert updated.status_code == 200, updated.text
+    assert updated.json()["attribution"]["sourceType"] == "referral"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("query", "expected_username"),
+    [
+        ("multi_username", "multi_username"),
+        ("MultiFirst", "multi_username"),
+        ("MultiLast", "multi_username"),
+        ("880020", "multi_username"),
+        ("+660020", "phone_search"),
+    ],
+)
+async def test_admin_list_users_searches_identity_fields(
+    admin_users_api_client: tuple[AsyncClient, AsyncSession],
+    query: str,
+    expected_username: str,
+) -> None:
+    client, db_session = admin_users_api_client
+    admin = Admin(username="admin", password_hash="unused")
+    target = User(
+        telegram_id=880020,
+        username="multi_username",
+        first_name="MultiFirst",
+        last_name="MultiLast",
+        role=int(UserRole.USER),
+    )
+    phone_target = User(
+        telegram_id=880021,
+        username="phone_search",
+        first_name="Phone",
+        phone="+660020",
+        role=int(UserRole.USER),
+    )
+    other = User(
+        telegram_id=880022,
+        username="other_identity",
+        first_name="Other",
+        role=int(UserRole.USER),
+    )
+    db_session.add_all([admin, target, phone_target, other])
+    await db_session.flush()
+    token = create_access_token({"sub": str(admin.id), "type": "admin"})
+
+    response = await client.get(
+        "/api/admin/users",
+        params={"search": query},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["total"] == 1
+    assert data["items"][0]["username"] == expected_username
+
+
+@pytest.mark.asyncio
+async def test_admin_list_users_includes_referral_and_aex_columns(
+    admin_users_api_client: tuple[AsyncClient, AsyncSession],
+) -> None:
+    client, db_session = admin_users_api_client
+    admin = Admin(username="admin", password_hash="unused")
+    user = User(
+        telegram_id=800012,
+        username="ref_admin_row",
+        first_name="Referral",
+        role=int(UserRole.USER),
+        referral_code="REFROW12",
+    )
+    db_session.add_all([admin, user])
+    await db_session.flush()
+    await db_session.refresh(admin)
+    await db_session.refresh(user)
+
+    from app.services.aex import AexService
+    from app.services.aex_rate import AexRateService
+
+    await AexService().credit(db_session, user.id, Decimal("12.5"))
+    await AexRateService().set_personal_rate(db_session, user.id, Decimal("0.015"))
+    await db_session.commit()
+
+    token = create_access_token({"sub": str(admin.id), "type": "admin"})
+    response = await client.get(
+        "/api/admin/users",
+        params={"search": "ref_admin_row"},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+
+    assert response.status_code == 200
+    data = response.json()["items"]
+    assert len(data) == 1
+    row = data[0]
+    assert row["referral_code"] == "REFROW12"
+    assert row["referral_rate"] == "0.015000"
+    assert row["referral_rate_percent"] == "1.500000"
+    assert row["aex_balance"] == "12.50000000"
+
+
+@pytest.mark.asyncio
+async def test_admin_users_list_respects_limit_offset_and_total(
+    admin_users_api_client: tuple[AsyncClient, AsyncSession],
+) -> None:
+    client, db_session = admin_users_api_client
+    admin = Admin(username="admin", password_hash="unused")
+    db_session.add(admin)
+    await db_session.flush()
+    for index in range(3):
+        db_session.add(
+            User(
+                telegram_id=810000 + index,
+                username=f"user_{index}",
+                first_name=f"User {index}",
+                role=int(UserRole.USER),
+            )
+        )
+    await db_session.flush()
+    token = create_access_token({"sub": str(admin.id), "type": "admin"})
+
+    response = await client.get(
+        "/api/admin/users",
+        params={"limit": 2, "offset": 1},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["total"] == 3
+    assert data["limit"] == 2
+    assert data["offset"] == 1
+    assert [item["username"] for item in data["items"]] == ["user_1", "user_2"]
+
+
+@pytest.mark.asyncio
+async def test_admin_get_user_without_wallet_returns_referral_defaults(
+    admin_users_api_client: tuple[AsyncClient, AsyncSession],
+) -> None:
+    client, db_session = admin_users_api_client
+    admin = Admin(username="admin", password_hash="unused")
+    user = User(
+        telegram_id=800013,
+        username="ref_admin_detail",
+        first_name="Referral",
+        role=int(UserRole.USER),
+        referral_code=None,
+    )
+    db_session.add_all([admin, user])
+    await db_session.flush()
+    await db_session.refresh(admin)
+    await db_session.refresh(user)
+
+    token = create_access_token({"sub": str(admin.id), "type": "admin"})
+    response = await client.get(
+        f"/api/admin/users/{user.id}",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+
+    assert response.status_code == 200
+    row = response.json()
+    assert row["referral_code"] is None
+    assert row["referral_rate"] == "0.002000"
+    assert row["referral_rate_percent"] == "0.200000"
+    assert row["aex_balance"] == "0"
+
+
+@pytest.mark.asyncio
+async def test_admin_generate_referral_code_for_single_user(
+    admin_users_api_client: tuple[AsyncClient, AsyncSession],
+) -> None:
+    client, db_session = admin_users_api_client
+    admin = Admin(username="admin", password_hash="unused")
+    target = User(telegram_id=800014, username="ref_single_target")
+    other = User(telegram_id=800015, username="ref_single_other")
+    db_session.add_all([admin, target, other])
+    await db_session.flush()
+    token = create_access_token({"sub": str(admin.id), "type": "admin"})
+
+    response = await client.post(
+        f"/api/admin/users/{target.id}/generate-referral-code",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+
+    assert response.status_code == 200
+    assert len(response.json()["referral_code"]) == 8
+    await db_session.refresh(target)
+    await db_session.refresh(other)
+    assert target.referral_code == response.json()["referral_code"]
+    assert other.referral_code is None
+
+
+@pytest.mark.asyncio
+async def test_admin_regenerate_referral_code_for_single_user_only(
+    admin_users_api_client: tuple[AsyncClient, AsyncSession],
+) -> None:
+    client, db_session = admin_users_api_client
+    admin = Admin(username="admin", password_hash="unused")
+    target = User(telegram_id=800016, username="ref_regen_target", referral_code="tH6wQ8Er")
+    other = User(telegram_id=800017, username="ref_regen_other", referral_code="Y9mNc2Lp")
+    db_session.add_all([admin, target, other])
+    await db_session.flush()
+    token = create_access_token({"sub": str(admin.id), "type": "admin"})
+
+    response = await client.post(
+        f"/api/admin/users/{target.id}/generate-referral-code",
+        params={"regenerate": True},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+
+    assert response.status_code == 200
+    await db_session.refresh(target)
+    await db_session.refresh(other)
+    assert target.referral_code == response.json()["referral_code"]
+    assert target.referral_code != "tH6wQ8Er"
+    assert other.referral_code == "Y9mNc2Lp"

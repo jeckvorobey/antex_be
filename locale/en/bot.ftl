@@ -12,7 +12,10 @@ exchange-start-welcome =
 
     📝 To create a request, open the app or choose a country from the list below.
 
+    Requests are accepted around the clock.
+
     ☝️ We’ll guide you at every step.
+manager-working-hours = Managers work { $hours }.
 exchange-choose-country = Choose a country
 exchange-choose-service =
     <b>💠 Choose the service you need</b>
@@ -46,6 +49,15 @@ exchange-choose-method = How would you like to receive { $currency }?
 exchange-rate-unavailable = ⚠️ Exchange rate is temporarily unavailable. Please try again later.
 exchange-confirm-summary-top = 📋 Review your order — step { $current }/{ $total }
 exchange-confirm-summary-bottom = If everything is correct, press “Confirm”.
+exchange-off-hours-alert = A manager will process the order in the morning after the working day begins.
+exchange-off-hours-confirmation =
+    ⚠️ Managers are not working right now.
+
+    The order will be processed in the morning after the working day begins. You can create it now — working hours do not affect order creation.
+
+    Working hours: { $hours }.
+
+    If everything is correct, press “Yes”.
 exchange-summary-country = Country
 exchange-summary-city = City
 exchange-summary-rate = Rate
@@ -56,7 +68,9 @@ manager-summary-user = User
 
 ## Buttons
 btn-confirm = ✅ Confirm
+btn-yes = ✅ Yes
 btn-cancel = ❌ Cancel
+btn-cancel-short = ❌ Cancel
 btn-back = ◀ Back
 btn-service-cash-delivery = 🚕 Cash delivery
 btn-service-cash-atm = 🏧 Cash by QR
@@ -102,6 +116,10 @@ manager-access-denied = Access denied.
 
 ## Order statuses
 order-created = ✅ Order #{ $id } created. Please wait for confirmation.
+order-created-offline =
+    ✅ Order #{ $id } created. Your request has been accepted.
+
+    <blockquote>A manager will process the order in the morning after the working day begins.</blockquote>
 order-creation-failed = Could not create the order right now. Please try again in a minute.
 order-creation-limit-reached = You already have too many active orders. Please wait for the current ones to be processed.
 order-confirmed = ✅ Order #{ $id } is now being processed by the manager.
@@ -118,3 +136,17 @@ order-completed-bottom = Thanks for using our service! If you have a minute, we�
 order-cancelled = ❌ Order #{ $id } cancelled.
 manager-chat-open-text = Hello! You had left order #{ $id } for exchanging { $amount } { $currency }. Are you ready to continue?
 user-chat-open-text = Hello! For order #{ $id } in the amount of { $amount } { $currency }, I confirm I’m ready to exchange.
+referral-bonus-credited =
+    🎁 Referral program reward: +{ $amount } ATXG
+    For completed order #{ $order_id }.
+referral-bonus-reversed =
+    💸 Referral program reward reversed: -{ $amount } ATXG
+    Order #{ $order_id } was cancelled.
+miniapp-aex-referral-reward = Referral reward
+miniapp-aex-referral-reward-with-order = Referral reward for order { $order_number }
+miniapp-aex-withdraw-hold = Reserved
+miniapp-aex-withdraw-hold-with-order = Reserved for order { $order_number }
+miniapp-aex-withdraw-debit = Debited
+miniapp-aex-withdraw-debit-with-order = Debited for order { $order_number }
+miniapp-aex-withdraw-release = Refund
+miniapp-aex-withdraw-release-with-order = Refund for order { $order_number }

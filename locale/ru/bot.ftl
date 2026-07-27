@@ -12,7 +12,10 @@ exchange-start-welcome =
 
     📝 Чтобы оставить заявку, откройте приложение или выберите страну в списке ниже.
 
+    Заявки принимаются круглосуточно.
+
     ☝️ Мы будем сопровождать вас на каждом этапе.
+manager-working-hours = Менеджеры работают { $hours }.
 exchange-choose-country = Выберите страну
 exchange-choose-service =
     <b>💠 Выберите подходящую услугу</b>
@@ -47,6 +50,15 @@ exchange-choose-method = Выберите способ получения { $cur
 exchange-rate-unavailable = ⚠️ Курс временно недоступен. Попробуйте позже.
 exchange-confirm-summary-top = 📋 Проверьте заявку — шаг { $current }/{ $total }
 exchange-confirm-summary-bottom = Если всё верно, нажмите «Подтвердить».
+exchange-off-hours-alert = Менеджер обработает заявку утром после начала рабочего дня.
+exchange-off-hours-confirmation =
+    ⚠️ Менеджеры сейчас не работают.
+
+    Заявка будет обработана утром после начала рабочего дня. Создать её можно сейчас — режим работы не влияет на оформление.
+
+    График: { $hours }.
+
+    Если всё верно, нажмите «Да».
 exchange-summary-country = Страна
 exchange-summary-city = Город
 exchange-summary-rate = Курс
@@ -57,7 +69,9 @@ manager-summary-user = Пользователь
 
 ## Buttons
 btn-confirm = ✅ Подтвердить
+btn-yes = ✅ Да
 btn-cancel = ❌ Отменить
+btn-cancel-short = ❌ Отмена
 btn-back = ◀ Назад
 btn-service-cash-delivery = 🚕 Доставка наличных
 btn-service-cash-atm = 🏧 Наличные по QR
@@ -108,6 +122,12 @@ order-created =
     ⏳ Мы получили ваш запрос и уже начали обработку.
 
     Пожалуйста, ожидайте подтверждения. Статус заявки будет обновлён автоматически.
+order-created-offline =
+    ✅ Заявка №{ $id } создана.
+
+    Заявка принята.
+
+    <blockquote>Менеджер обработает заявку утром после начала рабочего дня.</blockquote>
 order-creation-failed = Не удалось создать заявку. Попробуйте ещё раз через минуту.
 order-creation-limit-reached = У вас уже слишком много активных заявок. Дождитесь обработки текущих или завершите их.
 order-confirmed =
@@ -130,7 +150,23 @@ order-completed-top =
 order-completed-bottom =
     Спасибо, что воспользовались нашим сервисом!
 
-    ⭐ Если у вас есть пара минут, будем рады вашему отзыву. Это помогает нам становиться лучше.
+    Мы ценим обратную связь. За видео-отзыв (кружок) предоставляем <b>бонус 5$ к следующему обмену 💰</b>
+
+    ⭐ Будем рады вашему отзыву. Это помогает нам становиться лучше.
 order-cancelled = ❌ Заявка #{ $id } отменена.
 manager-chat-open-text = Здравствуйте! Вы оставляли заявку #{ $id } на обмен { $amount } { $currency }. Готовы продолжить?
 user-chat-open-text = Здравствуйте! По заявке #{ $id } на сумму { $amount } { $currency } подтверждаю готовность к обмену.
+referral-bonus-credited =
+    🎁 Вознаграждение по реферальной программе: +{ $amount } ATXG
+    За успешно завершённую заявку #{ $order_id }.
+referral-bonus-reversed =
+    💸 Вознаграждение по реферальной программе списано: -{ $amount } ATXG
+    Заявка #{ $order_id } отменена.
+miniapp-aex-referral-reward = Реферальное начисление
+miniapp-aex-referral-reward-with-order = Реферальное начисление по заявке { $order_number }
+miniapp-aex-withdraw-hold = Зарезервировано
+miniapp-aex-withdraw-hold-with-order = Зарезервировано по заявке { $order_number }
+miniapp-aex-withdraw-debit = Списано
+miniapp-aex-withdraw-debit-with-order = Списано по заявке { $order_number }
+miniapp-aex-withdraw-release = Возврат
+miniapp-aex-withdraw-release-with-order = Возврат по заявке { $order_number }

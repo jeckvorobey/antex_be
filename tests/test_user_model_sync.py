@@ -1,14 +1,46 @@
 from __future__ import annotations
 
 from aiogram.types import User as TgUser
+from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 
 from app.enums.user import UserRole, get_role_title, has_admin_access, has_operator_access
+from app.models.attribution import AttributionAuditEvent, MarketingTouch, UserAcquisition
+from app.models.marketing import (
+    MarketingAttribution,
+    MarketingCampaign,
+    MarketingCurrency,
+    MarketingPlatform,
+)
 from app.models.user import User
 from app.repositories.user import UserRepository
 from app.schemas.user import build_user_out
+from app.services.attribution import AttributionService
 from app.services.auth import resolve_trusted_contact, telegram_auth
 from app.telegram.services.user_service import check_user
+
+
+async def _marketing_campaign(
+    db_session,
+    code: str,
+    name: str,
+    *,
+    status: str = "active",
+) -> MarketingCampaign:
+    platform = MarketingPlatform(slug="telegram_ads", name="Telegram Ads")
+    currency = MarketingCurrency(code="USDT", name="USDT")
+    db_session.add_all([platform, currency])
+    await db_session.flush()
+    campaign = MarketingCampaign(
+        code=code,
+        name=name,
+        platform_id=platform.id,
+        currency_id=currency.id,
+        status=status,
+    )
+    db_session.add(campaign)
+    await db_session.flush()
+    return campaign
 
 
 async def test_find_or_create_updates_existing_user_without_chat_id(db_session) -> None:
@@ -60,7 +92,13 @@ async def test_check_user_refreshes_user_from_start_command(db_session) -> None:
         is_premium=False,
     )
     user, created = await check_user(db_session, tg_user)
+    acquisition = await AttributionService(db_session).get_acquisition(user.id)
+    assert acquisition is not None and acquisition.source_type == "direct"
     assert created is True
+    assert user.referral_code is not None
+    assert len(user.referral_code) == 8
+    assert user.referral_code.isascii()
+    assert user.referral_code.isalnum()
 
     refreshed_tg_user = TgUser(
         id=555,
@@ -102,6 +140,12 @@ async def test_telegram_auth_refreshes_existing_user(
 
     first_token = await telegram_auth(db_session, "init-data")
     assert first_token.access_token == "token-1"
+    registered_user = await UserRepository(db_session).get_one(1)
+    assert registered_user is not None
+    assert registered_user.referral_code is not None
+    assert len(registered_user.referral_code) == 8
+    assert registered_user.referral_code.isascii()
+    assert registered_user.referral_code.isalnum()
 
     monkeypatch.setattr(
         "app.services.auth.validate_telegram_init_data",
@@ -180,6 +224,167 @@ async def test_telegram_auth_persists_updates_and_clears_photo_url(
     cleared_user = await UserRepository(db_session).get_one(1)
     assert cleared_user is not None
     assert cleared_user.photo_url is None
+
+
+async def test_telegram_auth_applies_trusted_market_start_param(monkeypatch, db_session) -> None:
+    campaign = await _marketing_campaign(db_session, "BDF7J9J8JH", "Telegram Ads")
+    monkeypatch.setattr(
+        "app.services.auth.validate_telegram_init_data",
+        lambda _: {
+            "user": '{"id": 9191, "username": "market_user", "first_name": "Market"}',
+            "start_param": "market_BDF7J9J8JH",
+        },
+    )
+    monkeypatch.setattr("app.services.auth.create_access_token", lambda _: "token")
+
+    response = await telegram_auth(db_session, "signed-init-data")
+    touch = (await db_session.execute(select(MarketingTouch))).scalar_one()
+    acquisition = (await db_session.execute(select(UserAcquisition))).scalar_one()
+
+    assert response.access_token == "token"
+    assert touch.campaign_id == campaign.id
+    assert touch.user_state == "new"
+    assert acquisition.campaign_id == campaign.id
+    assert acquisition.source_type == "campaign"
+
+
+async def test_telegram_auth_ignores_invalid_archived_and_ref_start_params(
+    monkeypatch,
+    db_session,
+) -> None:
+    await _marketing_campaign(db_session, "ARCHIVED00", "Archive", status="archived")
+    monkeypatch.setattr("app.services.auth.create_access_token", lambda _: "token")
+
+    for telegram_id, start_param in enumerate(
+        ("market_UNKNOWN000", "market_ARCHIVED00", "market_bad-code", "ref_ABCDEFGH"),
+        start=9200,
+    ):
+        monkeypatch.setattr(
+            "app.services.auth.validate_telegram_init_data",
+            lambda _, telegram_id=telegram_id, start_param=start_param: {
+                "user": f'{{"id": {telegram_id}, "first_name": "Safe"}}',
+                "start_param": start_param,
+            },
+        )
+        assert (await telegram_auth(db_session, "signed-init-data")).access_token == "token"
+
+    assert (await db_session.execute(select(MarketingAttribution))).scalars().all() == []
+
+
+async def test_telegram_auth_does_not_accept_url_only_marketing_parameter(
+    monkeypatch,
+    db_session,
+) -> None:
+    await _marketing_campaign(db_session, "URLONLY000", "Unsafe")
+    monkeypatch.setattr(
+        "app.services.auth.validate_telegram_init_data",
+        lambda _: {"user": '{"id": 9300, "first_name": "No URL"}'},
+    )
+    monkeypatch.setattr("app.services.auth.create_access_token", lambda _: "token")
+
+    await telegram_auth(db_session, "market_URLONLY000")
+
+    assert (await db_session.execute(select(MarketingAttribution))).scalars().all() == []
+
+
+async def test_telegram_auth_rejects_existing_user_referral_start_param(
+    monkeypatch,
+    db_session,
+) -> None:
+    referrer = User(telegram_id=2001, username="auth_referrer", referral_code="A7kP2mX9")
+    existing_user = User(telegram_id=2002, username="auth_referred")
+    db_session.add_all([referrer, existing_user])
+    await db_session.flush()
+
+    monkeypatch.setattr(
+        "app.services.auth.validate_telegram_init_data",
+        lambda _: {
+            "start_param": "ref_A7kP2mX9",
+            "user": (
+                '{"id": 2002, "username": "auth_referred", "first_name": "Linked", '
+                '"last_name": "User", "language_code": "ru", "is_bot": false, '
+                '"is_premium": false}'
+            ),
+        },
+    )
+    monkeypatch.setattr(
+        "app.services.auth.create_access_token",
+        lambda data: f"token-{data['sub']}",
+    )
+
+    await telegram_auth(db_session, "init-data")
+
+    await db_session.refresh(existing_user)
+    referral_acq = await db_session.scalar(
+        select(UserAcquisition.referrer_user_id).where(
+            UserAcquisition.user_id == existing_user.id,
+            UserAcquisition.source_type == "referral",
+        )
+    )
+    assert referral_acq is None
+    audit = (
+        await db_session.execute(
+            select(AttributionAuditEvent).where(
+                AttributionAuditEvent.user_id == existing_user.id,
+                AttributionAuditEvent.event_type == "referral_binding_rejected",
+            )
+        )
+    ).scalar_one()
+    assert audit.reason == "existing_user"
+
+
+async def test_telegram_auth_does_not_rewrite_existing_referral_from_start_param(
+    monkeypatch,
+    db_session,
+) -> None:
+    original_referrer = User(
+        telegram_id=2011,
+        username="auth_referrer_one",
+        referral_code="A7kP2mX9",
+    )
+    new_referrer = User(
+        telegram_id=2012,
+        username="auth_referrer_two",
+        referral_code="hF84LmQz",
+    )
+    existing_user = User(telegram_id=2013, username="auth_already_referred")
+    db_session.add_all([original_referrer, new_referrer, existing_user])
+    await db_session.flush()
+    db_session.add(
+        UserAcquisition(
+            user_id=existing_user.id,
+            source_type="referral",
+            referrer_user_id=original_referrer.id,
+        )
+    )
+    await db_session.flush()
+
+    monkeypatch.setattr(
+        "app.services.auth.validate_telegram_init_data",
+        lambda _: {
+            "start_param": "ref_hF84LmQz",
+            "user": (
+                '{"id": 2013, "username": "auth_already_referred", '
+                '"first_name": "Linked", "last_name": "User", "language_code": "ru", '
+                '"is_bot": false, "is_premium": false}'
+            ),
+        },
+    )
+    monkeypatch.setattr(
+        "app.services.auth.create_access_token",
+        lambda data: f"token-{data['sub']}",
+    )
+
+    await telegram_auth(db_session, "init-data")
+
+    await db_session.refresh(existing_user)
+    referral_acq = await db_session.scalar(
+        select(UserAcquisition.referrer_user_id).where(
+            UserAcquisition.user_id == existing_user.id,
+            UserAcquisition.source_type == "referral",
+        )
+    )
+    assert referral_acq == original_referrer.id
 
 
 async def test_users_username_is_unique(db_session) -> None:

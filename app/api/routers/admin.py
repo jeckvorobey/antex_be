@@ -2,14 +2,19 @@
 
 from __future__ import annotations
 
+import base64
+import binascii
 import hashlib
+import hmac
+import secrets
 from datetime import UTC, datetime, time
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
+from cryptography.hazmat.primitives.kdf.scrypt import Scrypt
 from fastapi import APIRouter, HTTPException, Query, status
 from sqlalchemy import func, select
 
-from app.api.deps import AdminUser, DbDep
+from app.api.deps import AdminUser, DbDep, RefreshAdminUser
 from app.core.config import settings
 from app.core.security import create_access_token
 from app.enums.user import UserRole
@@ -30,21 +35,59 @@ from app.schemas.admin import (
     AdminSummaryOut,
     AdminSummaryRateOut,
     AdminTokenResponse,
+    PaginatedUsersResponse,
 )
+from app.schemas.aex import AdminReferralGenerateResponse
 from app.schemas.city import CityCreate, CityOut, CityUpdate, build_city_out
 from app.schemas.config import AppConfigOut, AppConfigUpdate
-from app.schemas.order import OrderOut, OrderStatusUpdate, build_order_out
+from app.schemas.order import (
+    OrderOut,
+    OrderStatusUpdate,
+    PaginatedOrdersResponse,
+    build_order_out,
+)
 from app.schemas.rate import AdminRateOut, RateCreate, RateUpdate, build_admin_rate_out
-from app.schemas.site_lead import SiteLeadOut, build_site_lead_out
+from app.schemas.site_lead import (
+    PaginatedSiteLeadsResponse,
+    build_site_lead_out,
+)
 from app.schemas.user import UserOut, UserUpdate, build_user_out
+from app.services.attribution import AttributionService
 from app.services.exchange import ExchangeService
 from app.services.order_status import update_order_status as apply_order_status
+from app.services.referral import ReferralService
 
 router = APIRouter(prefix="/api/admin", tags=["admin"])
 
 
 def build_password_hash(password: str) -> str:
-    return hashlib.sha256(password.encode()).hexdigest()
+    """Хеширует пароль администратора через memory-hard Scrypt и случайную соль."""
+    salt = secrets.token_bytes(16)
+    derived = Scrypt(salt=salt, length=32, n=2**14, r=8, p=1).derive(password.encode())
+    encoded_salt = base64.urlsafe_b64encode(salt).decode()
+    encoded_derived = base64.urlsafe_b64encode(derived).decode()
+    return f"scrypt$16384$8$1${encoded_salt}${encoded_derived}"
+
+
+def verify_password(password: str, password_hash: str) -> tuple[bool, bool]:
+    """Проверяет пароль и сообщает, нужно ли обновить legacy SHA-256 хеш."""
+    if password_hash.startswith("scrypt$"):
+        try:
+            _, n, r, p, salt, expected = password_hash.split("$", 5)
+            derived = Scrypt(
+                salt=base64.urlsafe_b64decode(salt),
+                length=32,
+                n=int(n),
+                r=int(r),
+                p=int(p),
+            ).derive(password.encode())
+            expected_bytes = base64.urlsafe_b64decode(expected)
+        except (TypeError, ValueError, binascii.Error):
+            return False, False
+        return hmac.compare_digest(derived, expected_bytes), False
+
+    legacy = hashlib.sha256(password.encode()).hexdigest()
+    return hmac.compare_digest(password_hash, legacy), True
 
 
 def get_today_start_for_timezone(
@@ -68,9 +111,14 @@ def get_today_start_for_timezone(
 async def admin_login(body: AdminLogin, db: DbDep) -> AdminTokenResponse:
     repo = AdminRepository(db)
     admin = await repo.get_by_username(body.username)
-    password_hash = build_password_hash(body.password)
-    if not admin or admin.password_hash != password_hash:
+    if not admin:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid credentials")
+    password_valid, needs_rehash = verify_password(body.password, admin.password_hash)
+    if not password_valid:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid credentials")
+    if needs_rehash:
+        admin.password_hash = build_password_hash(body.password)
+        await db.commit()
 
     access = create_access_token(
         {"sub": str(admin.id), "type": "admin"},
@@ -84,7 +132,7 @@ async def admin_login(body: AdminLogin, db: DbDep) -> AdminTokenResponse:
 
 
 @router.post("/refresh", response_model=AdminTokenResponse)
-async def admin_refresh(_: DbDep, admin: AdminUser) -> AdminTokenResponse:
+async def admin_refresh(_: DbDep, admin: RefreshAdminUser) -> AdminTokenResponse:
     access = create_access_token(
         {"sub": str(admin.id), "type": "admin"},
         ttl=settings.admin_access_ttl_seconds,
@@ -228,14 +276,30 @@ async def delete_city(city_id: int, db: DbDep, _: AdminUser) -> dict[str, bool]:
     return {"ok": True}
 
 
-@router.get("/users", response_model=list[UserOut])
+@router.get("/users", response_model=PaginatedUsersResponse)
 async def list_users(
     db: DbDep,
     _: AdminUser,
     search: str | None = Query(None),
-) -> list[UserOut]:
+    limit: int = Query(default=50, ge=1, le=100),
+    offset: int = Query(default=0, ge=0),
+) -> PaginatedUsersResponse:
     repo = UserRepository(db)
-    return [build_user_out(user) for user in await repo.search(search)]
+    users, total = await repo.search_paginated(search, limit=limit, offset=offset)
+    attribution = await AttributionService(db).admin_summaries([user.id for user in users])
+    return PaginatedUsersResponse(
+        items=[
+            build_user_out(
+                user,
+                attribution=attribution.get(user.id),
+                referred_by=attribution.get(user.id, {}).get("referrer_user_id"),
+            )
+            for user in users
+        ],
+        total=total,
+        limit=limit,
+        offset=offset,
+    )
 
 
 @router.get("/users/{user_id}", response_model=UserOut)
@@ -244,7 +308,12 @@ async def get_user(user_id: int, db: DbDep, _: AdminUser) -> UserOut:
     user = await repo.get_one(user_id)
     if not user:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
-    return build_user_out(user)
+    attribution = await AttributionService(db).admin_summaries([user.id])
+    return build_user_out(
+        user,
+        attribution=attribution.get(user.id),
+        referred_by=attribution.get(user.id, {}).get("referrer_user_id"),
+    )
 
 
 @router.patch("/users/{user_id}", response_model=UserOut)
@@ -274,22 +343,61 @@ async def update_user(user_id: int, body: UserUpdate, db: DbDep, _: AdminUser) -
     updated = await repo.update(user, **update_data)
     await db.commit()
     updated = await repo.get_one(updated.id)
-    return build_user_out(updated)
+    attribution = await AttributionService(db).admin_summaries([updated.id])
+    return build_user_out(
+        updated,
+        attribution=attribution.get(updated.id),
+        referred_by=attribution.get(updated.id, {}).get("referrer_user_id"),
+    )
 
 
-@router.get("/orders", response_model=list[OrderOut])
+@router.post(
+    "/users/{user_id}/generate-referral-code", response_model=AdminReferralGenerateResponse
+)
+async def generate_user_referral_code(
+    user_id: int,
+    db: DbDep,
+    _: AdminUser,
+    regenerate: bool = Query(False),
+) -> AdminReferralGenerateResponse:
+    """Создать или явно пересоздать referral_code одного пользователя."""
+    repo = UserRepository(db)
+    user = await repo.get_one(user_id)
+    if not user:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+
+    code = await ReferralService().generate_referral_code_for_user(
+        db,
+        user,
+        regenerate=regenerate,
+    )
+    await db.commit()
+    return AdminReferralGenerateResponse(ok=True, referral_code=code)
+
+
+@router.get("/orders", response_model=PaginatedOrdersResponse)
 async def list_orders(
     db: DbDep,
     _: AdminUser,
     date_from: datetime | None = None,
     date_to: datetime | None = None,
-) -> list[OrderOut]:
+    limit: int = Query(default=50, ge=1, le=100),
+    offset: int = Query(default=0, ge=0),
+) -> PaginatedOrdersResponse:
     repo = OrderRepository(db)
-    if date_from and date_to:
-        orders = await repo.list_for_admin(date_from=date_from, date_to=date_to)
-    else:
-        orders = await repo.list_for_admin()
-    return [build_order_out(order) for order in orders]
+    orders = await repo.list_for_admin(
+        date_from=date_from,
+        date_to=date_to,
+        limit=limit,
+        offset=offset,
+    )
+    total = await repo.count_for_admin(date_from=date_from, date_to=date_to)
+    return PaginatedOrdersResponse(
+        items=[build_order_out(order) for order in orders],
+        total=total,
+        limit=limit,
+        offset=offset,
+    )
 
 
 @router.get("/orders/{order_id}", response_model=OrderOut)
@@ -324,19 +432,30 @@ async def update_order_status(
     return build_order_out(hydrated)
 
 
-@router.get("/site-leads", response_model=list[SiteLeadOut])
-async def list_site_leads(db: DbDep, _: AdminUser) -> list[SiteLeadOut]:
-    return [build_site_lead_out(lead) for lead in await SiteLeadRepository(db).list_all()]
+@router.get("/site-leads", response_model=PaginatedSiteLeadsResponse)
+async def list_site_leads(
+    db: DbDep,
+    _: AdminUser,
+    limit: int = Query(default=50, ge=1, le=100),
+    offset: int = Query(default=0, ge=0),
+) -> PaginatedSiteLeadsResponse:
+    items, total = await SiteLeadRepository(db).list_paginated(limit=limit, offset=offset)
+    return PaginatedSiteLeadsResponse(
+        items=[build_site_lead_out(lead) for lead in items],
+        total=total,
+        limit=limit,
+        offset=offset,
+    )
 
 
 @router.get("/rates", response_model=list[AdminRateOut])
 async def list_rates(db: DbDep, _: AdminUser) -> list[AdminRateOut]:
-    return [build_admin_rate_out(rate) for rate in await RateRepository(db).get_all()]
+    return [build_admin_rate_out(rate) for rate in await RateRepository(db).get_admin_list()]
 
 
 @router.get("/rates/{rate_id}", response_model=AdminRateOut)
 async def get_rate(rate_id: int, db: DbDep, _: AdminUser) -> AdminRateOut:
-    rate = await RateRepository(db).get_by_id(rate_id)
+    rate = await RateRepository(db).get_visible_by_id(rate_id)
     if not rate:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Rate not found")
     return build_admin_rate_out(rate)
@@ -355,7 +474,13 @@ async def update_rate(rate_id: int, body: RateUpdate, db: DbDep, _: AdminUser) -
     rate = await repo.get_by_id(rate_id)
     if not rate:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Rate not found")
-    updated = await repo.update(rate, **body.model_dump(exclude_none=True))
+    update_data = body.model_dump(exclude_unset=True, exclude_none=True)
+    if rate.is_internal and (set(update_data) != {"margin"}):
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Only margin can be changed for an internal rate",
+        )
+    updated = await repo.update(rate, **update_data)
     await db.commit()
     return build_admin_rate_out(updated)
 
@@ -363,7 +488,7 @@ async def update_rate(rate_id: int, body: RateUpdate, db: DbDep, _: AdminUser) -
 @router.delete("/rates/{rate_id}")
 async def delete_rate(rate_id: int, db: DbDep, _: AdminUser) -> dict[str, bool]:
     repo = RateRepository(db)
-    rate = await repo.get_by_id(rate_id)
+    rate = await repo.get_visible_by_id(rate_id)
     if not rate:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Rate not found")
     await repo.delete(rate)
@@ -379,16 +504,55 @@ async def get_config(db: DbDep, _: AdminUser) -> AppConfigOut:
 @router.patch("/config", response_model=AppConfigOut)
 async def update_config(body: AppConfigUpdate, db: DbDep, _: AdminUser) -> AppConfigOut:
     repo = ConfigRepository(db)
+    config = await repo.get_or_create()
+    final_schedule_enabled = (
+        body.manager_schedule_enabled
+        if body.manager_schedule_enabled is not None
+        else config.manager_schedule_enabled
+    )
+    final_working_days_utc = (
+        body.manager_working_days_utc
+        if body.manager_working_days_utc is not None
+        else config.manager_working_days_utc
+    )
+    if final_schedule_enabled and not final_working_days_utc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Manager working days are required when schedule is enabled",
+        )
     if body.enabled is not None:
         await repo.set_enabled(body.enabled)
+    body_fields = body.model_fields_set
+    await repo.update_referral_program(
+        referral_percent=body.referral_percent,
+        referral_min_withdraw=body.referral_min_withdraw,
+        referral_max_withdraw=body.referral_max_withdraw,
+        aex_rate=body.aex_rate,
+        aex_withdraw_limit=body.aex_withdraw_limit,
+        marketing_attribution_window_days=body.marketing_attribution_window_days,
+        update_referral_max_withdraw="referral_max_withdraw" in body_fields
+        or "referralMaxWithdraw" in body_fields,
+    )
+    await repo.update_manager_schedule(
+        enabled=body.manager_schedule_enabled,
+        working_days_utc=body.manager_working_days_utc,
+        start_time_utc=body.manager_start_time_utc,
+        end_time_utc=body.manager_end_time_utc,
+    )
     config = await repo.get_or_create()
     await db.commit()
+    await db.refresh(config)
     return AppConfigOut.model_validate(config)
 
 
 @router.post("/rates/refresh")
 async def refresh_rates(db: DbDep, _: AdminUser) -> dict[str, object]:
-    from app.services.rate_fetcher import fetch_and_save_rates
+    from app.services.rate_fetcher import INTERNAL_RATE_CURRENCIES, fetch_and_save_rates
 
     rates = await fetch_and_save_rates(db)
-    return {"ok": True, "rates": rates}
+    visible_rates = {
+        currency: price
+        for currency, price in rates.items()
+        if currency not in INTERNAL_RATE_CURRENCIES
+    }
+    return {"ok": True, "rates": visible_rates}

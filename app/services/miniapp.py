@@ -3,11 +3,26 @@
 
 from __future__ import annotations
 
+from decimal import Decimal
+from typing import Literal
+
+from sqlalchemy import select
+
+from app.core.config import settings
+from app.models.order import Order
 from app.repositories.city import CityRepository
+from app.repositories.config import ConfigRepository
 from app.repositories.order import OrderRepository
+from app.repositories.rate import RateRepository
 from app.repositories.user import UserRepository
 from app.schemas.city import build_city_out
 from app.schemas.miniapp import (
+    MiniappAexPayoutOption,
+    MiniappAexReferralResponse,
+    MiniappAexReferralsResponse,
+    MiniappAexReferralUserItem,
+    MiniappAexTransactionItem,
+    MiniappAexTransactionsResponse,
     MiniappBanner,
     MiniappCalculatorState,
     MiniappCitiesResponse,
@@ -23,11 +38,20 @@ from app.schemas.miniapp import (
     MiniappRateCard,
     MiniappRatesResponse,
     MiniappRatesSection,
+    MiniappReferralProgramConfig,
     MiniappServiceItem,
+    build_miniapp_manager_availability,
     build_miniapp_order_item,
     build_miniapp_profile_summary,
 )
 from app.schemas.rate import build_rate_out
+from app.services.aex import (
+    ORDER_WITHDRAW_DEBIT_REFERENCE,
+    ORDER_WITHDRAW_HOLD_REFERENCE,
+    ORDER_WITHDRAW_RELEASE_REFERENCE,
+    AexService,
+)
+from app.services.aex_rate import AexRateService, rate_to_percent
 from app.services.exchange import (
     COUNTRY_CURRENCY,
     COUNTRY_PRIORITY,
@@ -36,8 +60,13 @@ from app.services.exchange import (
     ExchangeQuote,
     ExchangeQuoteInput,
     ExchangeService,
+    format_rate_value,
+    get_client_rate,
 )
+from app.services.manager_working_hours import ManagerWorkingHoursService
 from app.services.order_notifications import build_chat_url_for_user
+from app.services.referral import ReferralService, build_referral_link
+from app.telegram.i18n import get_translator
 
 DEFAULT_AMOUNT_SELL = 5000
 DEFAULT_PAIR = ("RUB", "THB")
@@ -79,6 +108,123 @@ async def list_miniapp_orders(
         offset=offset,
         total=total,
         hasMore=offset + len(orders) < total,
+    )
+
+
+def _map_miniapp_aex_transaction_type(entry) -> str:
+    if entry.reference_type == "referral":
+        return "referral_reward"
+    if entry.reference_type == "transfer":
+        return "withdrawal"
+    if entry.reference_type == ORDER_WITHDRAW_HOLD_REFERENCE:
+        return "reserved"
+    if entry.reference_type == ORDER_WITHDRAW_DEBIT_REFERENCE:
+        return "debited"
+    if entry.reference_type == ORDER_WITHDRAW_RELEASE_REFERENCE:
+        return "refund"
+    if entry.entry_type == "credit":
+        return "bonus"
+    return "adjustment"
+
+
+def _extract_order_id(reference_id: str | None) -> int | None:
+    if not reference_id:
+        return None
+    try:
+        return int(reference_id)
+    except ValueError:
+        return None
+
+
+async def _load_referral_order_numbers(db, entries) -> dict[int, str]:
+    order_ids: set[int] = set()
+    for entry in entries:
+        if entry.reference_type not in {
+            "referral",
+            ORDER_WITHDRAW_HOLD_REFERENCE,
+            ORDER_WITHDRAW_DEBIT_REFERENCE,
+            ORDER_WITHDRAW_RELEASE_REFERENCE,
+        }:
+            continue
+        order_id = _extract_order_id(entry.reference_id)
+        if order_id is not None:
+            order_ids.add(order_id)
+
+    if not order_ids:
+        return {}
+
+    result = await db.execute(
+        select(Order.id, Order.publicNumber).where(Order.id.in_(order_ids)),
+    )
+    return {order_id: public_number for order_id, public_number in result.all()}
+
+
+def _build_miniapp_aex_transaction_description(
+    entry,
+    order_numbers: dict[int, str],
+    *,
+    locale: str | None = None,
+) -> str:
+    translate = get_translator(locale)
+    order_id = _extract_order_id(entry.reference_id)
+    public_number = order_numbers.get(order_id) if order_id is not None else None
+
+    if entry.reference_type == "referral":
+        if public_number:
+            return translate("miniapp-aex-referral-reward-with-order", order_number=public_number)
+        return translate("miniapp-aex-referral-reward")
+    if entry.reference_type == ORDER_WITHDRAW_HOLD_REFERENCE:
+        if public_number:
+            return translate("miniapp-aex-withdraw-hold-with-order", order_number=public_number)
+        return translate("miniapp-aex-withdraw-hold")
+    if entry.reference_type == ORDER_WITHDRAW_DEBIT_REFERENCE:
+        if public_number:
+            return translate("miniapp-aex-withdraw-debit-with-order", order_number=public_number)
+        return translate("miniapp-aex-withdraw-debit")
+    if entry.reference_type == ORDER_WITHDRAW_RELEASE_REFERENCE:
+        if public_number:
+            return translate("miniapp-aex-withdraw-release-with-order", order_number=public_number)
+        return translate("miniapp-aex-withdraw-release")
+
+    return entry.description or ""
+
+
+async def list_miniapp_aex_transactions(
+    db,
+    user_id: int,
+    *,
+    locale: str | None = None,
+    limit: int = 20,
+    offset: int = 0,
+) -> MiniappAexTransactionsResponse:
+    entries, total = await AexService().get_operations(db, user_id, limit=limit, offset=offset)
+    referral_order_numbers = await _load_referral_order_numbers(db, entries)
+    running_balance = Decimal("0")
+    items: list[MiniappAexTransactionItem] = []
+    for entry in reversed(entries):
+        if entry.entry_type not in {"hold", "release"}:
+            running_balance += entry.amount
+        items.append(
+            MiniappAexTransactionItem(
+                id=entry.id,
+                type=_map_miniapp_aex_transaction_type(entry),
+                amount=float(entry.amount),
+                balanceAfter=float(running_balance),
+                description=_build_miniapp_aex_transaction_description(
+                    entry,
+                    referral_order_numbers,
+                    locale=locale,
+                ),
+                createdAt=entry.createdAt,
+            )
+        )
+    items.reverse()
+    return MiniappAexTransactionsResponse(
+        items=items,
+        limit=limit,
+        offset=offset,
+        total=total,
+        hasMore=offset + len(items) < total,
     )
 
 
@@ -207,6 +353,42 @@ async def get_miniapp_exchange(db) -> MiniappExchangeScreenResponse:
         chips=_build_currency_chips(featured),
         pairs=featured,
         quote=quote,
+        aexPayoutOptions=await _build_aex_payout_options(db),
+        managerAvailability=build_miniapp_manager_availability(
+            ManagerWorkingHoursService().get_availability(
+                await ConfigRepository(db).get_or_create()
+            )
+        ),
+    )
+
+
+async def _build_aex_payout_options(db) -> list[MiniappAexPayoutOption]:
+    """Строит безопасные итоговые курсы ATXG-выплаты для Mini App."""
+    config = await ConfigRepository(db).get_or_create()
+    aex_usdt_rate = float(config.aex_rate)
+    options = [_build_aex_payout_option("USDT", aex_usdt_rate)]
+
+    internal_rub_rate = await RateRepository(db).find_internal_by_currency("USDTRUB")
+    if internal_rub_rate is not None:
+        rub_rate = aex_usdt_rate * get_client_rate(internal_rub_rate)
+        if rub_rate > 0:
+            options.append(_build_aex_payout_option("RUB", rub_rate))
+    return options
+
+
+def _build_aex_payout_option(
+    currency_buy: Literal["USDT", "RUB"],
+    rate: float,
+) -> MiniappAexPayoutOption:
+    """Форматирует один рассчитанный вариант ATXG-выплаты."""
+    rounded_rate = round(rate, 2)
+    rate_display = format_rate_value(rounded_rate)
+    return MiniappAexPayoutOption(
+        currencyBuy=currency_buy,
+        rate=rounded_rate,
+        rateDisplay=rate_display,
+        rateText=f"1 ATXG = {rate_display} {currency_buy}",
+        availableMethods=["bank_account"],
     )
 
 
@@ -252,7 +434,77 @@ async def get_miniapp_profile_screen(db, user) -> MiniappProfileScreenResponse:
             ),
         ],
         version="1.0.0",
+        managerAvailability=build_miniapp_manager_availability(
+            ManagerWorkingHoursService().get_availability(
+                await ConfigRepository(db).get_or_create()
+            )
+        ),
     )
+
+
+async def get_miniapp_aex_referral(db, user) -> MiniappAexReferralResponse:
+    """Возвращает referral-контракт Mini App с готовой ссылкой для копирования."""
+    referral_service = ReferralService()
+    referral_code = await referral_service.get_or_create_referral_code(db, user)
+    total_referrals, _ = await referral_service.get_referral_stats(db, user)
+    config = await ConfigRepository(db).get_or_create()
+    await db.commit()
+
+    return MiniappAexReferralResponse(
+        referralCode=referral_code,
+        referralLink=build_referral_link(referral_code, settings.telegram_bot_username),
+        totalReferrals=total_referrals,
+        programConfig=MiniappReferralProgramConfig(
+            referralPercent=config.referral_percent,
+            referralMinWithdraw=config.referral_min_withdraw,
+            referralMaxWithdraw=config.referral_max_withdraw,
+            aexRate=config.aex_rate,
+            aexWithdrawLimit=config.aex_withdraw_limit,
+        ),
+    )
+
+
+async def list_miniapp_aex_referrals(
+    db,
+    user,
+    *,
+    limit: int = 20,
+    offset: int = 0,
+) -> MiniappAexReferralsResponse:
+    """Возвращает безопасный список приглашенных рефералов текущего пользователя."""
+    user_repo = UserRepository(db)
+    referrals, total = await user_repo.get_referrals_paginated(user.id, limit=limit, offset=offset)
+    _, total_accrued = await ReferralService().get_referral_stats(db, user)
+    reward_percent = rate_to_percent(await AexRateService().get_effective_rate(db, user.id))
+
+    return MiniappAexReferralsResponse(
+        items=[
+            MiniappAexReferralUserItem(
+                id=referral.id,
+                displayName=_build_referral_display_name(referral),
+                username=referral.username,
+                photoUrl=referral.photo_url,
+                joinedAt=referral.createdAt,
+                rewardPercent=reward_percent,
+            )
+            for referral in referrals
+        ],
+        limit=limit,
+        offset=offset,
+        total=total,
+        hasMore=offset + len(referrals) < total,
+        totalAccrued=total_accrued,
+        rewardPercent=reward_percent,
+    )
+
+
+def _build_referral_display_name(user) -> str:
+    display_name = " ".join(part for part in (user.first_name, user.last_name) if part).strip()
+    if display_name:
+        return display_name
+    if user.username:
+        return f"@{user.username}"
+    return "Пользователь AntEx"
 
 
 def _build_rate_cards(snapshots: list[ExchangePairSnapshot]) -> list[MiniappRateCard]:

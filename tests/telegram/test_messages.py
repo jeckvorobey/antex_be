@@ -3,10 +3,15 @@ from __future__ import annotations
 
 import re
 from datetime import UTC, datetime
+from decimal import Decimal
 
 from app.enums.country import Country
 from app.services.exchange import ExchangePairSnapshot
 from app.telegram import messages
+
+
+def _strip_bidi_marks(text: str) -> str:
+    return text.replace("\u2068", "").replace("\u2069", "")
 
 
 def test_exchange_rate_formats_all_rates_with_two_decimals() -> None:
@@ -22,6 +27,94 @@ def test_order_created_includes_order_number() -> None:
     text = messages.order_created(2026050008)
 
     assert "".join(re.findall(r"\d", text)) == "2026050008"
+
+
+def test_order_created_adds_queue_notice_only_for_offline_managers() -> None:
+    offline_text = messages.order_created(2026050008, managers_offline=True, locale="ru")
+    offline_english_text = messages.order_created(
+        2026050008,
+        managers_offline=True,
+        locale="en",
+    )
+    usual_text = messages.order_created(2026050008, managers_offline=False, locale="ru")
+
+    assert "<blockquote>Менеджер обработает заявку утром" in offline_text
+    assert "<blockquote>A manager will process the order in the morning" in offline_english_text
+    assert "Менеджер обработает заявку утром" not in usual_text
+    assert "после начала рабочего дня в порядке очереди" not in offline_text
+    assert "Пожалуйста, ожидайте подтверждения" not in offline_text
+    assert "Пожалуйста, ожидайте подтверждения" in usual_text
+
+
+def test_exchange_off_hours_confirmation_is_localized() -> None:
+    text = messages.exchange_off_hours_confirmation(
+        "Пн–Пт с 10:00 до 19:00 МСК",
+        locale="ru",
+    )
+    en_text = messages.exchange_off_hours_confirmation(
+        "Mon–Fri from 10:00 to 19:00 MSK",
+        locale="en",
+    )
+
+    assert "Менеджеры сейчас не работают" in text
+    assert "Заявка будет обработана утром" in text
+    assert "Пн–Пт с 10:00 до 19:00 МСК" in text
+    assert "Managers are not working right now" in en_text
+    assert "Mon–Fri from 10:00 to 19:00 MSK" in en_text
+
+
+def test_exchange_off_hours_alert_is_short() -> None:
+    text = messages.exchange_off_hours_alert(locale="ru")
+
+    assert text == "Менеджер обработает заявку утром после начала рабочего дня."
+
+
+def test_exchange_start_welcome_uses_current_business_schedule() -> None:
+    text = messages.exchange_start_welcome(
+        "Сергей",
+        locale="ru",
+        business_hours_text="Пн–Пт с 10:00 до 22:00 МСК",
+    )
+
+    assert "Заявки принимаются круглосуточно" in text
+    assert "Менеджеры работают Пн–Пт с 10:00 до 22:00 МСК" in _strip_bidi_marks(text)
+
+
+def test_referral_bonus_credited_is_short_and_formats_amount_with_two_decimals() -> None:
+    ru_text = messages.referral_bonus_credited(amount="0.2", order_id="2026070068", locale="ru")
+    en_text = messages.referral_bonus_credited(
+        amount=Decimal("2"),
+        order_id="2026070068",
+        locale="en",
+    )
+
+    assert (
+        _strip_bidi_marks(ru_text) == "🎁 Вознаграждение по реферальной программе: +0.20 ATXG\n"
+        "За успешно завершённую заявку #2026070068."
+    )
+    assert (
+        _strip_bidi_marks(en_text)
+        == "🎁 Referral program reward: +2.00 ATXG\nFor completed order #2026070068."
+    )
+
+
+def test_referral_bonus_reversed_is_short_and_formats_amount_with_two_decimals() -> None:
+    ru_text = messages.referral_bonus_reversed(
+        amount=Decimal("100.456"),
+        order_id="2026070068",
+        locale="ru",
+    )
+    en_text = messages.referral_bonus_reversed(amount="0.25", order_id="2026070068", locale="en")
+
+    assert (
+        _strip_bidi_marks(ru_text)
+        == "💸 Вознаграждение по реферальной программе списано: -100.46 ATXG\n"
+        "Заявка #2026070068 отменена."
+    )
+    assert (
+        _strip_bidi_marks(en_text) == "💸 Referral program reward reversed: -0.25 ATXG\n"
+        "Order #2026070068 was cancelled."
+    )
 
 
 def test_exchange_confirm_summary_uses_human_currency_labels() -> None:

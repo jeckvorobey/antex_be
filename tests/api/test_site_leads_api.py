@@ -120,8 +120,8 @@ async def test_admin_can_list_site_leads(
 
     assert response.status_code == 200
     payload = response.json()
-    assert payload[0]["contact"] == "+66990000000"
-    assert payload[0]["source"] == "tets.antex.pro"
+    assert payload["items"][0]["contact"] == "+66990000000"
+    assert payload["items"][0]["source"] == "tets.antex.pro"
 
 
 @pytest.mark.asyncio
@@ -215,5 +215,5 @@ async def test_public_site_lead_post_keeps_saved_lead_when_manager_notification_
         headers={"Authorization": f"Bearer {token}"},
     )
     assert list_response.status_code == 200
-    assert list_response.json()[0]["contact"] == "@client"
+    assert list_response.json()["items"][0]["contact"] == "@client"
     assert "Failed to send site lead notification" in caplog.text

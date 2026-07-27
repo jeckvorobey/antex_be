@@ -5,7 +5,12 @@ from __future__ import annotations
 from fastapi import APIRouter, Query, status
 
 from app.api.deps import DbDep, MiniappUser
+from app.repositories.config import ConfigRepository
+from app.schemas.aex import ReferralApplyRequest, ReferralApplyResponse
 from app.schemas.miniapp import (
+    MiniappAexReferralResponse,
+    MiniappAexReferralsResponse,
+    MiniappAexTransactionsResponse,
     MiniappCitiesResponse,
     MiniappExchangeScreenResponse,
     MiniappHomeResponse,
@@ -17,16 +22,21 @@ from app.schemas.miniapp import (
     MiniappRatesResponse,
     build_miniapp_order_item,
 )
+from app.services.manager_working_hours import ManagerWorkingHoursService
 from app.services.miniapp import (
     calculate_miniapp_quote,
+    get_miniapp_aex_referral,
     get_miniapp_exchange,
     get_miniapp_home,
     get_miniapp_profile_screen,
+    list_miniapp_aex_referrals,
+    list_miniapp_aex_transactions,
     list_miniapp_cities,
     list_miniapp_orders,
     list_miniapp_rates,
 )
 from app.services.order_flow import create_order_for_user
+from app.services.referral import ReferralService
 
 router = APIRouter(prefix="/api/miniapp", tags=["miniapp"])
 
@@ -83,9 +93,57 @@ async def create_order(
     user: MiniappUser,
 ) -> MiniappOrderItem:
     order = await create_order_for_user(db, user, body)
-    return build_miniapp_order_item(order)
+    availability = getattr(order, "manager_availability", None)
+    if availability is None:
+        availability = ManagerWorkingHoursService().get_availability(
+            await ConfigRepository(db).get_or_create()
+        )
+    return build_miniapp_order_item(order, manager_availability=availability)
 
 
 @router.get("/profile", response_model=MiniappProfileScreenResponse)
 async def get_profile(db: DbDep, user: MiniappUser) -> MiniappProfileScreenResponse:
     return await get_miniapp_profile_screen(db, user)
+
+
+@router.get("/aex/referral", response_model=MiniappAexReferralResponse)
+async def get_aex_referral(db: DbDep, user: MiniappUser) -> MiniappAexReferralResponse:
+    return await get_miniapp_aex_referral(db, user)
+
+
+@router.get("/aex/referrals", response_model=MiniappAexReferralsResponse)
+async def get_aex_referrals(
+    db: DbDep,
+    user: MiniappUser,
+    limit: int = Query(default=20, ge=1, le=100),
+    offset: int = Query(default=0, ge=0),
+) -> MiniappAexReferralsResponse:
+    return await list_miniapp_aex_referrals(db, user, limit=limit, offset=offset)
+
+
+@router.get("/aex/transactions", response_model=MiniappAexTransactionsResponse)
+async def get_aex_transactions(
+    db: DbDep,
+    user: MiniappUser,
+    limit: int = Query(default=20, ge=1, le=100),
+    offset: int = Query(default=0, ge=0),
+) -> MiniappAexTransactionsResponse:
+    return await list_miniapp_aex_transactions(
+        db,
+        user.id,
+        locale=user.language_code_app or user.language_code,
+        limit=limit,
+        offset=offset,
+    )
+
+
+@router.post("/aex/referral/apply", response_model=ReferralApplyResponse)
+async def apply_aex_referral(
+    body: ReferralApplyRequest,
+    db: DbDep,
+    user: MiniappUser,
+) -> ReferralApplyResponse:
+    """Применить referral deep-link один раз при первом входе miniapp."""
+    await ReferralService().bind_referral(db, user, body.code)
+    await db.commit()
+    return ReferralApplyResponse(success=True)

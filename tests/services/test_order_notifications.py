@@ -126,7 +126,7 @@ async def test_notify_order_created_sends_user_message_with_order_payload(
 
     assert len(bot.sent) == 2
     assert bot.sent[0]["chat_id"] == 700002
-    assert "Мы получили ваш запрос" in bot.sent[0]["text"]
+    assert "Заявка №" in bot.sent[0]["text"]
     assert bot.sent[0]["reply_markup"].inline_keyboard[0][0].callback_data == "menu:orders"
     assert bot.sent[0]["reply_markup"].inline_keyboard[1][0].callback_data == "fsm:cancel"
     manager_markup = cast(Any, bot.sent[1]["reply_markup"])
@@ -140,6 +140,35 @@ async def test_notify_order_created_sends_user_message_with_order_payload(
     assert "💰 Получаете: 3,096 🇹🇭 THB" in text
     assert "🧾 Способ получения: Наличные по QR" in text
     assert "👤 Пользователь: @customer" in text
+
+
+@pytest.mark.asyncio
+async def test_notify_order_created_can_skip_duplicate_customer_message(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    bot = _FakeBot()
+    order = SimpleNamespace(
+        id=9,
+        publicNumber="2026050009",
+        amountSell=100,
+        currencySell="USDT",
+        amountBuy=3096,
+        currencyBuy="THB",
+        methodGet="qrcode",
+        rate=30.96,
+        status=1,
+        contactTelegram="customer",
+        city=None,
+        country=SimpleNamespace(value="thailand"),
+    )
+    user = SimpleNamespace(telegram_id=700002, username="customer", phone=None)
+    manager = SimpleNamespace(telegram_id=700001)
+
+    monkeypatch.setattr(order_notifications, "_get_telegram_bot", lambda: bot)
+
+    await notify_order_created(order, user, manager, notify_user=False)
+
+    assert [message["chat_id"] for message in bot.sent] == [700001]
 
 
 def test_build_manager_status_text_uses_new_middle_format_for_processing() -> None:
@@ -238,7 +267,12 @@ async def test_notify_order_status_changed_adds_summary_for_completed_order(
     assert "💸 Отдаёте: 1,500 ₮ USDT" in text
     assert "💰 Получаете: 47,250 🇹🇭 THB" in text
     assert "🧾 Способ получения: Доставка наличных" in text
-    assert "Спасибо, что воспользовались нашим сервисом!" in text
+    assert (
+        "Спасибо, что воспользовались нашим сервисом!\n\n"
+        "Мы ценим обратную связь. За видео-отзыв (кружок) предоставляем "
+        "<b>бонус 5$ к следующему обмену 💰</b>\n\n"
+        "⭐ Будем рады вашему отзыву. Это помогает нам становиться лучше."
+    ) in text
     reply_markup = cast(Any, bot.edited[0]["reply_markup"])
     assert reply_markup.inline_keyboard[0][0].text == "⭐ Оставить отзыв"
     assert reply_markup.inline_keyboard[1][0].text == "🏠 Главное меню"
@@ -288,8 +322,7 @@ async def test_notify_order_status_changed_adds_write_manager_button_for_process
     reply_markup = cast(Any, bot.edited[0]["reply_markup"])
     user_text = str(user_button["message_text"]).replace("\u2068", "").replace("\u2069", "")
     assert user_text == (
-        "Здравствуйте! По заявке #2026050008 на сумму 5,000 RUB "
-        "подтверждаю готовность к обмену."
+        "Здравствуйте! По заявке #2026050008 на сумму 5,000 RUB подтверждаю готовность к обмену."
     )
     assert reply_markup.inline_keyboard[0][0].text == "💬 Написать в чат"
     assert reply_markup.inline_keyboard[0][0].url == "https://t.me/share/url"

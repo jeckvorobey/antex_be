@@ -20,6 +20,8 @@ EXPECTED_TABLES = {
     "OrderNumberCounters",
     "Broadcasts",
     "SiteLeads",
+    "MarketingPlatforms",
+    "MarketingCurrencies",
 }
 EXPECTED_BROADCAST_COLUMNS = {
     "id",
@@ -65,6 +67,13 @@ EXPECTED_SITE_LEAD_COLUMNS = {
     "createdAt",
     "updatedAt",
 }
+EXPECTED_REFERRAL_CONFIG_COLUMNS = {
+    "referral_percent",
+    "referral_min_withdraw",
+    "referral_max_withdraw",
+    "aex_rate",
+    "aex_withdraw_limit",
+}
 
 
 def load_alembic_env_module():
@@ -95,6 +104,50 @@ def test_offline_upgrade_sql_creates_country_enum_once() -> None:
     assert result.stdout.count("CREATE TYPE country_enum") == 1
 
 
+def test_internal_rates_migration_hides_existing_reserved_pairs() -> None:
+    """Migration 023 должна скрывать зарезервированные пары из legacy-базы."""
+    env = os.environ.copy()
+    env["DATABASE_URL"] = "postgresql+asyncpg://antex:antex@localhost:5432/antex"
+
+    result = subprocess.run(
+        [sys.executable, "-m", "alembic", "upgrade", "head", "--sql"],
+        cwd=BACK_ROOT,
+        env=env,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert "PARTITION BY upper(currency)" in result.stdout
+    assert "ranked_rates.row_number > 1" in result.stdout
+    assert (
+        "SET currency = upper(currency)\n            WHERE currency <> upper(currency)"
+        in result.stdout
+    )
+    assert 'UPDATE "Rates"' in result.stdout
+    assert "SET is_internal = true, country = NULL" in result.stdout
+    assert "currency IN ('USDTRUB', 'RUBUSDT')" in result.stdout
+
+
+def test_internal_exchange_country_migration_extends_shared_enum() -> None:
+    """Migration 025 должна добавить псевдострану внутренних заявок."""
+    env = os.environ.copy()
+    env["DATABASE_URL"] = "postgresql+asyncpg://antex:antex@localhost:5432/antex"
+
+    result = subprocess.run(
+        [sys.executable, "-m", "alembic", "upgrade", "head", "--sql"],
+        cwd=BACK_ROOT,
+        env=env,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert "ALTER TYPE country_enum ADD VALUE IF NOT EXISTS 'internal'" in result.stdout
+
+
 def test_alembic_load_models_includes_all_tables() -> None:
     """Проверяет, что env.py подхватывает общий экспорт моделей backend."""
     alembic_env = load_alembic_env_module()
@@ -111,9 +164,12 @@ def test_model_metadata_contains_required_migration_columns() -> None:
     assert "margin" in Base.metadata.tables["Rates"].columns
     assert "country" in Base.metadata.tables["Rates"].columns
     assert "allowance" not in Base.metadata.tables["Configs"].columns
+    assert set(Base.metadata.tables["Configs"].columns.keys()) >= EXPECTED_REFERRAL_CONFIG_COLUMNS
     assert set(Base.metadata.tables["Broadcasts"].columns.keys()) >= EXPECTED_BROADCAST_COLUMNS
     assert set(Base.metadata.tables["Orders"].columns.keys()) >= EXPECTED_ORDER_COLUMNS
     assert set(Base.metadata.tables["SiteLeads"].columns.keys()) >= EXPECTED_SITE_LEAD_COLUMNS
+    assert {"id", "slug", "name"} <= set(Base.metadata.tables["MarketingPlatforms"].columns.keys())
+    assert {"id", "code", "name"} <= set(Base.metadata.tables["MarketingCurrencies"].columns.keys())
     assert "address" not in Base.metadata.tables["Orders"].columns
     assert Base.metadata.tables["Orders"].columns["CityId"].nullable is True
     assert Base.metadata.tables["Orders"].columns["country"].nullable is False

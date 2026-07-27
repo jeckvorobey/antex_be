@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+from datetime import time
+from decimal import Decimal
+
 from app.models.config import Config
 from app.repositories.base import BaseRepository
 
@@ -28,5 +31,54 @@ class ConfigRepository(BaseRepository[Config]):
     async def set_enabled(self, enabled: bool) -> Config:
         config = await self.get_or_create()
         config.enabled = enabled
+        await self.session.flush()
+        return config
+
+    async def update_referral_program(
+        self,
+        *,
+        referral_percent: Decimal | None = None,
+        referral_min_withdraw: Decimal | None = None,
+        referral_max_withdraw: Decimal | None = None,
+        aex_rate: Decimal | None = None,
+        aex_withdraw_limit: Decimal | None = None,
+        marketing_attribution_window_days: int | None = None,
+        update_referral_max_withdraw: bool = False,
+    ) -> Config:
+        """Обновляет глобальные настройки referral/ATXG program."""
+        config = await self.get_or_create()
+        if referral_percent is not None:
+            config.referral_percent = referral_percent
+        if referral_min_withdraw is not None:
+            config.referral_min_withdraw = referral_min_withdraw
+        if update_referral_max_withdraw:
+            config.referral_max_withdraw = referral_max_withdraw
+        if aex_rate is not None:
+            config.aex_rate = aex_rate
+        if aex_withdraw_limit is not None:
+            config.aex_withdraw_limit = aex_withdraw_limit
+        if marketing_attribution_window_days is not None:
+            config.marketing_attribution_window_days = marketing_attribution_window_days
+        await self.session.flush()
+        return config
+
+    async def update_manager_schedule(
+        self,
+        *,
+        enabled: bool | None = None,
+        working_days_utc: list[int] | None = None,
+        start_time_utc: time | None = None,
+        end_time_utc: time | None = None,
+    ) -> Config:
+        """Обновляет единую UTC-конфигурацию режима работы менеджеров."""
+        config = await self.get_or_create()
+        if enabled is not None:
+            config.manager_schedule_enabled = enabled
+        if working_days_utc is not None:
+            config.manager_working_days_utc = working_days_utc
+        if start_time_utc is not None:
+            config.manager_start_time_utc = start_time_utc
+        if end_time_utc is not None:
+            config.manager_end_time_utc = end_time_utc
         await self.session.flush()
         return config

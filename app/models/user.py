@@ -11,6 +11,7 @@ from app.enums.user import UserRole
 from app.models.base import Base, TimestampMixin
 
 if TYPE_CHECKING:
+    from app.models.aex import AexPartnerRate, AexPersonalRate, AexWallet
     from app.models.city import City
     from app.models.order import Order
 
@@ -37,6 +38,27 @@ class User(Base, TimestampMixin):
         server_default="ru",
         nullable=False,
     )
+    # Реферальная система
+    referral_code: Mapped[str | None] = mapped_column(
+        String(16),
+        unique=True,
+        nullable=True,
+    )
 
     orders: Mapped[list[Order]] = relationship("Order", back_populates="user")
     city: Mapped[City | None] = relationship("City", back_populates="users")
+    aex_wallet: Mapped[AexWallet | None] = relationship(
+        "AexWallet",
+        back_populates="user",
+        uselist=False,
+    )
+    aex_personal_rate: Mapped[AexPersonalRate | None] = relationship(
+        "AexPersonalRate",
+        back_populates="user",
+        uselist=False,
+    )
+    aex_partner_rate: Mapped[AexPartnerRate | None] = relationship(
+        "AexPartnerRate",
+        back_populates="user",
+        uselist=False,
+    )

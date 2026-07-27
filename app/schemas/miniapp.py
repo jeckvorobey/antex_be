@@ -4,9 +4,10 @@
 from __future__ import annotations
 
 from datetime import datetime
+from decimal import Decimal
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_serializer
 
 from app.enums.country import Country
 from app.schemas.city import CityOut
@@ -125,11 +126,37 @@ class MiniappCalculatorState(BaseModel):
     amountSell: int
 
 
+class MiniappManagerAvailability(BaseModel):
+    """Backend-снимок доступности менеджеров для всех Mini App сценариев."""
+
+    status: Literal["working", "offline", "unknown"]
+    scheduleEnabled: bool
+    workingDaysUtc: list[int]
+    startTimeUtc: str
+    endTimeUtc: str
+    currentStartAt: datetime | None = None
+    currentEndAt: datetime | None = None
+    nextStartAt: datetime | None = None
+    businessHoursText: str
+
+
+class MiniappAexPayoutOption(BaseModel):
+    """Рассчитанный вариант выплаты ATXG без раскрытия внутренней строки Rates."""
+
+    currencyBuy: Literal["USDT", "RUB"]
+    rate: float
+    rateDisplay: str
+    rateText: str
+    availableMethods: list[str]
+
+
 class MiniappExchangeScreenResponse(BaseModel):
     calculator: MiniappCalculatorState
     chips: list[str]
     pairs: list[MiniappRateCard]
     quote: MiniappQuoteResponse
+    aexPayoutOptions: list[MiniappAexPayoutOption]
+    managerAvailability: MiniappManagerAvailability
 
 
 class MiniappMenuItem(BaseModel):
@@ -145,6 +172,65 @@ class MiniappProfileScreenResponse(BaseModel):
     user: MiniappProfileSummary
     menu: list[MiniappMenuItem]
     version: str
+    managerAvailability: MiniappManagerAvailability
+
+
+class MiniappReferralProgramConfig(BaseModel):
+    referralPercent: Decimal
+    referralMinWithdraw: Decimal
+    referralMaxWithdraw: Decimal | None
+    aexRate: Decimal
+    aexWithdrawLimit: Decimal
+
+    @field_serializer(
+        "referralPercent",
+        "referralMinWithdraw",
+        "referralMaxWithdraw",
+        "aexRate",
+        "aexWithdrawLimit",
+        when_used="json",
+    )
+    def serialize_decimal(self, value: Decimal | None) -> str | None:
+        if value is None:
+            return None
+        serialized = format(value, "f")
+        if "." in serialized:
+            return serialized.rstrip("0").rstrip(".")
+        return serialized
+
+
+class MiniappAexReferralResponse(BaseModel):
+    referralCode: str
+    referralLink: str
+    totalReferrals: int
+    programConfig: MiniappReferralProgramConfig
+
+
+class MiniappAexReferralUserItem(BaseModel):
+    id: int
+    displayName: str
+    username: str | None
+    photoUrl: str | None
+    joinedAt: datetime
+    rewardPercent: Decimal
+
+    @field_serializer("rewardPercent", when_used="json")
+    def serialize_reward_percent(self, value: Decimal) -> str:
+        return _serialize_decimal(value)
+
+
+class MiniappAexReferralsResponse(BaseModel):
+    items: list[MiniappAexReferralUserItem]
+    limit: int
+    offset: int
+    total: int
+    hasMore: bool
+    totalAccrued: Decimal
+    rewardPercent: Decimal
+
+    @field_serializer("totalAccrued", "rewardPercent", when_used="json")
+    def serialize_decimal_fields(self, value: Decimal) -> str:
+        return _serialize_decimal(value)
 
 
 class MiniappRatesResponse(BaseModel):
@@ -184,6 +270,7 @@ class MiniappOrderItem(BaseModel):
     createdAt: datetime
     updatedAt: datetime
     city: CityOut | None = None
+    managerAvailability: MiniappManagerAvailability | None = None
 
 
 class MiniappOrdersResponse(BaseModel):
@@ -194,9 +281,33 @@ class MiniappOrdersResponse(BaseModel):
     hasMore: bool
 
 
+class MiniappAexTransactionItem(BaseModel):
+    id: int
+    type: str
+    amount: float
+    balanceAfter: float
+    description: str
+    createdAt: datetime
+
+
+class MiniappAexTransactionsResponse(BaseModel):
+    items: list[MiniappAexTransactionItem]
+    limit: int
+    offset: int
+    total: int
+    hasMore: bool
+
+
 class MiniappOrderCreatedResponse(BaseModel):
     success: bool = True
     orderId: int
+
+
+def _serialize_decimal(value: Decimal) -> str:
+    serialized = format(value, "f")
+    if "." in serialized:
+        return serialized.rstrip("0").rstrip(".")
+    return serialized
 
 
 def build_miniapp_profile_summary(user) -> MiniappProfileSummary:
@@ -231,7 +342,22 @@ def build_miniapp_profile(user) -> MiniappProfileResponse:
     )
 
 
-def build_miniapp_order_item(order) -> MiniappOrderItem:
+def build_miniapp_manager_availability(availability) -> MiniappManagerAvailability:
+    """Преобразует сервисный UTC-снимок в стабильный Mini App DTO."""
+    return MiniappManagerAvailability(
+        status=availability.status,
+        scheduleEnabled=availability.schedule_enabled,
+        workingDaysUtc=availability.working_days_utc,
+        startTimeUtc=availability.start_time_utc.strftime("%H:%M"),
+        endTimeUtc=availability.end_time_utc.strftime("%H:%M"),
+        currentStartAt=availability.current_start_at,
+        currentEndAt=availability.current_end_at,
+        nextStartAt=availability.next_start_at,
+        businessHoursText=availability.business_hours_text,
+    )
+
+
+def build_miniapp_order_item(order, *, manager_availability=None) -> MiniappOrderItem:
     """Строит карточку заявки miniapp из ORM-модели."""
     from app.schemas.city import build_city_out
 
@@ -251,4 +377,9 @@ def build_miniapp_order_item(order) -> MiniappOrderItem:
         createdAt=order.createdAt,
         updatedAt=order.updatedAt,
         city=build_city_out(order.city) if order.city else None,
+        managerAvailability=(
+            build_miniapp_manager_availability(manager_availability)
+            if manager_availability is not None
+            else None
+        ),
     )

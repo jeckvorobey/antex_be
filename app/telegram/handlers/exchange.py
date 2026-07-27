@@ -11,12 +11,14 @@ from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.types import CallbackQuery, Message
 from sqlalchemy import select
+from sqlalchemy.exc import SQLAlchemyError
 
 from app.core.database import create_db_session
 from app.enums.country import Country
 from app.exceptions import AntExException
 from app.models.city import City
 from app.repositories.city import CityRepository
+from app.repositories.config import ConfigRepository
 from app.repositories.order import OrderRepository
 from app.schemas.miniapp import MiniappOrderCreate
 from app.services.exchange import (
@@ -26,6 +28,7 @@ from app.services.exchange import (
     ExchangeQuoteInput,
     ExchangeService,
 )
+from app.services.manager_working_hours import ManagerWorkingHoursService
 from app.services.order_flow import create_order_for_user, get_min_amount
 from app.telegram import messages
 from app.telegram.i18n import get_user_translator
@@ -36,6 +39,8 @@ from app.telegram.keyboards import (
     choose_currency,
     choose_service,
     confirm_exchange,
+    confirm_off_hours_exchange,
+    order_created_actions,
     orders_pagination,
 )
 from app.telegram.services.user_service import check_user
@@ -230,9 +235,25 @@ async def _show_start_welcome(actor, state: FSMContext, *, edit: bool) -> None:
     translate = get_user_translator(actor.from_user)
     await state.clear()
     await state.set_state(ExchangeState.choosing_country)
+    business_hours_text = None
+    try:
+        db = await _get_db()
+        async with db:
+            config = await ConfigRepository(db).get_or_create()
+        availability = ManagerWorkingHoursService().get_availability(config)
+        if availability.schedule_enabled:
+            business_hours_text = ManagerWorkingHoursService().format_business_hours(
+                availability.working_days_utc,
+                availability.start_time_utc,
+                availability.end_time_utc,
+                locale=getattr(actor.from_user, "language_code", None),
+            )
+    except SQLAlchemyError:
+        logger.warning("Не удалось загрузить график менеджеров для Telegram-приветствия")  # noqa: RUF001
     text = messages.exchange_start_welcome(
         actor.from_user.first_name,
         locale=getattr(actor.from_user, "language_code", None),
+        business_hours_text=business_hours_text,
     )
     if edit:
         await _safe_edit_text(actor.message, text, reply_markup=choose_country(translate))
@@ -661,6 +682,34 @@ async def confirm_exchange_callback(callback: CallbackQuery, state: FSMContext) 
     try:
         async with db:
             user, _ = await check_user(db, callback.from_user)
+            working_hours_service = ManagerWorkingHoursService()
+            availability = working_hours_service.get_availability(
+                await ConfigRepository(db).get_or_create()
+            )
+            if getattr(availability, "status", None) == "offline" and not data.get(
+                "off_hours_confirmed"
+            ):
+                business_hours_text = availability.business_hours_text
+                if availability.schedule_enabled:
+                    business_hours_text = working_hours_service.format_business_hours(
+                        availability.working_days_utc,
+                        availability.start_time_utc,
+                        availability.end_time_utc,
+                        locale=getattr(callback.from_user, "language_code", None),
+                    )
+                await callback.answer(
+                    messages.exchange_off_hours_alert(translator=translate),
+                    show_alert=True,
+                )
+                await _safe_edit_text(
+                    callback.message,
+                    messages.exchange_off_hours_confirmation(
+                        business_hours_text,
+                        translator=translate,
+                    ),
+                    reply_markup=confirm_off_hours_exchange(translate),
+                )
+                return
             country_value = data.get("country")
             if country_value is None:
                 country_value = (
@@ -671,7 +720,7 @@ async def confirm_exchange_callback(callback: CallbackQuery, state: FSMContext) 
             city_id = data.get("city_id")
             if city_id is None and data["method"] == "cash":
                 city_id = getattr(user, "city_id", None)
-            await create_order_for_user(
+            created_order = await create_order_for_user(
                 db,
                 user,
                 MiniappOrderCreate(
@@ -684,6 +733,7 @@ async def confirm_exchange_callback(callback: CallbackQuery, state: FSMContext) 
                     rate=quote["rate"],
                     methodGet=data["method"],
                 ),
+                notify_user=False,
             )
     except AntExException as exc:
         await callback.answer(
@@ -702,10 +752,26 @@ async def confirm_exchange_callback(callback: CallbackQuery, state: FSMContext) 
         )
         return
 
+    availability = getattr(created_order, "manager_availability", None)
+    await callback.message.answer(
+        messages.order_created(
+            created_order.publicNumber,
+            translator=translate,
+            managers_offline=getattr(availability, "status", None) == "offline",
+        ),
+        reply_markup=order_created_actions(translate),
+    )
     await state.clear()
     await state.set_state(ExchangeState.choosing_country)
     await _safe_delete_message(callback.message)
     await callback.answer()
+
+
+@router.callback_query(F.data == "exchange:confirm_offline", ExchangeState.confirming)
+async def confirm_offline_exchange_callback(callback: CallbackQuery, state: FSMContext) -> None:
+    """Продолжает создание заявки после off-hours предупреждения."""
+    await state.update_data(off_hours_confirmed=True)
+    await confirm_exchange_callback(callback, state)
 
 
 @router.callback_query(F.data == "fsm:back")
