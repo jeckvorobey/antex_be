@@ -39,6 +39,7 @@ from app.telegram.keyboards import (
     choose_currency,
     choose_service,
     confirm_exchange,
+    confirm_off_hours_exchange,
     order_created_actions,
     orders_pagination,
 )
@@ -681,6 +682,34 @@ async def confirm_exchange_callback(callback: CallbackQuery, state: FSMContext) 
     try:
         async with db:
             user, _ = await check_user(db, callback.from_user)
+            working_hours_service = ManagerWorkingHoursService()
+            availability = working_hours_service.get_availability(
+                await ConfigRepository(db).get_or_create()
+            )
+            if getattr(availability, "status", None) == "offline" and not data.get(
+                "off_hours_confirmed"
+            ):
+                business_hours_text = availability.business_hours_text
+                if availability.schedule_enabled:
+                    business_hours_text = working_hours_service.format_business_hours(
+                        availability.working_days_utc,
+                        availability.start_time_utc,
+                        availability.end_time_utc,
+                        locale=getattr(callback.from_user, "language_code", None),
+                    )
+                await callback.answer(
+                    messages.exchange_off_hours_alert(translator=translate),
+                    show_alert=True,
+                )
+                await _safe_edit_text(
+                    callback.message,
+                    messages.exchange_off_hours_confirmation(
+                        business_hours_text,
+                        translator=translate,
+                    ),
+                    reply_markup=confirm_off_hours_exchange(translate),
+                )
+                return
             country_value = data.get("country")
             if country_value is None:
                 country_value = (
@@ -736,6 +765,13 @@ async def confirm_exchange_callback(callback: CallbackQuery, state: FSMContext) 
     await state.set_state(ExchangeState.choosing_country)
     await _safe_delete_message(callback.message)
     await callback.answer()
+
+
+@router.callback_query(F.data == "exchange:confirm_offline", ExchangeState.confirming)
+async def confirm_offline_exchange_callback(callback: CallbackQuery, state: FSMContext) -> None:
+    """Продолжает создание заявки после off-hours предупреждения."""
+    await state.update_data(off_hours_confirmed=True)
+    await confirm_exchange_callback(callback, state)
 
 
 @router.callback_query(F.data == "fsm:back")

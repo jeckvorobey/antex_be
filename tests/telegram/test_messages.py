@@ -38,11 +38,35 @@ def test_order_created_adds_queue_notice_only_for_offline_managers() -> None:
     )
     usual_text = messages.order_created(2026050008, managers_offline=False, locale="ru")
 
-    assert "Менеджер обработает её после начала рабочего дня" in offline_text
-    assert "A manager will process it after the next working day begins" in offline_english_text
-    assert "Менеджер обработает её после начала рабочего дня" not in usual_text
+    assert "<blockquote>Менеджер обработает заявку утром" in offline_text
+    assert "<blockquote>A manager will process the order in the morning" in offline_english_text
+    assert "Менеджер обработает заявку утром" not in usual_text
+    assert "после начала рабочего дня в порядке очереди" not in offline_text
     assert "Пожалуйста, ожидайте подтверждения" not in offline_text
     assert "Пожалуйста, ожидайте подтверждения" in usual_text
+
+
+def test_exchange_off_hours_confirmation_is_localized() -> None:
+    text = messages.exchange_off_hours_confirmation(
+        "Пн–Пт с 10:00 до 19:00 МСК",
+        locale="ru",
+    )
+    en_text = messages.exchange_off_hours_confirmation(
+        "Mon–Fri from 10:00 to 19:00 MSK",
+        locale="en",
+    )
+
+    assert "Менеджеры сейчас не работают" in text
+    assert "Заявка будет обработана утром" in text
+    assert "Пн–Пт с 10:00 до 19:00 МСК" in text
+    assert "Managers are not working right now" in en_text
+    assert "Mon–Fri from 10:00 to 19:00 MSK" in en_text
+
+
+def test_exchange_off_hours_alert_is_short() -> None:
+    text = messages.exchange_off_hours_alert(locale="ru")
+
+    assert text == "Менеджер обработает заявку утром после начала рабочего дня."
 
 
 def test_exchange_start_welcome_uses_current_business_schedule() -> None:

@@ -275,6 +275,28 @@ def exchange_confirm_summary(
     )
 
 
+def exchange_off_hours_confirmation(
+    business_hours_text: str,
+    *,
+    translator: Translate | None = None,
+    locale: str | None = None,
+) -> str:
+    """Предупреждение перед созданием заявки вне режима работы менеджеров."""
+    return _resolve_translator(translator, locale)(
+        "exchange-off-hours-confirmation",
+        hours=business_hours_text,
+    )
+
+
+def exchange_off_hours_alert(
+    *,
+    translator: Translate | None = None,
+    locale: str | None = None,
+) -> str:
+    """Короткий Telegram alert для off-hours подтверждения."""
+    return _resolve_translator(translator, locale)("exchange-off-hours-alert")
+
+
 def manager_order_summary(
     *,
     country: str,

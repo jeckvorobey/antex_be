@@ -114,6 +114,43 @@ class _FakeState:
         self.cleared = True
 
 
+class _FakeConfigRepository:
+    def __init__(self, db) -> None:
+        self.db = db
+
+    async def get_or_create(self):
+        return SimpleNamespace()
+
+
+class _WorkingWorkingHoursService:
+    def get_availability(self, config):
+        return SimpleNamespace(
+            status="working",
+            schedule_enabled=True,
+            working_days_utc=[1, 2, 3, 4, 5],
+            start_time_utc=object(),
+            end_time_utc=object(),
+            business_hours_text="Пн–Пт с 10:00 до 19:00 МСК",
+        )
+
+
+class _OfflineWorkingHoursService:
+    def get_availability(self, config):
+        return SimpleNamespace(
+            status="offline",
+            schedule_enabled=True,
+            working_days_utc=[1, 2, 3, 4, 5],
+            start_time_utc=object(),
+            end_time_utc=object(),
+            business_hours_text="Пн–Пт с 10:00 до 19:00 МСК",
+        )
+
+    def format_business_hours(self, days, start, end, *, locale=None):
+        if locale == "en":
+            return "Mon–Fri from 10:00 to 19:00 MSK"
+        return "Пн–Пт с 10:00 до 19:00 МСК"
+
+
 def _pair_snapshot(pair_id: str, sell: str, buy: str, rate_text: str) -> ExchangePairSnapshot:
     return ExchangePairSnapshot(
         pair_id=pair_id,
@@ -619,6 +656,224 @@ async def test_enter_amount_rejects_below_minimum_and_stays_on_amount_step(monke
     quote_mock.assert_not_called()
 
 
+async def test_enter_amount_rejects_non_positive_amount_and_stays_on_amount_step(
+    monkeypatch,
+) -> None:
+    message = _FakeMessage()
+    message.from_user = TgUser(
+        id=777025,
+        is_bot=False,
+        first_name="Invalid",
+        username="invalid-user",
+        language_code="ru",
+    )
+    message.text = "0"
+    state = _FakeState(
+        {
+            "currency_sell": "RUB",
+            "currency_buy": "THB",
+            "method": "qrcode",
+        }
+    )
+    quote_mock = AsyncMock()
+    monkeypatch.setattr(exchange_handler.ExchangeService, "get_quote", quote_mock)
+
+    await exchange_handler.enter_amount(message, state)
+
+    assert state.state is None
+    assert len(message.answers) == 1
+    assert message.answers[0]["text"] == "Укажите сумму числом, больше нуля."
+    quote_mock.assert_not_called()
+
+
+async def test_confirm_exchange_warns_before_creating_order_when_managers_offline(
+    monkeypatch,
+) -> None:
+    fake_db = _FakeDbSession()
+    callback = _FakeCallback(
+        TgUser(
+            id=777026,
+            is_bot=False,
+            first_name="Offline",
+            username="offline-user",
+            language_code="ru",
+        )
+    )
+    state = _FakeState(
+        {
+            "currency_sell": "RUB",
+            "amount_sell": 15000,
+            "currency_buy": "THB",
+            "quote": {
+                "amountBuy": 5100,
+                "rate": 0.34,
+                "rateText": "1 RUB = 0.34 THB",
+            },
+            "method": "qrcode",
+            "country": Country.THAILAND.value,
+        }
+    )
+    create_mock = AsyncMock()
+
+    async def _fake_get_db():
+        return fake_db
+
+    async def _fake_check_user(db, tg_user):
+        return User(
+            id=25,
+            telegram_id=777026,
+            username="offline-user",
+            first_name="Offline",
+            role=3,
+        ), False
+
+    monkeypatch.setattr(exchange_handler, "_get_db", _fake_get_db)
+    monkeypatch.setattr(exchange_handler, "check_user", _fake_check_user)
+    monkeypatch.setattr(exchange_handler, "ConfigRepository", _FakeConfigRepository)
+    monkeypatch.setattr(exchange_handler, "ManagerWorkingHoursService", _OfflineWorkingHoursService)
+    monkeypatch.setattr(exchange_handler, "create_order_for_user", create_mock)
+
+    await exchange_handler.confirm_exchange_callback(callback, state)
+
+    create_mock.assert_not_called()
+    assert state.cleared is False
+    assert state._data.get("off_hours_confirmed") is None
+    assert callback.answers[-1] == {
+        "text": "Менеджер обработает заявку утром после начала рабочего дня.",
+        "show_alert": True,
+    }
+    assert "⚠️ Менеджеры сейчас не работают" in callback.message.edits[0]["text"]
+    assert "Пн–Пт с 10:00 до 19:00 МСК" in callback.message.edits[0]["text"]
+    reply_markup = callback.message.edits[0]["reply_markup"]
+    assert [button.callback_data for button in reply_markup.inline_keyboard[0]] == [
+        "exchange:confirm_offline",
+        "fsm:cancel",
+    ]
+
+
+async def test_confirm_exchange_localizes_off_hours_schedule_for_english_user(
+    monkeypatch,
+) -> None:
+    fake_db = _FakeDbSession()
+    callback = _FakeCallback(
+        TgUser(
+            id=777028,
+            is_bot=False,
+            first_name="English",
+            username="english-user",
+            language_code="en",
+        )
+    )
+    state = _FakeState(
+        {
+            "currency_sell": "RUB",
+            "amount_sell": 15000,
+            "currency_buy": "THB",
+            "quote": {
+                "amountBuy": 5100,
+                "rate": 0.34,
+                "rateText": "1 RUB = 0.34 THB",
+            },
+            "method": "qrcode",
+            "country": Country.THAILAND.value,
+        }
+    )
+
+    async def _fake_get_db():
+        return fake_db
+
+    async def _fake_check_user(db, tg_user):
+        return User(
+            id=28,
+            telegram_id=777028,
+            username="english-user",
+            first_name="English",
+            role=3,
+        ), False
+
+    monkeypatch.setattr(exchange_handler, "_get_db", _fake_get_db)
+    monkeypatch.setattr(exchange_handler, "check_user", _fake_check_user)
+    monkeypatch.setattr(exchange_handler, "ConfigRepository", _FakeConfigRepository)
+    monkeypatch.setattr(exchange_handler, "ManagerWorkingHoursService", _OfflineWorkingHoursService)
+    monkeypatch.setattr(exchange_handler, "create_order_for_user", AsyncMock())
+
+    await exchange_handler.confirm_exchange_callback(callback, state)
+
+    assert "Managers are not working right now" in callback.message.edits[0]["text"]
+    assert "Mon–Fri from 10:00 to 19:00 MSK" in callback.message.edits[0]["text"]
+    assert "Пн–Пт" not in callback.message.edits[0]["text"]
+
+
+async def test_confirm_offline_exchange_creates_order_after_warning(monkeypatch) -> None:
+    fake_db = _FakeDbSession()
+    user = User(
+        id=26,
+        telegram_id=777027,
+        username="confirmed-user",
+        first_name="Confirmed",
+        role=3,
+    )
+    created_order = SimpleNamespace(
+        id=101,
+        publicNumber="202607270101",
+        amountSell=15000,
+        currencySell="RUB",
+        amountBuy=5100.0,
+        currencyBuy="THB",
+        methodGet="qrcode",
+        status=int(OrderStatus.CREATED),
+        manager_availability=SimpleNamespace(status="offline"),
+    )
+    callback = _FakeCallback(
+        TgUser(
+            id=777027,
+            is_bot=False,
+            first_name="Confirmed",
+            username="confirmed-user",
+            language_code="ru",
+        )
+    )
+    state = _FakeState(
+        {
+            "currency_sell": "RUB",
+            "amount_sell": 15000,
+            "currency_buy": "THB",
+            "quote": {
+                "amountBuy": 5100,
+                "rate": 0.34,
+                "rateText": "1 RUB = 0.34 THB",
+            },
+            "method": "qrcode",
+            "country": Country.THAILAND.value,
+        }
+    )
+
+    async def _fake_get_db():
+        return fake_db
+
+    async def _fake_check_user(db, tg_user):
+        return user, False
+
+    async def _fake_create_order_for_user(db, current_user, payload, *, notify_user=True):
+        assert current_user is user
+        assert payload.amount_sell == 15000
+        return created_order
+
+    monkeypatch.setattr(exchange_handler, "_get_db", _fake_get_db)
+    monkeypatch.setattr(exchange_handler, "check_user", _fake_check_user)
+    monkeypatch.setattr(exchange_handler, "ConfigRepository", _FakeConfigRepository)
+    monkeypatch.setattr(exchange_handler, "ManagerWorkingHoursService", _OfflineWorkingHoursService)
+    monkeypatch.setattr(exchange_handler, "create_order_for_user", _fake_create_order_for_user)
+
+    await exchange_handler.confirm_offline_exchange_callback(callback, state)
+
+    assert state.cleared is True
+    assert "Заявка №202607270101 создана" in callback.message.answers[0]["text"].replace(
+        "\u2068", ""
+    ).replace("\u2069", "")
+    assert "<blockquote>Менеджер обработает заявку утром" in callback.message.answers[0]["text"]
+
+
 async def test_confirm_exchange_creates_order_with_default_qrcode(monkeypatch) -> None:
     fake_db = _FakeDbSession()
     city = City(id=11, name="Bangkok", country=Country.THAILAND)
@@ -686,6 +941,8 @@ async def test_confirm_exchange_creates_order_with_default_qrcode(monkeypatch) -
 
     monkeypatch.setattr(exchange_handler, "_get_db", _fake_get_db)
     monkeypatch.setattr(exchange_handler, "check_user", _fake_check_user)
+    monkeypatch.setattr(exchange_handler, "ConfigRepository", _FakeConfigRepository)
+    monkeypatch.setattr(exchange_handler, "ManagerWorkingHoursService", _WorkingWorkingHoursService)
     monkeypatch.setattr(exchange_handler, "create_order_for_user", _fake_create_order_for_user)
 
     await exchange_handler.confirm_exchange_callback(callback, state)
@@ -746,6 +1003,8 @@ async def test_confirm_exchange_shows_human_error_on_order_creation_failure(monk
 
     monkeypatch.setattr(exchange_handler, "_get_db", _fake_get_db)
     monkeypatch.setattr(exchange_handler, "check_user", _fake_check_user)
+    monkeypatch.setattr(exchange_handler, "ConfigRepository", _FakeConfigRepository)
+    monkeypatch.setattr(exchange_handler, "ManagerWorkingHoursService", _WorkingWorkingHoursService)
     monkeypatch.setattr(exchange_handler, "create_order_for_user", _fake_create_order_for_user)
 
     await exchange_handler.confirm_exchange_callback(callback, state)

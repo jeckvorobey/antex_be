@@ -20,6 +20,7 @@ from app.telegram.keyboards import (
     choose_currency,
     choose_service,
     confirm_exchange,
+    confirm_off_hours_exchange,
     manager_home,
     manager_order_close,
     manager_order_open_chat,
@@ -408,6 +409,7 @@ async def test_exchange_keyboards_are_backend_driven() -> None:
     amount_kb = amount_controls(translator)
     methods_kb = obtaining(translator, ["cash", "card"])
     confirm_kb = confirm_exchange(translator)
+    offline_kb = confirm_off_hours_exchange(translator)
 
     assert [button.text for button in sell_kb.inline_keyboard[0]] == [
         "🇷🇺 RUB",
@@ -434,6 +436,13 @@ async def test_exchange_keyboards_are_backend_driven() -> None:
     assert confirm_kb.inline_keyboard[0][1].style == "primary"
     assert confirm_kb.inline_keyboard[1][0].style == "danger"
     assert confirm_kb.inline_keyboard[1][0].callback_data == "fsm:cancel"
+    assert [button.text for button in offline_kb.inline_keyboard[0]] == ["✅ Да", "❌ Отмена"]
+    assert [button.callback_data for button in offline_kb.inline_keyboard[0]] == [
+        "exchange:confirm_offline",
+        "fsm:cancel",
+    ]
+    assert offline_kb.inline_keyboard[0][0].style == "success"
+    assert offline_kb.inline_keyboard[0][1].style == "danger"
 
     created_kb = order_created_actions(translator)
     assert [button.callback_data for button in created_kb.inline_keyboard[0]] == ["menu:orders"]

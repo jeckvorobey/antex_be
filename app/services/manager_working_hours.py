@@ -147,9 +147,10 @@ class ManagerWorkingHoursService:
         start: time,
         end: time,
     ) -> tuple[datetime, datetime] | None:
+        enabled_days = set(days)
         for offset in (0, -1):
             date = (now + timedelta(days=offset)).date()
-            if date.isoweekday() not in days:
+            if date.isoweekday() not in enabled_days:
                 continue
             interval = self._interval_for_date(date, start, end)
             if interval[0] <= now < interval[1]:
@@ -157,9 +158,10 @@ class ManagerWorkingHoursService:
         return None
 
     def _find_next_start(self, now: datetime, days: list[int], start: time, end: time) -> datetime:
+        enabled_days = set(days)
         for offset in range(0, 8):
             date = (now + timedelta(days=offset)).date()
-            if date.isoweekday() not in days:
+            if date.isoweekday() not in enabled_days:
                 continue
             start_at, _ = self._interval_for_date(date, start, end)
             if start_at > now:
