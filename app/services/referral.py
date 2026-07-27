@@ -198,7 +198,7 @@ class ReferralService:
         order_amount: Decimal,
         referred_user_id: int,
         currency_sell: str = "USDT",
-        currency_buy: str | None = None,
+
     ) -> Decimal:
         """Начислить ATXG пригласившему за обмен реферала.
 
@@ -233,7 +233,6 @@ class ReferralService:
             db,
             order_amount=order_amount,
             currency_sell=currency_sell,
-            currency_buy=currency_buy,
         )
         aex_amount = (aex_base_amount * rate).quantize(ATXG_RATE_QUANTIZER)
 
@@ -365,13 +364,13 @@ class ReferralService:
         *,
         order_amount: Decimal,
         currency_sell: str,
-        currency_buy: str | None,
     ) -> Decimal:
         """Привести сумму заявки к USDT-базе, от которой начисляется ATXG."""
         if order_amount <= 0:
             return Decimal("0")
 
         sell = currency_sell.upper()
+
         if sell == "USDT":
             return order_amount.quantize(ATXG_RATE_QUANTIZER)
 
@@ -382,27 +381,19 @@ class ReferralService:
                 status_code=422,
             )
 
-        if not currency_buy:
-            raise AntExException(
-                "Currency buy is required for RUB referral bonus conversion",
-                code="REFERRAL_BONUS_CONTEXT_MISSING",
-                status_code=500,
-            )
-
-        buy = currency_buy.upper()
         rate_repo = RateRepository(db)
-        rub_pair = await rate_repo.find_by_currency(f"RUB{buy}")
-        usdt_pair = await rate_repo.find_by_currency(f"USDT{buy}")
+        usdtrub = await rate_repo.find_internal_by_currency("USDTRUB")
 
-        if rub_pair is None or usdt_pair is None or rub_pair.price <= 0 or usdt_pair.price <= 0:
+        if usdtrub is None or usdtrub.price <= 0:
             raise AntExException(
-                f"Missing conversion rates for referral bonus base: RUB{buy}/USDT{buy}",
+                "Missing USDTRUB rate for referral bonus base",
                 code="REFERRAL_BONUS_RATE_UNAVAILABLE",
                 status_code=409,
             )
 
-        usdt_rub = Decimal(str(usdt_pair.price)) / Decimal(str(rub_pair.price))
-        return (order_amount / usdt_rub).quantize(ATXG_RATE_QUANTIZER)
+        return (
+            order_amount / Decimal(str(usdtrub.price))
+        ).quantize(ATXG_RATE_QUANTIZER)
 
     async def _notify_referral_bonus(
         self,

@@ -108,7 +108,6 @@ async def update_order_status(
                 order_amount=order_amount,
                 referred_user_id=hydrated.UserId,
                 currency_sell=str(hydrated.currencySell),
-                currency_buy=str(hydrated.currencyBuy),
             )
 
     if target_status == OrderStatus.CANCELLED and _is_aex_withdrawal_order(hydrated):

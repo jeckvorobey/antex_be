@@ -302,20 +302,32 @@ class TestReferralBonus:
         assert wallet is not None
         assert wallet.balance_available == Decimal("20.000000")
 
-    async def test_credit_referral_bonus_rub_order_uses_usdt_equivalent(self, db_session):
-        referrer = await create_user(db_session, telegram_id=700010, referral_code="BONUSRUB")
+    async def test_credit_referral_bonus_rub_order_uses_internal_usdtrub(
+        self,
+        db_session,
+    ):
+        referrer = await create_user(
+            db_session,
+            telegram_id=700010,
+            referral_code="BONUSRUB",
+        )
         referred = await create_user(db_session, telegram_id=700011)
+
         db_session.add(
             UserAcquisition(
-                user_id=referred.id, source_type="referral", referrer_user_id=referrer.id
+                user_id=referred.id,
+                source_type="referral",
+                referrer_user_id=referrer.id,
             )
         )
-        await db_session.flush()
-        db_session.add_all(
-            [
-                Rate(currency="USDTTHB", price=35.5, margin=3.0, country=Country.THAILAND),
-                Rate(currency="RUBTHB", price=0.355, margin=3.0, country=Country.THAILAND),
-            ]
+        db_session.add(
+            Rate(
+                currency="USDTRUB",
+                price=100,
+                margin=10,
+                country=None,
+                is_internal=True,
+            )
         )
         await db_session.flush()
 
@@ -326,10 +338,44 @@ class TestReferralBonus:
             order_amount=Decimal("100000"),
             referred_user_id=referred.id,
             currency_sell="RUB",
-            currency_buy="THB",
         )
 
         assert aex_amount == Decimal("2.000000")
+        
+
+    async def test_credit_referral_bonus_rub_requires_internal_usdtrub(
+        self,
+        db_session,
+    ):
+        referrer = await create_user(
+            db_session,
+            telegram_id=700012,
+            referral_code="BONUSERR",
+        )
+        referred = await create_user(db_session, telegram_id=700013)
+
+        db_session.add(
+            UserAcquisition(
+                user_id=referred.id,
+                source_type="referral",
+                referrer_user_id=referrer.id,
+            )
+        )
+        await db_session.flush()
+
+        service = ReferralService()
+
+        with pytest.raises(AntExException) as exc_info:
+            await service.credit_referral_bonus(
+                db_session,
+                order_id=4,
+                order_amount=Decimal("100000"),
+                referred_user_id=referred.id,
+                currency_sell="RUB",
+            )
+
+        assert exc_info.value.code == "REFERRAL_BONUS_RATE_UNAVAILABLE"
+        
 
     async def test_credit_referral_bonus_no_referrer(self, db_session):
         user = await create_user(db_session, telegram_id=700003)
