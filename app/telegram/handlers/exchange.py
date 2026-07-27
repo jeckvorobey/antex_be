@@ -11,6 +11,7 @@ from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.types import CallbackQuery, Message
 from sqlalchemy import select
+from sqlalchemy.exc import SQLAlchemyError
 
 from app.core.database import create_db_session
 from app.enums.country import Country
@@ -232,23 +233,25 @@ async def _show_start_welcome(actor, state: FSMContext, *, edit: bool) -> None:
     translate = get_user_translator(actor.from_user)
     await state.clear()
     await state.set_state(ExchangeState.choosing_country)
-    db = await _get_db()
-    async with db:
-        config = await ConfigRepository(db).get_or_create()
-    availability = ManagerWorkingHoursService().get_availability(config)
-    text = messages.exchange_start_welcome(
-        actor.from_user.first_name,
-        locale=getattr(actor.from_user, "language_code", None),
-        business_hours_text=(
-            ManagerWorkingHoursService().format_business_hours(
+    business_hours_text = None
+    try:
+        db = await _get_db()
+        async with db:
+            config = await ConfigRepository(db).get_or_create()
+        availability = ManagerWorkingHoursService().get_availability(config)
+        if availability.schedule_enabled:
+            business_hours_text = ManagerWorkingHoursService().format_business_hours(
                 availability.working_days_utc,
                 availability.start_time_utc,
                 availability.end_time_utc,
                 locale=getattr(actor.from_user, "language_code", None),
             )
-            if availability.schedule_enabled
-            else None
-        ),
+    except SQLAlchemyError:
+        logger.warning("Не удалось загрузить график менеджеров для Telegram-приветствия")  # noqa: RUF001
+    text = messages.exchange_start_welcome(
+        actor.from_user.first_name,
+        locale=getattr(actor.from_user, "language_code", None),
+        business_hours_text=business_hours_text,
     )
     if edit:
         await _safe_edit_text(actor.message, text, reply_markup=choose_country(translate))
