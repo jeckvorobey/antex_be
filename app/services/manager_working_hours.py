@@ -10,13 +10,8 @@ from typing import Literal, Protocol
 AvailabilityStatus = Literal["working", "offline", "unknown"]
 _MSK_UTC_OFFSET_HOURS = 3
 _WEEKDAY_LABELS = {
-    1: "Пн",
-    2: "Вт",
-    3: "Ср",
-    4: "Чт",
-    5: "Пт",
-    6: "Сб",
-    7: "Вс",
+    "ru": {1: "Пн", 2: "Вт", 3: "Ср", 4: "Чт", 5: "Пт", 6: "Сб", 7: "Вс"},
+    "en": {1: "Mon", 2: "Tue", 3: "Wed", 4: "Thu", 5: "Fri", 6: "Sat", 7: "Sun"},
 }
 
 
@@ -81,11 +76,11 @@ class ManagerWorkingHoursService:
                 None,
                 None,
                 None,
-                self._format_business_hours(days, start, end),
+                self.format_business_hours(days, start, end),
             )
 
         current = (now or datetime.now(UTC)).astimezone(UTC)
-        business_hours_text = self._format_business_hours(days, start, end)
+        business_hours_text = self.format_business_hours(days, start, end)
         interval = self._find_containing_interval(current, days, start, end)
         if interval is not None:
             return ManagerAvailability(
@@ -106,8 +101,15 @@ class ManagerWorkingHoursService:
         )
 
     @staticmethod
-    def _format_business_hours(days: list[int], start: time, end: time) -> str:
-        """Формирует пользовательскую МСК-строку из сохранённого UTC-расписания."""
+    def format_business_hours(
+        days: list[int],
+        start: time,
+        end: time,
+        *,
+        locale: str | None = None,
+    ) -> str:
+        """Формирует локализованную МСК-строку из сохранённого UTC-расписания."""
+        language = "en" if (locale or "").split("-", 1)[0].lower() == "en" else "ru"
         utc_reference_date = datetime.min.date()
         start_msk_at = datetime.combine(utc_reference_date, start) + timedelta(
             hours=_MSK_UTC_OFFSET_HOURS
@@ -120,11 +122,13 @@ class ManagerWorkingHoursService:
             ((day - 1 + (start_msk_at.date() - utc_reference_date).days) % 7) + 1 for day in days
         )
         if msk_days == list(range(1, 8)):
-            days_text = "Ежедневно"
+            days_text = "Daily" if language == "en" else "Ежедневно"
         elif msk_days == [1, 2, 3, 4, 5]:
-            days_text = "Пн–Пт"
+            days_text = "Mon–Fri" if language == "en" else "Пн–Пт"
         else:
-            days_text = ", ".join(_WEEKDAY_LABELS[day] for day in msk_days)
+            days_text = ", ".join(_WEEKDAY_LABELS[language][day] for day in msk_days)
+        if language == "en":
+            return f"{days_text} from {start_msk:%H:%M} to {end_msk:%H:%M} MSK"
         return f"{days_text} с {start_msk:%H:%M} до {end_msk:%H:%M} МСК"
 
     @staticmethod

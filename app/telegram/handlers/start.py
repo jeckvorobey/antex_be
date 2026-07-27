@@ -90,7 +90,14 @@ async def cmd_start(message: Message, state: FSMContext) -> None:
                     message.from_user.first_name,
                     translator=translate,
                     business_hours_text=(
-                        availability.business_hours_text if availability.schedule_enabled else None
+                        ManagerWorkingHoursService().format_business_hours(
+                            availability.working_days_utc,
+                            availability.start_time_utc,
+                            availability.end_time_utc,
+                            locale=getattr(message.from_user, "language_code", None),
+                        )
+                        if availability.schedule_enabled
+                        else None
                     ),
                 ),
                 reply_markup=choose_country(translate),

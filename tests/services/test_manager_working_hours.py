@@ -62,6 +62,15 @@ def test_service_formats_business_hours_from_actual_utc_schedule_in_msk() -> Non
     )
 
     assert availability.business_hours_text == "Пн–Пт с 10:00 до 22:00 МСК"  # noqa: RUF001
+    assert (
+        service.format_business_hours(
+            availability.working_days_utc,
+            availability.start_time_utc,
+            availability.end_time_utc,
+            locale="en",
+        )
+        == "Mon–Fri from 10:00 to 22:00 MSK"  # noqa: RUF001
+    )
 
 
 def test_service_shifts_weekday_labels_with_schedule_start_to_msk() -> None:

@@ -240,7 +240,14 @@ async def _show_start_welcome(actor, state: FSMContext, *, edit: bool) -> None:
         actor.from_user.first_name,
         locale=getattr(actor.from_user, "language_code", None),
         business_hours_text=(
-            availability.business_hours_text if availability.schedule_enabled else None
+            ManagerWorkingHoursService().format_business_hours(
+                availability.working_days_utc,
+                availability.start_time_utc,
+                availability.end_time_utc,
+                locale=getattr(actor.from_user, "language_code", None),
+            )
+            if availability.schedule_enabled
+            else None
         ),
     )
     if edit:
