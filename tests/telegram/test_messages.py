@@ -35,6 +35,8 @@ def test_order_created_adds_queue_notice_only_for_offline_managers() -> None:
 
     assert "Менеджер обработает её после начала рабочего дня" in offline_text
     assert "Менеджер обработает её после начала рабочего дня" not in usual_text
+    assert "Пожалуйста, ожидайте подтверждения" not in offline_text
+    assert "Пожалуйста, ожидайте подтверждения" in usual_text
 
 
 def test_exchange_start_welcome_mentions_around_the_clock_order_acceptance_and_msk_hours() -> None:

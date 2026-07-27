@@ -108,14 +108,23 @@ class ManagerWorkingHoursService:
     @staticmethod
     def _format_business_hours(days: list[int], start: time, end: time) -> str:
         """Формирует пользовательскую МСК-строку из сохранённого UTC-расписания."""
-        start_msk = (datetime.combine(datetime.min.date(), start) + timedelta(hours=3)).time()
-        end_msk = (datetime.combine(datetime.min.date(), end) + timedelta(hours=3)).time()
-        if days == list(range(1, 8)):
+        utc_reference_date = datetime.min.date()
+        start_msk_at = datetime.combine(utc_reference_date, start) + timedelta(
+            hours=_MSK_UTC_OFFSET_HOURS
+        )
+        end_msk = (
+            datetime.combine(utc_reference_date, end) + timedelta(hours=_MSK_UTC_OFFSET_HOURS)
+        ).time()
+        start_msk = start_msk_at.time()
+        msk_days = sorted(
+            ((day - 1 + (start_msk_at.date() - utc_reference_date).days) % 7) + 1 for day in days
+        )
+        if msk_days == list(range(1, 8)):
             days_text = "Ежедневно"
-        elif days == [1, 2, 3, 4, 5]:
+        elif msk_days == [1, 2, 3, 4, 5]:
             days_text = "Пн–Пт"
         else:
-            days_text = ", ".join(_WEEKDAY_LABELS[day] for day in days)
+            days_text = ", ".join(_WEEKDAY_LABELS[day] for day in msk_days)
         return f"{days_text} с {start_msk:%H:%M} до {end_msk:%H:%M} МСК"
 
     @staticmethod

@@ -64,6 +64,22 @@ def test_service_formats_business_hours_from_actual_utc_schedule_in_msk() -> Non
     assert availability.business_hours_text == "Пн–Пт с 10:00 до 22:00 МСК"  # noqa: RUF001
 
 
+def test_service_shifts_weekday_labels_with_schedule_start_to_msk() -> None:
+    service = ManagerWorkingHoursService()
+    overnight_schedule = _config(
+        manager_working_days_utc=[1],
+        manager_start_time_utc=time(21),
+        manager_end_time_utc=time(3),
+    )
+
+    availability = service.get_availability(
+        overnight_schedule,
+        now=datetime(2026, 7, 27, 22, tzinfo=UTC),
+    )
+
+    assert availability.business_hours_text == "Вт с 00:00 до 06:00 МСК"  # noqa: RUF001
+
+
 def test_service_returns_unknown_for_disabled_or_invalid_schedule() -> None:
     service = ManagerWorkingHoursService()
 
