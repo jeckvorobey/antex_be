@@ -41,6 +41,7 @@ def test_order_created_adds_queue_notice_only_for_offline_managers() -> None:
     assert "<blockquote>Менеджер обработает заявку утром" in offline_text
     assert "<blockquote>A manager will process the order in the morning" in offline_english_text
     assert "Менеджер обработает заявку утром" not in usual_text
+    assert "после начала рабочего дня в порядке очереди" not in offline_text
     assert "Пожалуйста, ожидайте подтверждения" not in offline_text
     assert "Пожалуйста, ожидайте подтверждения" in usual_text
 
