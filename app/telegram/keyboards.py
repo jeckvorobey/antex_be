@@ -435,6 +435,28 @@ def confirm_exchange(_, **kwargs) -> InlineKeyboardMarkup:
     )
 
 
+def confirm_off_hours_exchange(_, **kwargs) -> InlineKeyboardMarkup:
+    """Подтверждение создания заявки, когда менеджеры сейчас не работают."""
+    del kwargs
+    translate = _resolve_translator(_)
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(
+                    text=translate("btn-yes"),
+                    callback_data="exchange:confirm_offline",
+                    style="success",
+                ),
+                InlineKeyboardButton(
+                    text=translate("btn-cancel-short"),
+                    callback_data="fsm:cancel",
+                    style="danger",
+                ),
+            ]
+        ]
+    )
+
+
 def confirm_order(
     _=None,
     *,

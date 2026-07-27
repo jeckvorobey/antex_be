@@ -50,6 +50,15 @@ exchange-choose-method = Выберите способ получения { $cur
 exchange-rate-unavailable = ⚠️ Курс временно недоступен. Попробуйте позже.
 exchange-confirm-summary-top = 📋 Проверьте заявку — шаг { $current }/{ $total }
 exchange-confirm-summary-bottom = Если всё верно, нажмите «Подтвердить».
+exchange-off-hours-alert = Менеджер обработает заявку утром после начала рабочего дня.
+exchange-off-hours-confirmation =
+    ⚠️ Менеджеры сейчас не работают.
+
+    Заявка будет обработана утром после начала рабочего дня. Создать её можно сейчас — режим работы не влияет на оформление.
+
+    График: { $hours }.
+
+    Если всё верно, нажмите «Да».
 exchange-summary-country = Страна
 exchange-summary-city = Город
 exchange-summary-rate = Курс
@@ -60,7 +69,9 @@ manager-summary-user = Пользователь
 
 ## Buttons
 btn-confirm = ✅ Подтвердить
+btn-yes = ✅ Да
 btn-cancel = ❌ Отменить
+btn-cancel-short = ❌ Отмена
 btn-back = ◀ Назад
 btn-service-cash-delivery = 🚕 Доставка наличных
 btn-service-cash-atm = 🏧 Наличные по QR
@@ -115,6 +126,8 @@ order-created-offline =
     ✅ Заявка №{ $id } создана.
 
     Заявка принята. Менеджер обработает её после начала рабочего дня в порядке очереди.
+
+    <blockquote>Менеджер обработает заявку утром после начала рабочего дня.</blockquote>
 order-creation-failed = Не удалось создать заявку. Попробуйте ещё раз через минуту.
 order-creation-limit-reached = У вас уже слишком много активных заявок. Дождитесь обработки текущих или завершите их.
 order-confirmed =

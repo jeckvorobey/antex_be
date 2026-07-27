@@ -49,6 +49,15 @@ exchange-choose-method = How would you like to receive { $currency }?
 exchange-rate-unavailable = ⚠️ Exchange rate is temporarily unavailable. Please try again later.
 exchange-confirm-summary-top = 📋 Review your order — step { $current }/{ $total }
 exchange-confirm-summary-bottom = If everything is correct, press “Confirm”.
+exchange-off-hours-alert = A manager will process the order in the morning after the working day begins.
+exchange-off-hours-confirmation =
+    ⚠️ Managers are not working right now.
+
+    The order will be processed in the morning after the working day begins. You can create it now — working hours do not affect order creation.
+
+    Working hours: { $hours }.
+
+    If everything is correct, press “Yes”.
 exchange-summary-country = Country
 exchange-summary-city = City
 exchange-summary-rate = Rate
@@ -59,7 +68,9 @@ manager-summary-user = User
 
 ## Buttons
 btn-confirm = ✅ Confirm
+btn-yes = ✅ Yes
 btn-cancel = ❌ Cancel
+btn-cancel-short = ❌ Cancel
 btn-back = ◀ Back
 btn-service-cash-delivery = 🚕 Cash delivery
 btn-service-cash-atm = 🏧 Cash by QR
@@ -105,7 +116,10 @@ manager-access-denied = Access denied.
 
 ## Order statuses
 order-created = ✅ Order #{ $id } created. Please wait for confirmation.
-order-created-offline = ✅ Order #{ $id } created. Your request has been accepted. A manager will process it after the next working day begins, in queue order.
+order-created-offline =
+    ✅ Order #{ $id } created. Your request has been accepted.
+
+    <blockquote>A manager will process the order in the morning after the working day begins.</blockquote>
 order-creation-failed = Could not create the order right now. Please try again in a minute.
 order-creation-limit-reached = You already have too many active orders. Please wait for the current ones to be processed.
 order-confirmed = ✅ Order #{ $id } is now being processed by the manager.
