@@ -39,11 +39,15 @@ def test_order_created_adds_queue_notice_only_for_offline_managers() -> None:
     assert "Пожалуйста, ожидайте подтверждения" in usual_text
 
 
-def test_exchange_start_welcome_mentions_around_the_clock_order_acceptance_and_msk_hours() -> None:
-    text = messages.exchange_start_welcome("Сергей", locale="ru")
+def test_exchange_start_welcome_uses_current_business_schedule() -> None:
+    text = messages.exchange_start_welcome(
+        "Сергей",
+        locale="ru",
+        business_hours_text="Пн–Пт с 10:00 до 22:00 МСК",
+    )
 
     assert "Заявки принимаются круглосуточно" in text
-    assert "ежедневно с 09:00 до 21:00 МСК" in text
+    assert "Менеджеры работают Пн–Пт с 10:00 до 22:00 МСК" in _strip_bidi_marks(text)
 
 
 def test_referral_bonus_credited_is_short_and_formats_amount_with_two_decimals() -> None:

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+from datetime import time
 from types import SimpleNamespace
 from urllib.parse import parse_qs, urlparse
 
@@ -217,6 +218,45 @@ async def test_start_shows_country_selection_for_customer(monkeypatch) -> None:
     assert [button.callback_data for button in reply_markup.inline_keyboard[1]] == [
         "menu:orders",
     ]
+
+
+async def test_start_uses_configured_manager_schedule_in_customer_welcome(monkeypatch) -> None:
+    user = TgUser(
+        id=778,
+        is_bot=False,
+        first_name="Tester",
+        last_name="User",
+        username="tester",
+        language_code="ru",
+        is_premium=False,
+    )
+    message = _FakeMessage(user)
+    fake_db = _FakeDbSession()
+
+    class _ConfiguredScheduleRepo(_FakeConfigRepo):
+        async def get_or_create(self):
+            return SimpleNamespace(
+                enabled=True,
+                manager_schedule_enabled=True,
+                manager_working_days_utc=[1, 2, 3, 4, 5],
+                manager_start_time_utc=time(7),
+                manager_end_time_utc=time(19),
+            )
+
+    async def _fake_get_db():
+        return fake_db
+
+    async def _fake_check_user(db, tg_user):
+        return (SimpleNamespace(role=3), False)
+
+    monkeypatch.setattr(start_handler, "_get_db", _fake_get_db)
+    monkeypatch.setattr(start_handler, "ConfigRepository", _ConfiguredScheduleRepo)
+    monkeypatch.setattr(start_handler, "check_user", _fake_check_user)
+
+    await start_handler.cmd_start(message, _FakeState())
+
+    welcome_text = str(message.answers[0]["text"]).replace("\u2068", "").replace("\u2069", "")
+    assert "Менеджеры работают Пн–Пт с 10:00 до 22:00 МСК" in welcome_text  # noqa: RUF001
 
 
 async def test_country_and_city_keyboards_have_flags_and_actions() -> None:

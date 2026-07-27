@@ -12,9 +12,10 @@ exchange-start-welcome =
 
     📝 To create a request, open the app or choose a country from the list below.
 
-    Requests are accepted around the clock. Managers work daily from 09:00 to 21:00 MSK.
+    Requests are accepted around the clock.
 
     ☝️ We’ll guide you at every step.
+manager-working-hours = Managers work { $hours }.
 exchange-choose-country = Choose a country
 exchange-choose-service =
     <b>💠 Choose the service you need</b>

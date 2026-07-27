@@ -93,4 +93,6 @@ class AppConfigUpdate(BaseModel):
         """Принимает только time-only UTC: offset был бы проигнорирован планировщиком."""
         if value is not None and value.tzinfo is not None:
             raise ValueError("Manager working time must be a UTC time without an offset")
+        if value is not None and (value.second or value.microsecond):
+            raise ValueError("Manager working time must use minute precision")
         return value
