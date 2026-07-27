@@ -86,8 +86,13 @@ def exchange_start_welcome(
     *,
     translator: Translate | None = None,
     locale: str | None = None,
+    business_hours_text: str | None = None,
 ) -> str:
-    return _resolve_translator(translator, locale)("exchange-start-welcome", name=first_name)
+    translate = _resolve_translator(translator, locale)
+    text = translate("exchange-start-welcome", name=first_name)
+    if business_hours_text is None:
+        return text
+    return f"{text}\n\n{translate('manager-working-hours', hours=business_hours_text)}"
 
 
 def choose_country_prompt(
@@ -394,8 +399,12 @@ def order_created(
     *,
     translator: Translate | None = None,
     locale: str | None = None,
+    managers_offline: bool = False,
 ) -> str:
-    return _resolve_translator(translator, locale)("order-created", id=order_id)
+    translate = _resolve_translator(translator, locale)
+    if managers_offline:
+        return translate("order-created-offline", id=order_id)
+    return translate("order-created", id=order_id)
 
 
 def order_creation_failed(

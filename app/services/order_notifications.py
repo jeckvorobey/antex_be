@@ -78,11 +78,16 @@ async def notify_order_created(order, user, manager) -> None:
             getattr(user, "telegram_id", None),
         )
         translate = get_user_translator(user)
+        availability = getattr(order, "manager_availability", None)
         await send_or_replace_user_status_message(
             bot=bot,
             chat_id=user.telegram_id,
             order=order,
-            text=messages.order_created(order.publicNumber, translator=translate),
+            text=messages.order_created(
+                order.publicNumber,
+                translator=translate,
+                managers_offline=getattr(availability, "status", None) == "offline",
+            ),
             reply_markup=order_created_actions(translate),
         )
         logger.info(

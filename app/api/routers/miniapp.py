@@ -5,6 +5,7 @@ from __future__ import annotations
 from fastapi import APIRouter, Query, status
 
 from app.api.deps import DbDep, MiniappUser
+from app.repositories.config import ConfigRepository
 from app.schemas.aex import ReferralApplyRequest, ReferralApplyResponse
 from app.schemas.miniapp import (
     MiniappAexReferralResponse,
@@ -21,6 +22,7 @@ from app.schemas.miniapp import (
     MiniappRatesResponse,
     build_miniapp_order_item,
 )
+from app.services.manager_working_hours import ManagerWorkingHoursService
 from app.services.miniapp import (
     calculate_miniapp_quote,
     get_miniapp_aex_referral,
@@ -91,7 +93,12 @@ async def create_order(
     user: MiniappUser,
 ) -> MiniappOrderItem:
     order = await create_order_for_user(db, user, body)
-    return build_miniapp_order_item(order)
+    availability = getattr(order, "manager_availability", None)
+    if availability is None:
+        availability = ManagerWorkingHoursService().get_availability(
+            await ConfigRepository(db).get_or_create()
+        )
+    return build_miniapp_order_item(order, manager_availability=availability)
 
 
 @router.get("/profile", response_model=MiniappProfileScreenResponse)

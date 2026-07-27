@@ -124,3 +124,17 @@ Machine-readable marketing errors:
 - `INVALID_MARKETING_DATE_RANGE`
 - `UNSUPPORTED_MARKETING_PROVIDER`
 - `UNSUPPORTED_CAMPAIGN_STATUS`
+
+## Режим работы менеджеров
+
+`GET /api/admin/config` и `PATCH /api/admin/config` включают поля
+`managerScheduleEnabled`, `managerWorkingDaysUtc`, `managerStartTimeUtc` и
+`managerEndTimeUtc`. Времена и дни хранятся и передаются в UTC; admin UI отображает
+ввод в МСК.
+
+`GET /api/miniapp/profile` и `GET /api/miniapp/exchange` включают
+`managerAvailability`: серверный `status` (`working`, `offline`, `unknown`), UTC
+границы текущего/следующего интервала и `businessHoursText`. Mini App форматирует
+`nextStartAt` в локальной зоне браузера. Успешный `POST /api/miniapp/orders`
+возвращает тот же availability snapshot в `managerAvailability` созданной заявки;
+расписание никогда не является причиной отказа в создании заявки.

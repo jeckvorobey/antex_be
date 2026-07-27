@@ -12,7 +12,10 @@ exchange-start-welcome =
 
     📝 To create a request, open the app or choose a country from the list below.
 
+    Requests are accepted around the clock.
+
     ☝️ We’ll guide you at every step.
+manager-working-hours = Managers work { $hours }.
 exchange-choose-country = Choose a country
 exchange-choose-service =
     <b>💠 Choose the service you need</b>
@@ -102,6 +105,7 @@ manager-access-denied = Access denied.
 
 ## Order statuses
 order-created = ✅ Order #{ $id } created. Please wait for confirmation.
+order-created-offline = ✅ Order #{ $id } created. Your request has been accepted. A manager will process it after the next working day begins, in queue order.
 order-creation-failed = Could not create the order right now. Please try again in a minute.
 order-creation-limit-reached = You already have too many active orders. Please wait for the current ones to be processed.
 order-confirmed = ✅ Order #{ $id } is now being processed by the manager.

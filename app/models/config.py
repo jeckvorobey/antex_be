@@ -2,9 +2,10 @@
 
 from __future__ import annotations
 
+from datetime import time
 from decimal import Decimal
 
-from sqlalchemy import Boolean, CheckConstraint, Integer, Numeric
+from sqlalchemy import JSON, Boolean, CheckConstraint, Integer, Numeric, Time
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.models.base import Base, TimestampMixin
@@ -46,5 +47,21 @@ class Config(Base, TimestampMixin):
         Integer,
         default=7,
         server_default="7",
+        nullable=False,
+    )
+    manager_schedule_enabled: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    manager_working_days_utc: Mapped[list[int]] = mapped_column(
+        JSON,
+        default=lambda: [1, 2, 3, 4, 5, 6, 7],
+        nullable=False,
+    )
+    manager_start_time_utc: Mapped[time] = mapped_column(
+        Time,
+        default=time(6, 0),
+        nullable=False,
+    )
+    manager_end_time_utc: Mapped[time] = mapped_column(
+        Time,
+        default=time(18, 0),
         nullable=False,
     )

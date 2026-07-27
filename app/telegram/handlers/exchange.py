@@ -11,12 +11,14 @@ from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.types import CallbackQuery, Message
 from sqlalchemy import select
+from sqlalchemy.exc import SQLAlchemyError
 
 from app.core.database import create_db_session
 from app.enums.country import Country
 from app.exceptions import AntExException
 from app.models.city import City
 from app.repositories.city import CityRepository
+from app.repositories.config import ConfigRepository
 from app.repositories.order import OrderRepository
 from app.schemas.miniapp import MiniappOrderCreate
 from app.services.exchange import (
@@ -26,6 +28,7 @@ from app.services.exchange import (
     ExchangeQuoteInput,
     ExchangeService,
 )
+from app.services.manager_working_hours import ManagerWorkingHoursService
 from app.services.order_flow import create_order_for_user, get_min_amount
 from app.telegram import messages
 from app.telegram.i18n import get_user_translator
@@ -230,9 +233,25 @@ async def _show_start_welcome(actor, state: FSMContext, *, edit: bool) -> None:
     translate = get_user_translator(actor.from_user)
     await state.clear()
     await state.set_state(ExchangeState.choosing_country)
+    business_hours_text = None
+    try:
+        db = await _get_db()
+        async with db:
+            config = await ConfigRepository(db).get_or_create()
+        availability = ManagerWorkingHoursService().get_availability(config)
+        if availability.schedule_enabled:
+            business_hours_text = ManagerWorkingHoursService().format_business_hours(
+                availability.working_days_utc,
+                availability.start_time_utc,
+                availability.end_time_utc,
+                locale=getattr(actor.from_user, "language_code", None),
+            )
+    except SQLAlchemyError:
+        logger.warning("Не удалось загрузить график менеджеров для Telegram-приветствия")  # noqa: RUF001
     text = messages.exchange_start_welcome(
         actor.from_user.first_name,
         locale=getattr(actor.from_user, "language_code", None),
+        business_hours_text=business_hours_text,
     )
     if edit:
         await _safe_edit_text(actor.message, text, reply_markup=choose_country(translate))

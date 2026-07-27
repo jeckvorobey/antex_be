@@ -517,6 +517,12 @@ async def update_config(body: AppConfigUpdate, db: DbDep, _: AdminUser) -> AppCo
         update_referral_max_withdraw="referral_max_withdraw" in body_fields
         or "referralMaxWithdraw" in body_fields,
     )
+    await repo.update_manager_schedule(
+        enabled=body.manager_schedule_enabled,
+        working_days_utc=body.manager_working_days_utc,
+        start_time_utc=body.manager_start_time_utc,
+        end_time_utc=body.manager_end_time_utc,
+    )
     config = await repo.get_or_create()
     await db.commit()
     return AppConfigOut.model_validate(config)

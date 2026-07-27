@@ -20,6 +20,7 @@ from app.repositories.user import UserRepository
 from app.schemas.miniapp import MiniappOrderCreate
 from app.services.aex import AexService
 from app.services.exchange import CANONICAL_BUY_CURRENCIES, ExchangeService, get_client_rate
+from app.services.manager_working_hours import ManagerWorkingHoursService
 from app.services.notifications import notify_order_created
 from app.services.order_numbers import OrderNumberService
 
@@ -128,6 +129,11 @@ async def create_order_for_user(
         await db.rollback()
         raise
     hydrated = await order_repo.get_one(order.id)
+    # Снимок не сохраняется в БД: он нужен ровно для текущего response и уведомления.
+    if hydrated is not None:
+        hydrated.manager_availability = ManagerWorkingHoursService().get_availability(
+            await ConfigRepository(db).get_or_create()
+        )
     logger.info(
         "Order saved: order_id=%s public_number=%s user_id=%s status=%s",
         order.id,

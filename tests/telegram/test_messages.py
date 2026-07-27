@@ -29,6 +29,27 @@ def test_order_created_includes_order_number() -> None:
     assert "".join(re.findall(r"\d", text)) == "2026050008"
 
 
+def test_order_created_adds_queue_notice_only_for_offline_managers() -> None:
+    offline_text = messages.order_created(2026050008, managers_offline=True, locale="ru")
+    usual_text = messages.order_created(2026050008, managers_offline=False, locale="ru")
+
+    assert "Менеджер обработает её после начала рабочего дня" in offline_text
+    assert "Менеджер обработает её после начала рабочего дня" not in usual_text
+    assert "Пожалуйста, ожидайте подтверждения" not in offline_text
+    assert "Пожалуйста, ожидайте подтверждения" in usual_text
+
+
+def test_exchange_start_welcome_uses_current_business_schedule() -> None:
+    text = messages.exchange_start_welcome(
+        "Сергей",
+        locale="ru",
+        business_hours_text="Пн–Пт с 10:00 до 22:00 МСК",
+    )
+
+    assert "Заявки принимаются круглосуточно" in text
+    assert "Менеджеры работают Пн–Пт с 10:00 до 22:00 МСК" in _strip_bidi_marks(text)
+
+
 def test_referral_bonus_credited_is_short_and_formats_amount_with_two_decimals() -> None:
     ru_text = messages.referral_bonus_credited(amount="0.2", order_id="2026070068", locale="ru")
     en_text = messages.referral_bonus_credited(
@@ -38,8 +59,7 @@ def test_referral_bonus_credited_is_short_and_formats_amount_with_two_decimals()
     )
 
     assert (
-        _strip_bidi_marks(ru_text)
-        == "🎁 Вознаграждение по реферальной программе: +0.20 ATXG\n"
+        _strip_bidi_marks(ru_text) == "🎁 Вознаграждение по реферальной программе: +0.20 ATXG\n"
         "За успешно завершённую заявку #2026070068."
     )
     assert (
@@ -62,8 +82,7 @@ def test_referral_bonus_reversed_is_short_and_formats_amount_with_two_decimals()
         "Заявка #2026070068 отменена."
     )
     assert (
-        _strip_bidi_marks(en_text)
-        == "💸 Referral program reward reversed: -0.25 ATXG\n"
+        _strip_bidi_marks(en_text) == "💸 Referral program reward reversed: -0.25 ATXG\n"
         "Order #2026070068 was cancelled."
     )
 

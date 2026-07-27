@@ -16,6 +16,7 @@ from app.enums.order import OrderStatus
 from app.enums.user import has_admin_access, has_operator_access
 from app.repositories.config import ConfigRepository
 from app.repositories.order import OrderRepository
+from app.services.manager_working_hours import ManagerWorkingHoursService
 from app.services.order_notifications import build_manager_status_text
 from app.telegram import messages
 from app.telegram.handlers.exchange import ExchangeState
@@ -83,8 +84,22 @@ async def cmd_start(message: Message, state: FSMContext) -> None:
         else:
             await state.clear()
             await state.set_state(ExchangeState.choosing_country)
+            availability = ManagerWorkingHoursService().get_availability(config)
             await message.answer(
-                messages.exchange_start_welcome(message.from_user.first_name, translator=translate),
+                messages.exchange_start_welcome(
+                    message.from_user.first_name,
+                    translator=translate,
+                    business_hours_text=(
+                        ManagerWorkingHoursService().format_business_hours(
+                            availability.working_days_utc,
+                            availability.start_time_utc,
+                            availability.end_time_utc,
+                            locale=getattr(message.from_user, "language_code", None),
+                        )
+                        if availability.schedule_enabled
+                        else None
+                    ),
+                ),
                 reply_markup=choose_country(translate),
             )
     except Exception:

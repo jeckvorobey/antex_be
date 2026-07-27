@@ -201,6 +201,13 @@ async def test_miniapp_home_and_exchange_are_backend_driven(
     assert {"rub-gel", "rub-vnd", "usdt-gel", "usdt-vnd"} <= {
         pair["id"] for pair in exchange["pairs"]
     }
+    availability = exchange["managerAvailability"]
+    assert availability["status"] in {"working", "offline"}
+    assert availability["scheduleEnabled"] is True
+    assert availability["workingDaysUtc"] == [1, 2, 3, 4, 5, 6, 7]
+    assert availability["startTimeUtc"] == "06:00"
+    assert availability["endTimeUtc"] == "18:00"
+    assert availability["businessHoursText"] == "Ежедневно с 09:00 до 21:00 МСК"  # noqa: RUF001
 
 
 @pytest.mark.asyncio
@@ -445,6 +452,79 @@ async def test_admin_config_updates_referral_program_settings_for_miniapp(
 
 
 @pytest.mark.asyncio
+async def test_admin_manager_schedule_is_reflected_in_miniapp_profile_and_exchange(
+    api_client: tuple[AsyncClient, AsyncSession],
+) -> None:
+    """Проверяет единый config-источник режима без перезапуска backend."""
+    client, db_session = api_client
+    _, _, customer = await seed_exchange_data(db_session)
+    admin = Admin(username="admin", password_hash="unused")
+    db_session.add_all([admin, Config(id=1, enabled=True)])
+    await db_session.flush()
+    admin_token = create_access_token({"sub": str(admin.id), "type": "admin"})
+    user_token = create_access_token({"sub": str(customer.id), "role": customer.role})
+    headers = {"Authorization": f"Bearer {user_token}"}
+
+    patch_response = await client.patch(
+        "/api/admin/config",
+        json={
+            "managerScheduleEnabled": False,
+            "managerWorkingDaysUtc": [1, 2, 3, 4, 5],
+            "managerStartTimeUtc": "07:00",
+            "managerEndTimeUtc": "19:00",
+        },
+        headers={"Authorization": f"Bearer {admin_token}"},
+    )
+    profile_response = await client.get("/api/miniapp/profile", headers=headers)
+    exchange_response = await client.get("/api/miniapp/exchange", headers=headers)
+
+    assert patch_response.status_code == 200
+    assert patch_response.json()["managerWorkingDaysUtc"] == [1, 2, 3, 4, 5]
+    assert patch_response.json()["managerStartTimeUtc"] == "07:00"
+    assert patch_response.json()["managerEndTimeUtc"] == "19:00"
+    assert profile_response.json()["managerAvailability"]["status"] == "unknown"
+    assert exchange_response.json()["managerAvailability"]["status"] == "unknown"
+
+
+@pytest.mark.asyncio
+async def test_admin_manager_schedule_rejects_offset_bearing_utc_times(
+    api_client: tuple[AsyncClient, AsyncSession],
+) -> None:
+    client, db_session = api_client
+    admin = Admin(username="admin", password_hash="unused")
+    db_session.add_all([admin, Config(id=1, enabled=True)])
+    await db_session.flush()
+    admin_token = create_access_token({"sub": str(admin.id), "type": "admin"})
+
+    response = await client.patch(
+        "/api/admin/config",
+        json={"managerStartTimeUtc": "06:00+03:00"},
+        headers={"Authorization": f"Bearer {admin_token}"},
+    )
+
+    assert response.status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_admin_manager_schedule_rejects_second_precision_times(
+    api_client: tuple[AsyncClient, AsyncSession],
+) -> None:
+    client, db_session = api_client
+    admin = Admin(username="admin", password_hash="unused")
+    db_session.add_all([admin, Config(id=1, enabled=True)])
+    await db_session.flush()
+    admin_token = create_access_token({"sub": str(admin.id), "type": "admin"})
+
+    response = await client.patch(
+        "/api/admin/config",
+        json={"managerStartTimeUtc": "06:00:30"},
+        headers={"Authorization": f"Bearer {admin_token}"},
+    )
+
+    assert response.status_code == 422
+
+
+@pytest.mark.asyncio
 async def test_admin_config_rejects_negative_aex_withdraw_limit(
     api_client: tuple[AsyncClient, AsyncSession],
 ) -> None:
@@ -461,6 +541,32 @@ async def test_admin_config_rejects_negative_aex_withdraw_limit(
     )
 
     assert response.status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_admin_config_rejects_non_numeric_or_duplicate_manager_working_days(
+    api_client: tuple[AsyncClient, AsyncSession],
+) -> None:
+    """Не допускает неявное приведение внешних данных расписания в UTC-дни."""  # noqa: RUF002
+    client, db_session = api_client
+    admin = Admin(username="admin", password_hash="unused")
+    db_session.add_all([admin, Config(id=1, enabled=True)])
+    await db_session.flush()
+    token = create_access_token({"sub": str(admin.id), "type": "admin"})
+
+    string_day_response = await client.patch(
+        "/api/admin/config",
+        json={"managerWorkingDaysUtc": ["1"]},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    duplicate_days_response = await client.patch(
+        "/api/admin/config",
+        json={"managerWorkingDaysUtc": [1, 1]},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+
+    assert string_day_response.status_code == 422
+    assert duplicate_days_response.status_code == 422
 
 
 @pytest.mark.asyncio
