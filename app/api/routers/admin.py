@@ -504,6 +504,16 @@ async def get_config(db: DbDep, _: AdminUser) -> AppConfigOut:
 @router.patch("/config", response_model=AppConfigOut)
 async def update_config(body: AppConfigUpdate, db: DbDep, _: AdminUser) -> AppConfigOut:
     repo = ConfigRepository(db)
+    config = await repo.get_or_create()
+    if (
+        body.manager_working_days_utc == []
+        and body.manager_schedule_enabled is not False
+        and config.manager_schedule_enabled
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Manager working days are required when schedule is enabled",
+        )
     if body.enabled is not None:
         await repo.set_enabled(body.enabled)
     body_fields = body.model_fields_set
@@ -525,6 +535,7 @@ async def update_config(body: AppConfigUpdate, db: DbDep, _: AdminUser) -> AppCo
     )
     config = await repo.get_or_create()
     await db.commit()
+    await db.refresh(config)
     return AppConfigOut.model_validate(config)
 
 

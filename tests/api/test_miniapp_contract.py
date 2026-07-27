@@ -597,6 +597,25 @@ async def test_admin_config_allows_empty_manager_days_only_when_schedule_disable
 
 
 @pytest.mark.asyncio
+async def test_admin_config_rejects_empty_manager_days_when_existing_schedule_enabled(
+    api_client: tuple[AsyncClient, AsyncSession],
+) -> None:
+    client, db_session = api_client
+    admin = Admin(username="admin", password_hash="unused")
+    db_session.add_all([admin, Config(id=1, enabled=True, manager_schedule_enabled=True)])
+    await db_session.flush()
+    token = create_access_token({"sub": str(admin.id), "type": "admin"})
+
+    response = await client.patch(
+        "/api/admin/config",
+        json={"managerWorkingDaysUtc": []},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+
+    assert response.status_code == 422
+
+
+@pytest.mark.asyncio
 async def test_miniapp_aex_transactions_returns_offset_pagination_contract(
     api_client: tuple[AsyncClient, AsyncSession],
 ) -> None:
