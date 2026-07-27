@@ -142,6 +142,35 @@ async def test_notify_order_created_sends_user_message_with_order_payload(
     assert "👤 Пользователь: @customer" in text
 
 
+@pytest.mark.asyncio
+async def test_notify_order_created_can_skip_duplicate_customer_message(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    bot = _FakeBot()
+    order = SimpleNamespace(
+        id=9,
+        publicNumber="2026050009",
+        amountSell=100,
+        currencySell="USDT",
+        amountBuy=3096,
+        currencyBuy="THB",
+        methodGet="qrcode",
+        rate=30.96,
+        status=1,
+        contactTelegram="customer",
+        city=None,
+        country=SimpleNamespace(value="thailand"),
+    )
+    user = SimpleNamespace(telegram_id=700002, username="customer", phone=None)
+    manager = SimpleNamespace(telegram_id=700001)
+
+    monkeypatch.setattr(order_notifications, "_get_telegram_bot", lambda: bot)
+
+    await notify_order_created(order, user, manager, notify_user=False)
+
+    assert [message["chat_id"] for message in bot.sent] == [700001]
+
+
 def test_build_manager_status_text_uses_new_middle_format_for_processing() -> None:
     order = SimpleNamespace(
         publicNumber="2026050020",

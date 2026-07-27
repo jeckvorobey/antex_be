@@ -31,9 +31,15 @@ def test_order_created_includes_order_number() -> None:
 
 def test_order_created_adds_queue_notice_only_for_offline_managers() -> None:
     offline_text = messages.order_created(2026050008, managers_offline=True, locale="ru")
+    offline_english_text = messages.order_created(
+        2026050008,
+        managers_offline=True,
+        locale="en",
+    )
     usual_text = messages.order_created(2026050008, managers_offline=False, locale="ru")
 
     assert "Менеджер обработает её после начала рабочего дня" in offline_text
+    assert "A manager will process it after the next working day begins" in offline_english_text
     assert "Менеджер обработает её после начала рабочего дня" not in usual_text
     assert "Пожалуйста, ожидайте подтверждения" not in offline_text
     assert "Пожалуйста, ожидайте подтверждения" in usual_text

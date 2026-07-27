@@ -632,12 +632,14 @@ async def test_confirm_exchange_creates_order_with_default_qrcode(monkeypatch) -
     )
     created_order = SimpleNamespace(
         id=99,
+        publicNumber="202607270001",
         amountSell=15000,
         currencySell="RUB",
         amountBuy=5100.0,
         currencyBuy="THB",
         methodGet="qrcode",
         status=int(OrderStatus.CREATED),
+        manager_availability=SimpleNamespace(status="offline"),
     )
     callback = _FakeCallback(
         TgUser(
@@ -668,7 +670,7 @@ async def test_confirm_exchange_creates_order_with_default_qrcode(monkeypatch) -
     async def _fake_check_user(db, tg_user):
         return user, False
 
-    async def _fake_create_order_for_user(db, current_user, payload):
+    async def _fake_create_order_for_user(db, current_user, payload, *, notify_user=True):
         assert db is fake_db
         assert current_user is user
         assert payload.city_id is None
@@ -679,6 +681,7 @@ async def test_confirm_exchange_creates_order_with_default_qrcode(monkeypatch) -
         assert payload.amount_buy == 5100
         assert payload.rate == 0.34
         assert payload.method_get == "qrcode"
+        assert notify_user is False
         return created_order
 
     monkeypatch.setattr(exchange_handler, "_get_db", _fake_get_db)
@@ -691,6 +694,8 @@ async def test_confirm_exchange_creates_order_with_default_qrcode(monkeypatch) -
     assert fake_db.committed is False
     assert len(callback.message.edits) == 0
     assert callback.message.deletes == [{"message_id": callback.message.message_id}]
+    assert len(callback.message.answers) == 1
+    assert "после начала рабочего дня" in callback.message.answers[0]["text"]
     assert callback.answers[-1] == {"text": None, "show_alert": False}
 
 
@@ -732,7 +737,7 @@ async def test_confirm_exchange_shows_human_error_on_order_creation_failure(monk
     async def _fake_check_user(db, tg_user):
         return user, False
 
-    async def _fake_create_order_for_user(db, current_user, payload):
+    async def _fake_create_order_for_user(db, current_user, payload, *, notify_user=True):
         raise AntExException(
             "User has reached active orders limit",
             code="ORDER_ALREADY_EXISTS",

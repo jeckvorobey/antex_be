@@ -39,6 +39,7 @@ from app.telegram.keyboards import (
     choose_currency,
     choose_service,
     confirm_exchange,
+    order_created_actions,
     orders_pagination,
 )
 from app.telegram.services.user_service import check_user
@@ -690,7 +691,7 @@ async def confirm_exchange_callback(callback: CallbackQuery, state: FSMContext) 
             city_id = data.get("city_id")
             if city_id is None and data["method"] == "cash":
                 city_id = getattr(user, "city_id", None)
-            await create_order_for_user(
+            created_order = await create_order_for_user(
                 db,
                 user,
                 MiniappOrderCreate(
@@ -703,6 +704,7 @@ async def confirm_exchange_callback(callback: CallbackQuery, state: FSMContext) 
                     rate=quote["rate"],
                     methodGet=data["method"],
                 ),
+                notify_user=False,
             )
     except AntExException as exc:
         await callback.answer(
@@ -721,6 +723,15 @@ async def confirm_exchange_callback(callback: CallbackQuery, state: FSMContext) 
         )
         return
 
+    availability = getattr(created_order, "manager_availability", None)
+    await callback.message.answer(
+        messages.order_created(
+            created_order.publicNumber,
+            translator=translate,
+            managers_offline=getattr(availability, "status", None) == "offline",
+        ),
+        reply_markup=order_created_actions(translate),
+    )
     await state.clear()
     await state.set_state(ExchangeState.choosing_country)
     await _safe_delete_message(callback.message)

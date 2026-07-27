@@ -1248,6 +1248,9 @@ async def test_miniapp_order_is_created_with_preliminary_client_quote(
     assert order["contactTelegram"] == "customer"
     assert order["city"] is None
     assert order["publicNumber"] == f"{datetime.now(UTC):%Y%m}0001"
+    assert order["managerAvailability"]["status"] in {"working", "offline", "unknown"}
+    if order["managerAvailability"]["status"] == "offline":
+        assert order["managerAvailability"]["nextStartAt"] is not None
     order_flow.notify_order_created.assert_awaited_once()
 
 
