@@ -682,12 +682,21 @@ async def confirm_exchange_callback(callback: CallbackQuery, state: FSMContext) 
     try:
         async with db:
             user, _ = await check_user(db, callback.from_user)
-            availability = ManagerWorkingHoursService().get_availability(
+            working_hours_service = ManagerWorkingHoursService()
+            availability = working_hours_service.get_availability(
                 await ConfigRepository(db).get_or_create()
             )
             if getattr(availability, "status", None) == "offline" and not data.get(
                 "off_hours_confirmed"
             ):
+                business_hours_text = availability.business_hours_text
+                if availability.schedule_enabled:
+                    business_hours_text = working_hours_service.format_business_hours(
+                        availability.working_days_utc,
+                        availability.start_time_utc,
+                        availability.end_time_utc,
+                        locale=getattr(callback.from_user, "language_code", None),
+                    )
                 await callback.answer(
                     messages.exchange_off_hours_alert(translator=translate),
                     show_alert=True,
@@ -695,7 +704,7 @@ async def confirm_exchange_callback(callback: CallbackQuery, state: FSMContext) 
                 await _safe_edit_text(
                     callback.message,
                     messages.exchange_off_hours_confirmation(
-                        availability.business_hours_text,
+                        business_hours_text,
                         translator=translate,
                     ),
                     reply_markup=confirm_off_hours_exchange(translate),
