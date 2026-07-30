@@ -86,7 +86,7 @@ async def test_campaign_api_requires_admin_and_generates_code_and_link(
     data = response.json()
     assert len(data["code"]) == 10
     assert data["code"].isalnum() and data["code"].isupper()
-    assert data["link"] == f"https://t.me/antex_test_bot?startapp=market_{data['code']}"
+    assert data["link"] == f"https://t.me/antex_test_bot?startapp=mkt_{data['code']}"
     assert data["marketParameter"] == f"market={data['code']}"
     assert "source" not in data
     assert data["campaignType"] == "paid"

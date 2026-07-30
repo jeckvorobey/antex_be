@@ -23,6 +23,7 @@ from app.modules.marketing.constants import (
     MARKETING_CODE_LENGTH,
     MARKETING_CODE_PREVIEW_TOKEN_TYPE,
     MARKETING_CODE_PREVIEW_TTL_SECONDS,
+    MARKETING_START_PARAM_PREFIX,
 )
 from app.modules.marketing.repository import MarketingRepository
 from app.modules.marketing.schemas import (
@@ -272,7 +273,9 @@ class MarketingAdminService:
             startsAt=campaign.starts_at,
             endsAt=campaign.ends_at,
             notes=campaign.notes,
-            link=f"https://t.me/{username}?startapp=market_{campaign.code}",
+            link=(
+                f"https://t.me/{username}?startapp={MARKETING_START_PARAM_PREFIX}{campaign.code}"
+            ),
             marketParameter=f"market={campaign.code}",
             createdAt=campaign.createdAt,
             updatedAt=campaign.updatedAt,
