@@ -132,7 +132,7 @@ async def test_campaign_registration_never_sets_referrer(db_session, monkeypatch
     monkeypatch.setattr(
         auth,
         "validate_telegram_init_data",
-        lambda _: {"user": '{"id": 103}', "start_param": "market_CAMPAIGN01"},
+        lambda _: {"user": '{"id": 103}', "start_param": "mkt_CAMPAIGN01"},
     )
 
     await auth.telegram_auth(db_session, "trusted")
@@ -160,7 +160,7 @@ async def test_replayed_trusted_init_data_deduplicates_marketing_touch(
     await _campaign(db_session, "REPLAY0001")
     parsed = {
         "user": '{"id": 104}',
-        "start_param": "market_REPLAY0001",
+        "start_param": "mkt_REPLAY0001",
         "query_id": "trusted-query-id",
         "auth_date": "1784640000",
     }
@@ -183,7 +183,7 @@ async def test_invalid_campaign_keeps_auth_and_records_direct_acquisition(
     monkeypatch.setattr(
         auth,
         "validate_telegram_init_data",
-        lambda _: {"user": '{"id": 3}', "start_param": "market_UNKNOWN000"},
+        lambda _: {"user": '{"id": 3}', "start_param": "mkt_UNKNOWN000"},
     )
 
     await auth.telegram_auth(db_session, "trusted")

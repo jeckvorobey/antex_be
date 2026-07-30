@@ -232,7 +232,7 @@ async def test_telegram_auth_applies_trusted_market_start_param(monkeypatch, db_
         "app.services.auth.validate_telegram_init_data",
         lambda _: {
             "user": '{"id": 9191, "username": "market_user", "first_name": "Market"}',
-            "start_param": "market_BDF7J9J8JH",
+            "start_param": "mkt_BDF7J9J8JH",
         },
     )
     monkeypatch.setattr("app.services.auth.create_access_token", lambda _: "token")
@@ -256,7 +256,7 @@ async def test_telegram_auth_ignores_invalid_archived_and_ref_start_params(
     monkeypatch.setattr("app.services.auth.create_access_token", lambda _: "token")
 
     for telegram_id, start_param in enumerate(
-        ("market_UNKNOWN000", "market_ARCHIVED00", "market_bad-code", "ref_ABCDEFGH"),
+        ("mkt_UNKNOWN000", "mkt_ARCHIVED00", "mkt_bad-code", "ref_ABCDEFGH"),
         start=9200,
     ):
         monkeypatch.setattr(
@@ -282,7 +282,7 @@ async def test_telegram_auth_does_not_accept_url_only_marketing_parameter(
     )
     monkeypatch.setattr("app.services.auth.create_access_token", lambda _: "token")
 
-    await telegram_auth(db_session, "market_URLONLY000")
+    await telegram_auth(db_session, "mkt_URLONLY000")
 
     assert (await db_session.execute(select(MarketingAttribution))).scalars().all() == []
 

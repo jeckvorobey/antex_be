@@ -17,6 +17,7 @@ from app.models.attribution import (
 )
 from app.models.marketing import MarketingCampaign
 from app.models.order import Order
+from app.modules.marketing.constants import MARKETING_START_PARAM_PREFIX
 
 logger = logging.getLogger(__name__)
 
@@ -111,7 +112,10 @@ class AttributionService:
             user_state="new" if is_new_user or is_primary_campaign else "returning",
             touched_at=touched_at or datetime.now(UTC),
             session_key=session_key,
-            metadata_={"source": "telegram_init_data", "start_param": f"market_{code}"},
+            metadata_={
+                "source": "telegram_init_data",
+                "start_param": f"{MARKETING_START_PARAM_PREFIX}{code}",
+            },
         )
         try:
             async with self.session.begin_nested():

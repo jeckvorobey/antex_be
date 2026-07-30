@@ -12,13 +12,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.security import create_access_token, validate_telegram_init_data
 from app.exceptions import AntExException
 from app.models.attribution import UserAcquisition
+from app.modules.marketing.constants import MARKETING_START_PARAM_PREFIX
 from app.repositories.user import UserRepository
 from app.schemas.auth import TokenResponse, TrustedContactResponse, build_trusted_contact
 from app.services.referral import ReferralService
 
 REFERRAL_START_PARAM_PREFIX = "ref_"
 logger = logging.getLogger(__name__)
-MARKETING_START_PARAM_PREFIX = "market_"
 
 
 async def telegram_auth(db: AsyncSession, init_data: str) -> TokenResponse:
