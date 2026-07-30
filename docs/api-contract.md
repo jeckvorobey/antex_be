@@ -79,7 +79,7 @@ Refresh token с типом `admin_refresh` допускается исключ�
   `codeToken` из preview response; backend проверяет подпись, тип, срок и сохраняет
   embedded code вместе с валидной кампанией. Для обратной совместимости request без
   `codeToken` получает новый server-generated code. Response возвращает `link` вида
-  `https://t.me/<bot>?startapp=market_<CODE>` и `marketParameter` вида
+  `https://t.me/<bot>?startapp=mkt_<CODE>` и `marketParameter` вида
   `market=<CODE>`. Прямое поле `code` в request запрещено.
 - `GET /campaigns` — список `items/total/limit/offset`; filters: `search`,
   `provider`, `status`, `include_archived`, `limit`, `offset`.
@@ -96,7 +96,7 @@ Refresh token с типом `admin_refresh` допускается исключ�
 - `GET /dashboard` — `summary`, `funnel`, zero-filled `timeSeries`,
   `campaignComparison`, `spendByCurrency`, `appliedFilters`.
 
-First-touch attribution создаётся только из `start_param=market_<CODE>` после
+First-touch attribution создаётся только из `start_param=mkt_<CODE>` после
 успешной backend-проверки Telegram initData. Один user закрепляется максимум за
 одной первой активной кампанией; повторные links не меняют attribution. Ошибка,
 unknown или archived code не блокируют обычную Telegram auth. Browser URL сам по
