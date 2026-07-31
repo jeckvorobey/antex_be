@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from datetime import UTC
+
 from aiogram.types import User as TgUser
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
@@ -142,6 +144,8 @@ async def test_telegram_auth_refreshes_existing_user(
     assert first_token.access_token == "token-1"
     registered_user = await UserRepository(db_session).get_one(1)
     assert registered_user is not None
+    assert registered_user.lastActiveAt is not None
+    first_activity = registered_user.lastActiveAt
     assert registered_user.referral_code is not None
     assert len(registered_user.referral_code) == 8
     assert registered_user.referral_code.isascii()
@@ -167,6 +171,13 @@ async def test_telegram_auth_refreshes_existing_user(
     assert user.first_name == "Fresh"
     assert user.language_code == "ru"
     assert user.is_premium is True
+    assert user.lastActiveAt is not None
+    current_activity = user.lastActiveAt
+    if current_activity.tzinfo is None:
+        current_activity = current_activity.replace(tzinfo=UTC)
+    if first_activity.tzinfo is None:
+        first_activity = first_activity.replace(tzinfo=UTC)
+    assert current_activity >= first_activity
 
 
 async def test_telegram_auth_persists_updates_and_clears_photo_url(

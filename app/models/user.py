@@ -2,9 +2,10 @@
 
 from __future__ import annotations
 
+from datetime import datetime
 from typing import TYPE_CHECKING
 
-from sqlalchemy import BigInteger, Boolean, ForeignKey, Integer, String, Text
+from sqlalchemy import BigInteger, Boolean, DateTime, ForeignKey, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.enums.user import UserRole
@@ -42,6 +43,11 @@ class User(Base, TimestampMixin):
     referral_code: Mapped[str | None] = mapped_column(
         String(16),
         unique=True,
+        nullable=True,
+    )
+    lastActiveAt: Mapped[datetime | None] = mapped_column(  # noqa: N815
+        "lastActiveAt",
+        DateTime(timezone=True),
         nullable=True,
     )
 

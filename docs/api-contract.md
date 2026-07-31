@@ -57,7 +57,10 @@ Refresh token с типом `admin_refresh` допускается исключ�
   настройки referral program: `referralPercent`, `referralMinWithdraw`,
   `referralMaxWithdraw`, `aexRate`, `aexWithdrawLimit`.
 - `GET /api/admin/summary` возвращает метрики dashboard:
-  `ordersToday`, `usersTotal`, `rubThbRate`.
+  совместимые `ordersToday`, `usersTotal`, `featuredRates` и расширенные
+  `users`, `orders`, `attentionOrders`, `turnover`, `rates`, `generatedAt`.
+  Каждый элемент `featuredRates` и `rates` содержит базовую цену
+  `baseRate`/`baseRateDisplay` и итоговую цену `finalRate`/`finalRateDisplay`.
 - `GET /api/admin/rates` возвращает административное представление курсов:
   базовый `price` и `margin` по каждой паре.
 - `PATCH /api/admin/rates/{rate_id}` позволяет менять `margin` любой пары,
