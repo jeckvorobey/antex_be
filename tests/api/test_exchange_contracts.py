@@ -200,6 +200,7 @@ async def test_admin_summary_returns_featured_rates(
     assert payload["ordersToday"] == 2
     assert payload["usersTotal"] == 2
     assert payload["featuredRates"][0]["pairId"] == "rub-thb"
+    assert payload["featuredRates"][0]["baseRateDisplay"] == "2.44"
     assert payload["featuredRates"][0]["finalRateDisplay"] == "2.51"
     assert payload["users"] == {
         "total": 2,
@@ -222,6 +223,7 @@ async def test_admin_summary_returns_featured_rates(
     assert turnover["THB"]["today"] == 4100
     assert len(payload["rates"]) == 4
     assert payload["rates"][0]["rateText"].startswith("1 ")
+    assert payload["rates"][0]["baseRateDisplay"] == "2.44"
     assert any(rate["label"] == "USDT/RUB" for rate in payload["rates"])
     assert payload["generatedAt"]
 

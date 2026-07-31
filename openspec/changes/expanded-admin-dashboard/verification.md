@@ -12,3 +12,10 @@
 3. order-status test ожидает устаревший аргумент `currency_buy`.
 
 Полный Ruff также останавливается на существующих ошибках `tests/services/test_aex.py`; затронутые файлы проходят Ruff полностью.
+
+## Уточнение интерфейсного контракта
+
+- `featuredRates` и `rates` дополнены `baseRate` и `baseRateDisplay`.
+- Контрактный dashboard pytest: `1 passed` (`9 deselected`).
+- Ruff по затронутым backend-файлам: пройден.
+- `openspec validate expanded-admin-dashboard --strict`: пройден.

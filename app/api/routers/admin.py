@@ -57,7 +57,7 @@ from app.schemas.site_lead import (
 )
 from app.schemas.user import UserOut, UserUpdate, build_user_out
 from app.services.attribution import AttributionService
-from app.services.exchange import ExchangeService
+from app.services.exchange import ExchangeService, format_rate_value
 from app.services.order_status import update_order_status as apply_order_status
 from app.services.referral import ReferralService
 
@@ -361,6 +361,8 @@ async def get_admin_summary(db: DbDep, _: AdminUser) -> AdminSummaryOut:
         AdminSummaryRateOut(
             pairId=pair.pair_id,
             label=pair.label,
+            baseRate=pair.base_rate,
+            baseRateDisplay=format_rate_value(pair.base_rate),
             finalRate=pair.client_rate,
             finalRateDisplay=pair.rate_display,
             rateText=pair.rate_text,
@@ -379,6 +381,8 @@ async def get_admin_summary(db: DbDep, _: AdminUser) -> AdminSummaryOut:
             AdminSummaryRateOut(
                 pairId=pair.pair_id,
                 label=pair.label,
+                baseRate=pair.base_rate,
+                baseRateDisplay=format_rate_value(pair.base_rate),
                 finalRate=pair.client_rate,
                 finalRateDisplay=pair.rate_display,
                 rateText=pair.rate_text,
