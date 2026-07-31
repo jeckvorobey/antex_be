@@ -258,7 +258,7 @@ async def get_admin_summary(db: DbDep, _: AdminUser) -> AdminSummaryOut:
             Order.destroyTime.is_(None),
         )
         .order_by(Order.createdAt.asc())
-        .limit(5)
+        .limit(2)
     )
     attention_orders: list[AdminSummaryAttentionOrderOut] = []
     for order in attention_result.scalars():

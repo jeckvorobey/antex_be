@@ -216,6 +216,7 @@ async def test_admin_summary_returns_featured_rates(
     assert payload["attentionOrders"][0]["publicNumber"] == "2026073101"
     assert payload["attentionOrders"][0]["overdue"] is True
     assert payload["attentionOrders"][0]["reason"] == "Не обработана вовремя"  # noqa: RUF001
+    assert len(payload["attentionOrders"]) <= 2
     turnover = {row["currency"]: row for row in payload["turnover"]}
     assert turnover["RUB"]["today"] == 10000
     assert turnover["THB"]["today"] == 4100
