@@ -57,7 +57,7 @@ from app.schemas.site_lead import (
 )
 from app.schemas.user import UserOut, UserUpdate, build_user_out
 from app.services.attribution import AttributionService
-from app.services.exchange import ExchangeService, format_rate_value
+from app.services.exchange import ExchangeService, format_admin_rate_value
 from app.services.order_status import update_order_status as apply_order_status
 from app.services.referral import ReferralService
 
@@ -354,15 +354,21 @@ async def get_admin_summary(db: DbDep, _: AdminUser) -> AdminSummaryOut:
 
     exchange_service = ExchangeService()
     featured_rates = await exchange_service.get_featured_pair_snapshots(db)
-    rates = exchange_service.build_featured_pair_snapshots(
-        await RateRepository(db).get_admin_list()
-    )
+    admin_rate_models = await RateRepository(db).get_admin_list()
+    rates = exchange_service.build_featured_pair_snapshots(admin_rate_models)
+    admin_rates_by_pair_id = {
+        f"{pair[0].lower()}-{pair[1].lower()}": rate
+        for rate in admin_rate_models
+        if (pair := exchange_service.parse_pair(rate.currency)) is not None
+    }
     rate_rows = [
         AdminSummaryRateOut(
             pairId=pair.pair_id,
             label=pair.label,
             baseRate=pair.base_rate,
-            baseRateDisplay=format_rate_value(pair.base_rate),
+            baseRateDisplay=format_admin_rate_value(
+                admin_rates_by_pair_id[pair.pair_id], pair.base_rate
+            ),
             finalRate=pair.client_rate,
             finalRateDisplay=pair.rate_display,
             rateText=pair.rate_text,
@@ -382,7 +388,9 @@ async def get_admin_summary(db: DbDep, _: AdminUser) -> AdminSummaryOut:
                 pairId=pair.pair_id,
                 label=pair.label,
                 baseRate=pair.base_rate,
-                baseRateDisplay=format_rate_value(pair.base_rate),
+                baseRateDisplay=format_admin_rate_value(
+                    admin_rates_by_pair_id[pair.pair_id], pair.base_rate
+                ),
                 finalRate=pair.client_rate,
                 finalRateDisplay=pair.rate_display,
                 rateText=pair.rate_text,

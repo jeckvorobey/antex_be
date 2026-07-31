@@ -19,3 +19,4 @@
 - Контрактный dashboard pytest: `1 passed` (`9 deselected`).
 - Ruff по затронутым backend-файлам: пройден.
 - `openspec validate expanded-admin-dashboard --strict`: пройден.
+- Финальный Codex review: замечание по точности `RUBUSDT` исправлено RED-тестом; повторная проверка чистая.

@@ -26,6 +26,7 @@ Admin dashboard должен за один запрос показать опе�
 4. Старые `ordersToday`, `usersTotal`, `featuredRates` сохраняются; расширенные структуры добавляются рядом.
 5. Полный `rates` включает все admin-пары, а совместимый `featuredRates` остаётся публичной тройкой.
 6. Элементы `rates` и `featuredRates` возвращают `baseRate` и `baseRateDisplay` в той же display-ориентации, что и итоговый курс.
+7. `baseRateDisplay` использует admin-точность пары, включая шесть знаков для внутренней обратной пары `RUBUSDT`.
 
 ## Risks / Trade-offs
 

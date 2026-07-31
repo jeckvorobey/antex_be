@@ -157,6 +157,13 @@ async def test_admin_summary_returns_featured_rates(
                 country=None,
                 is_internal=True,
             ),
+            Rate(
+                currency="RUBUSDT",
+                price=1 / 90,
+                margin=3.0,
+                country=None,
+                is_internal=True,
+            ),
             Order(
                 UserId=customer.id,
                 CityId=customer.city_id,
@@ -221,9 +228,11 @@ async def test_admin_summary_returns_featured_rates(
     turnover = {row["currency"]: row for row in payload["turnover"]}
     assert turnover["RUB"]["today"] == 10000
     assert turnover["THB"]["today"] == 4100
-    assert len(payload["rates"]) == 4
+    assert len(payload["rates"]) == 5
     assert payload["rates"][0]["rateText"].startswith("1 ")
     assert payload["rates"][0]["baseRateDisplay"] == "2.44"
+    inverse_rate = next(rate for rate in payload["rates"] if rate["pairId"] == "rub-usdt")
+    assert inverse_rate["baseRateDisplay"] == "0.011111"
     assert any(rate["label"] == "USDT/RUB" for rate in payload["rates"])
     assert payload["generatedAt"]
 
