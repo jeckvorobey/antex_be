@@ -12,7 +12,7 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from cryptography.hazmat.primitives.kdf.scrypt import Scrypt
 from fastapi import APIRouter, HTTPException, Query, status
-from sqlalchemy import func, select
+from sqlalchemy import case, func, select
 
 from app.api.deps import AdminUser, DbDep, RefreshAdminUser
 from app.core.config import settings
@@ -32,8 +32,12 @@ from app.schemas.admin import (
     AdminLogin,
     AdminOut,
     AdminPasswordUpdate,
+    AdminSummaryAttentionOrderOut,
+    AdminSummaryOrdersOut,
     AdminSummaryOut,
     AdminSummaryRateOut,
+    AdminSummaryTurnoverOut,
+    AdminSummaryUsersOut,
     AdminTokenResponse,
     PaginatedUsersResponse,
 )
@@ -206,8 +210,10 @@ async def delete_admin(admin_id: int, db: DbDep, current_admin: AdminUser) -> di
 
 @router.get("/summary", response_model=AdminSummaryOut)
 async def get_admin_summary(db: DbDep, _: AdminUser) -> AdminSummaryOut:
-    """Возвращает MVP-метрики для дашборда админки."""
+    """Возвращает операционную сводку для дашборда админки."""
     today_start = get_today_start_for_timezone(settings.timezone)
+    now = datetime.now(UTC)
+
     orders_today_result = await db.execute(
         select(func.count(Order.id)).where(
             Order.createdAt >= today_start,
@@ -215,20 +221,187 @@ async def get_admin_summary(db: DbDep, _: AdminUser) -> AdminSummaryOut:
         )
     )
     users_total_result = await db.execute(select(func.count(User.id)))
-    featured_rates = await ExchangeService().get_featured_pair_snapshots(db)
+    users_new_today_result = await db.execute(
+        select(func.count(User.id)).where(User.createdAt >= today_start)
+    )
+    users_active_today_result = await db.execute(
+        select(func.count(User.id)).where(User.lastActiveAt >= today_start)
+    )
+
+    orders_total_result = await db.execute(
+        select(func.count(Order.id)).where(Order.destroyTime.is_(None))
+    )
+    orders_new_result = await db.execute(
+        select(func.count(Order.id)).where(
+            Order.status == 1,
+            Order.destroyTime.is_(None),
+        )
+    )
+    orders_in_progress_result = await db.execute(
+        select(func.count(Order.id)).where(
+            Order.status == 2,
+            Order.destroyTime.is_(None),
+        )
+    )
+    orders_completed_today_result = await db.execute(
+        select(func.count(Order.id)).where(
+            Order.status == 3,
+            func.coalesce(Order.endTime, Order.updatedAt) >= today_start,
+            Order.destroyTime.is_(None),
+        )
+    )
+
+    attention_result = await db.execute(
+        select(Order)
+        .where(
+            Order.status.in_([1, 2]),
+            Order.destroyTime.is_(None),
+        )
+        .order_by(Order.createdAt.asc())
+        .limit(5)
+    )
+    attention_orders: list[AdminSummaryAttentionOrderOut] = []
+    for order in attention_result.scalars():
+        created_at = order.createdAt
+        if created_at.tzinfo is None:
+            created_at = created_at.replace(tzinfo=UTC)
+        age_minutes = max(0, int((now - created_at).total_seconds() // 60))
+        overdue = (order.status == 1 and age_minutes >= 30) or (
+            order.status == 2 and age_minutes >= 240
+        )
+        if order.status == 1:
+            reason = "Не обработана вовремя" if overdue else "Новая заявка"  # noqa: RUF001
+        else:
+            reason = "Долго в работе" if overdue else "В работе"  # noqa: RUF001
+        attention_orders.append(
+            AdminSummaryAttentionOrderOut(
+                id=order.id,
+                publicNumber=order.publicNumber,
+                amountSell=order.amountSell,
+                currencySell=order.currencySell,
+                amountBuy=order.amountBuy,
+                currencyBuy=order.currencyBuy,
+                status=order.status,
+                createdAt=created_at,
+                ageMinutes=age_minutes,
+                reason=reason,
+                overdue=overdue,
+            )
+        )
+
+    turnover: dict[str, dict[str, float]] = {}
+    completed_at = func.coalesce(Order.endTime, Order.updatedAt)
+    completed_sell_result = await db.execute(
+        select(
+            Order.currencySell,
+            func.coalesce(func.sum(Order.amountSell), 0),
+            func.coalesce(
+                func.sum(
+                    case(
+                        (completed_at >= today_start, Order.amountSell),
+                        else_=0,
+                    )
+                ),
+                0,
+            ),
+        )
+        .where(
+            Order.status == 3,
+            Order.destroyTime.is_(None),
+        )
+        .group_by(Order.currencySell)
+    )
+    completed_buy_result = await db.execute(
+        select(
+            Order.currencyBuy,
+            func.coalesce(func.sum(Order.amountBuy), 0),
+            func.coalesce(
+                func.sum(
+                    case(
+                        (completed_at >= today_start, Order.amountBuy),
+                        else_=0,
+                    )
+                ),
+                0,
+            ),
+        )
+        .where(
+            Order.status == 3,
+            Order.destroyTime.is_(None),
+        )
+        .group_by(Order.currencyBuy)
+    )
+    for currency, total_amount, today_amount in (
+        *completed_sell_result.all(),
+        *completed_buy_result.all(),
+    ):
+        row = turnover.setdefault(currency, {"today": 0.0, "total": 0.0})
+        row["total"] += float(total_amount)
+        row["today"] += float(today_amount)
+
+    currency_order = {"USDT": 0, "RUB": 1, "THB": 2, "GEL": 3, "VND": 4}
+    turnover_rows = [
+        AdminSummaryTurnoverOut(
+            currency=currency,
+            today=round(values["today"], 2),
+            total=round(values["total"], 2),
+        )
+        for currency, values in sorted(
+            turnover.items(),
+            key=lambda item: (currency_order.get(item[0], len(currency_order)), item[0]),
+        )
+    ]
+
+    exchange_service = ExchangeService()
+    featured_rates = await exchange_service.get_featured_pair_snapshots(db)
+    rates = exchange_service.build_featured_pair_snapshots(
+        await RateRepository(db).get_admin_list()
+    )
+    rate_rows = [
+        AdminSummaryRateOut(
+            pairId=pair.pair_id,
+            label=pair.label,
+            finalRate=pair.client_rate,
+            finalRateDisplay=pair.rate_display,
+            rateText=pair.rate_text,
+            updatedAt=pair.updated_at,
+        )
+        for pair in rates
+    ]
+
+    orders_today = orders_today_result.scalar_one()
+    users_total = users_total_result.scalar_one()
 
     return AdminSummaryOut(
-        orders_today=orders_today_result.scalar_one(),
-        users_total=users_total_result.scalar_one(),
-        featured_rates=[
+        ordersToday=orders_today,
+        usersTotal=users_total,
+        featuredRates=[
             AdminSummaryRateOut(
                 pairId=pair.pair_id,
                 label=pair.label,
                 finalRate=pair.client_rate,
                 finalRateDisplay=pair.rate_display,
+                rateText=pair.rate_text,
+                updatedAt=pair.updated_at,
             )
             for pair in featured_rates[:3]
         ],
+        users=AdminSummaryUsersOut(
+            total=users_total,
+            newToday=users_new_today_result.scalar_one(),
+            activeToday=users_active_today_result.scalar_one(),
+        ),
+        orders=AdminSummaryOrdersOut(
+            total=orders_total_result.scalar_one(),
+            today=orders_today,
+            new=orders_new_result.scalar_one(),
+            inProgress=orders_in_progress_result.scalar_one(),
+            completedToday=orders_completed_today_result.scalar_one(),
+        ),
+        attentionOrders=attention_orders,
+        turnover=turnover_rows,
+        rates=rate_rows,
+        generatedAt=now,
     )
 
 

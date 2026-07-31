@@ -48,6 +48,48 @@ class AdminSummaryRateOut(BaseModel):
     label: str
     final_rate: float = Field(alias="finalRate")
     final_rate_display: str = Field(alias="finalRateDisplay")
+    rate_text: str = Field(alias="rateText")
+    updated_at: datetime = Field(alias="updatedAt")
+
+
+class AdminSummaryUsersOut(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
+    total: int
+    new_today: int = Field(alias="newToday")
+    active_today: int = Field(alias="activeToday")
+
+
+class AdminSummaryOrdersOut(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
+    total: int
+    today: int
+    new: int
+    in_progress: int = Field(alias="inProgress")
+    completed_today: int = Field(alias="completedToday")
+
+
+class AdminSummaryTurnoverOut(BaseModel):
+    currency: str
+    today: float
+    total: float
+
+
+class AdminSummaryAttentionOrderOut(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
+    id: int
+    public_number: str = Field(alias="publicNumber")
+    amount_sell: int = Field(alias="amountSell")
+    currency_sell: str = Field(alias="currencySell")
+    amount_buy: float | None = Field(alias="amountBuy")
+    currency_buy: str = Field(alias="currencyBuy")
+    status: int
+    created_at: datetime = Field(alias="createdAt")
+    age_minutes: int = Field(alias="ageMinutes")
+    reason: str
+    overdue: bool
 
 
 class AdminSummaryOut(BaseModel):
@@ -56,6 +98,12 @@ class AdminSummaryOut(BaseModel):
     orders_today: int = Field(alias="ordersToday")
     users_total: int = Field(alias="usersTotal")
     featured_rates: list[AdminSummaryRateOut] = Field(alias="featuredRates")
+    users: AdminSummaryUsersOut
+    orders: AdminSummaryOrdersOut
+    attention_orders: list[AdminSummaryAttentionOrderOut] = Field(alias="attentionOrders")
+    turnover: list[AdminSummaryTurnoverOut]
+    rates: list[AdminSummaryRateOut]
+    generated_at: datetime = Field(alias="generatedAt")
 
 
 class PaginatedUsersResponse(BaseModel):

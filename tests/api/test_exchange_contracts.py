@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import AsyncIterator
+from datetime import UTC, datetime, timedelta
 from unittest.mock import AsyncMock
 
 import pytest
@@ -11,9 +12,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.api import deps
 from app.core.security import create_access_token
 from app.enums.country import Country
+from app.enums.order import OrderStatus
 from app.enums.user import UserRole
 from app.models.admin import Admin
 from app.models.city import City
+from app.models.order import Order
 from app.models.rate import Rate
 from app.models.user import User
 
@@ -142,7 +145,49 @@ async def test_admin_summary_returns_featured_rates(
     api_client: tuple[AsyncClient, AsyncSession],
 ) -> None:
     client, db_session = api_client
-    admin, _ = await seed_admin_exchange_data(db_session)
+    admin, customer = await seed_admin_exchange_data(db_session)
+    now = datetime.now(UTC)
+    customer.lastActiveAt = now
+    db_session.add_all(
+        [
+            Rate(
+                currency="USDTRUB",
+                price=80,
+                margin=4.5,
+                country=None,
+                is_internal=True,
+            ),
+            Order(
+                UserId=customer.id,
+                CityId=customer.city_id,
+                country=Country.THAILAND,
+                currencySell="USDT",
+                amountSell=300,
+                currencyBuy="THB",
+                amountBuy=9081,
+                rate=30.27,
+                status=int(OrderStatus.CREATED),
+                methodGet="qrcode",
+                publicNumber="2026073101",
+                createdAt=now - timedelta(minutes=45),
+            ),
+            Order(
+                UserId=customer.id,
+                CityId=customer.city_id,
+                country=Country.THAILAND,
+                currencySell="RUB",
+                amountSell=10000,
+                currencyBuy="THB",
+                amountBuy=4100,
+                rate=0.41,
+                status=int(OrderStatus.COMPLETED),
+                methodGet="cash",
+                publicNumber="2026073102",
+                endTime=now,
+            ),
+        ]
+    )
+    await db_session.commit()
     token = create_access_token({"sub": str(admin.id), "type": "admin"})
 
     response = await client.get(
@@ -152,10 +197,32 @@ async def test_admin_summary_returns_featured_rates(
 
     assert response.status_code == 200
     payload = response.json()
-    assert payload["ordersToday"] == 0
+    assert payload["ordersToday"] == 2
     assert payload["usersTotal"] == 2
     assert payload["featuredRates"][0]["pairId"] == "rub-thb"
     assert payload["featuredRates"][0]["finalRateDisplay"] == "2.51"
+    assert payload["users"] == {
+        "total": 2,
+        "newToday": 2,
+        "activeToday": 1,
+    }
+    assert payload["orders"] == {
+        "total": 2,
+        "today": 2,
+        "new": 1,
+        "inProgress": 0,
+        "completedToday": 1,
+    }
+    assert payload["attentionOrders"][0]["publicNumber"] == "2026073101"
+    assert payload["attentionOrders"][0]["overdue"] is True
+    assert payload["attentionOrders"][0]["reason"] == "Не обработана вовремя"  # noqa: RUF001
+    turnover = {row["currency"]: row for row in payload["turnover"]}
+    assert turnover["RUB"]["today"] == 10000
+    assert turnover["THB"]["today"] == 4100
+    assert len(payload["rates"]) == 4
+    assert payload["rates"][0]["rateText"].startswith("1 ")
+    assert any(rate["label"] == "USDT/RUB" for rate in payload["rates"])
+    assert payload["generatedAt"]
 
 
 @pytest.mark.asyncio

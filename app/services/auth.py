@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import json
 import logging
+from datetime import UTC, datetime
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -48,6 +49,8 @@ async def telegram_auth(db: AsyncSession, init_data: str) -> TokenResponse:
         is_bot=user_data.get("is_bot", False),
         is_premium=user_data.get("is_premium", False),
     )
+    user.lastActiveAt = datetime.now(UTC)
+    await db.flush()
     if is_new_user:
         await ReferralService().get_or_create_referral_code(db, user)
 
