@@ -46,6 +46,8 @@ class AdminSummaryRateOut(BaseModel):
 
     pair_id: str = Field(alias="pairId")
     label: str
+    base_rate: float = Field(alias="baseRate")
+    base_rate_display: str = Field(alias="baseRateDisplay")
     final_rate: float = Field(alias="finalRate")
     final_rate_display: str = Field(alias="finalRateDisplay")
     rate_text: str = Field(alias="rateText")
