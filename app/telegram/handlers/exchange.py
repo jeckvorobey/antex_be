@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+from types import SimpleNamespace
 from typing import cast
 
 from aiogram import F, Router
@@ -20,6 +21,7 @@ from app.models.city import City
 from app.repositories.city import CityRepository
 from app.repositories.config import ConfigRepository
 from app.repositories.order import OrderRepository
+from app.repositories.user import UserRepository
 from app.schemas.miniapp import MiniappOrderCreate
 from app.services.exchange import (
     CANONICAL_SELL_CURRENCIES,
@@ -29,6 +31,7 @@ from app.services.exchange import (
     ExchangeService,
 )
 from app.services.manager_working_hours import ManagerWorkingHoursService
+from app.services.notifications import notify_order_created
 from app.services.order_flow import create_order_for_user, get_min_amount
 from app.telegram import messages
 from app.telegram.i18n import get_user_translator
@@ -43,6 +46,7 @@ from app.telegram.keyboards import (
     order_created_actions,
     orders_pagination,
 )
+from app.telegram.order_cards import OrderMessageView
 from app.telegram.services.user_service import check_user
 
 logger = logging.getLogger(__name__)
@@ -101,6 +105,56 @@ async def _safe_delete_message(message) -> None:
     except TelegramBadRequest as exc:
         if "message to delete not found" not in str(exc).lower():
             raise
+
+
+async def _notify_manager_order_created(db, order, user) -> None:
+    """Notify the single manager about a created order."""
+    manager = await UserRepository(db).get_manager()
+    await notify_order_created(order, user, manager, notify_user=False)
+
+
+async def _safe_notify_manager_order_created(db, order, user) -> None:
+    """Keep manager notification failures from changing the order creation result."""
+    try:
+        await _notify_manager_order_created(db, order, user)
+    except Exception:
+        logger.exception(
+            "Failed to send deferred manager notification: order_id=%s public_number=%s",
+            getattr(order, "id", None),
+            getattr(order, "publicNumber", None),
+        )
+
+
+def _detached_order_snapshot(order):
+    """Snapshot loaded order fields before rolling back the secondary card update."""
+    view = OrderMessageView.from_order(order)
+    return SimpleNamespace(
+        id=getattr(order, "id", None),
+        publicNumber=view.public_number,
+        amountSell=view.amount_sell,
+        currencySell=view.currency_sell,
+        amountBuy=view.amount_buy,
+        currencyBuy=view.currency_buy,
+        rate=view.rate,
+        methodGet=view.method,
+        country=view.country,
+        city=SimpleNamespace(name=view.city) if view.city is not None else None,
+        user=(
+            SimpleNamespace(username=view.customer_username)
+            if view.customer_username is not None
+            else None
+        ),
+    )
+
+
+def _detached_user_snapshot(user):
+    """Snapshot user fields required by a manager notification after rollback."""
+    return SimpleNamespace(
+        id=getattr(user, "id", None),
+        telegram_id=getattr(user, "telegram_id", None),
+        username=getattr(user, "username", None),
+        language_code=getattr(user, "language_code", None),
+    )
 
 
 async def _safe_delete_chat_message(bot, chat_id: int, message_id: int) -> None:
@@ -668,6 +722,7 @@ async def choose_method(callback: CallbackQuery, state: FSMContext) -> None:
 
 @router.callback_query(F.data == "exchange:confirm", ExchangeState.confirming)
 async def confirm_exchange_callback(callback: CallbackQuery, state: FSMContext) -> None:
+    """Создать заявку и сохранить идентификатор её исходной клиентской карточки."""
     translate = get_user_translator(callback.from_user)
     data = await state.get_data()
     quote = data.get("quote")
@@ -734,7 +789,50 @@ async def confirm_exchange_callback(callback: CallbackQuery, state: FSMContext) 
                     methodGet=data["method"],
                 ),
                 notify_user=False,
+                defer_notifications=True,
             )
+            availability = getattr(created_order, "manager_availability", None)
+            manager_notification_order = _detached_order_snapshot(created_order)
+            manager_notification_user = _detached_user_snapshot(user)
+            try:
+                initial_message = await callback.message.answer(
+                    messages.order_created(
+                        created_order.publicNumber,
+                        translator=translate,
+                        managers_offline=getattr(availability, "status", None) == "offline",
+                    ),
+                    reply_markup=order_created_actions(translate),
+                )
+            except Exception:
+                logger.exception(
+                    "Order created but initial customer card failed: order_id=%s public_number=%s",
+                    created_order.id,
+                    created_order.publicNumber,
+                )
+                await _safe_notify_manager_order_created(db, created_order, user)
+                await state.clear()
+                await state.set_state(ExchangeState.choosing_country)
+                await _safe_delete_message(callback.message)
+                await callback.answer(
+                    translate("order-created-notification-failed", id=created_order.publicNumber),
+                    show_alert=True,
+                )
+                return
+            # При принятии заявки бот редактирует эту карточку вместо отправки дубликата.
+            created_order.userNotificationMessageId = initial_message.message_id
+            try:
+                await db.commit()
+            except SQLAlchemyError:
+                await db.rollback()
+                created_order = manager_notification_order
+                user = manager_notification_user
+                logger.exception(
+                    "Order created but customer card id was not persisted: order_id=%s "
+                    "public_number=%s",
+                    created_order.id,
+                    created_order.publicNumber,
+                )
+            await _safe_notify_manager_order_created(db, created_order, user)
     except AntExException as exc:
         await callback.answer(
             messages.order_creation_failed(
@@ -752,15 +850,6 @@ async def confirm_exchange_callback(callback: CallbackQuery, state: FSMContext) 
         )
         return
 
-    availability = getattr(created_order, "manager_availability", None)
-    await callback.message.answer(
-        messages.order_created(
-            created_order.publicNumber,
-            translator=translate,
-            managers_offline=getattr(availability, "status", None) == "offline",
-        ),
-        reply_markup=order_created_actions(translate),
-    )
     await state.clear()
     await state.set_state(ExchangeState.choosing_country)
     await _safe_delete_message(callback.message)
