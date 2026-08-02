@@ -16,7 +16,7 @@ from app.repositories.user import UserRepository
 from app.services.order_notifications import (
     DeliveryOutcome,
     build_chat_url_for_user,
-    build_manager_status_text,
+    edit_manager_order_card,
     send_customer_reminder,
 )
 from app.services.order_status import take_order_in_work, update_order_status
@@ -86,14 +86,19 @@ async def operator_take(callback: CallbackQuery) -> None:
             await callback.answer("У пользователя нет Telegram-ссылки", show_alert=True)
             return
 
-    await callback.message.edit_text(  # type: ignore[union-attr]
-        build_manager_status_text(order),
+    card_delivery = await edit_manager_order_card(
+        message=callback.message,
+        order=order,
         reply_markup=manager_order_close(
             order_id=order.id,
             chat_url=chat_url,
             message_text=_manager_chat_draft_text(order),
         ),
+        customer_notified=result.delivery != DeliveryOutcome.FAILED,
     )
+    if card_delivery == DeliveryOutcome.FAILED:
+        await callback.answer("Не удалось обновить карточку заявки", show_alert=True)
+        return
     if result.delivery == DeliveryOutcome.FAILED:
         await callback.answer(
             "Заявка принята, но клиенту не удалось отправить инструкцию. "
@@ -169,10 +174,14 @@ async def operator_cancel_confirm(callback: CallbackQuery) -> None:
     if chat_url:
         reply_markup = manager_order_chat_only(chat_url=chat_url)
 
-    await callback.message.edit_text(  # type: ignore[union-attr]
-        build_manager_status_text(order),
+    card_delivery = await edit_manager_order_card(
+        message=callback.message,
+        order=order,
         reply_markup=reply_markup,
     )
+    if card_delivery == DeliveryOutcome.FAILED:
+        await callback.answer("Не удалось обновить карточку заявки", show_alert=True)
+        return
     await callback.answer("Заявка отменена", show_alert=True)
 
 
@@ -219,8 +228,12 @@ async def operator_close(callback: CallbackQuery) -> None:
     if chat_url:
         reply_markup = manager_order_chat_only(chat_url=chat_url)
 
-    await callback.message.edit_text(  # type: ignore[union-attr]
-        build_manager_status_text(order),
+    card_delivery = await edit_manager_order_card(
+        message=callback.message,
+        order=order,
         reply_markup=reply_markup,
     )
+    if card_delivery == DeliveryOutcome.FAILED:
+        await callback.answer("Не удалось обновить карточку заявки", show_alert=True)
+        return
     await callback.answer()

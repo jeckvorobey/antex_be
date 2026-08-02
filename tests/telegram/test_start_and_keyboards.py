@@ -468,13 +468,16 @@ async def test_manager_order_keyboards_use_new_callbacks() -> None:
 
     assert len(open_chat.inline_keyboard) == 1
     assert open_chat.inline_keyboard[0][0].callback_data == "op:cancel:17"
+    assert open_chat.inline_keyboard[0][0].text == "❌ Отменить заявку"
     assert open_chat.inline_keyboard[0][0].style == "danger"
     assert open_chat.inline_keyboard[0][1].callback_data == "op:take:17"
+    assert open_chat.inline_keyboard[0][1].text == "✅ Взять в работу"
     assert open_chat.inline_keyboard[0][1].style == "success"
 
     assert close_order.inline_keyboard[0][0].text == "💬 Открыть чат с клиентом"  # noqa: RUF001
     assert close_order.inline_keyboard[0][0].url == "https://t.me/customer"
     assert close_order.inline_keyboard[1][0].callback_data == "op:remind:17"
+    assert close_order.inline_keyboard[1][0].text == "🔔 Напомнить клиенту"
     assert close_order.inline_keyboard[2][0].callback_data == "op:cancel:17"
     assert close_order.inline_keyboard[2][0].style == "danger"
     assert close_order.inline_keyboard[2][1].callback_data == "op:close:17"
@@ -499,9 +502,7 @@ async def test_chat_buttons_open_direct_chat_with_prepared_text() -> None:
     user_btn = user_order_write_manager(
         translator,
         chat_url="https://t.me/manager",
-        message_text=(
-            "Здравствуйте! По заявке #367383776 на сумму 5,000 RUB подтверждаю готовность к обмену."
-        ),
+        message_text="Здравствуйте! Я по заявке #367383776. Готов продолжить обмен.",
     )
 
     manager_url = manager_btn.inline_keyboard[0][0].url
@@ -512,10 +513,27 @@ async def test_chat_buttons_open_direct_chat_with_prepared_text() -> None:
     manager_qs = parse_qs(urlparse(manager_url).query)
     user_qs = parse_qs(urlparse(user_url).query)
     assert manager_qs["text"][0].startswith("Здравствуйте! Вы оставляли заявку #2006877777")
-    assert (
-        user_qs["text"][0]
-        == "Здравствуйте! По заявке #367383776 на сумму 5,000 RUB подтверждаю готовность к обмену."
+    assert user_qs["text"][0] == "Здравствуйте! Я по заявке #367383776. Готов продолжить обмен."
+
+
+def test_manager_order_keyboards_have_equivalent_english_labels() -> None:
+    translator = get_translator("en")
+
+    created = manager_order_open_chat(translator, order_id=17)
+    processing = manager_order_close(
+        translator,
+        order_id=17,
+        chat_url="https://t.me/customer",
     )
+
+    assert [button.text for button in created.inline_keyboard[0]] == [
+        "❌ Cancel order",
+        "✅ Take order",
+    ]
+    assert [row[0].text for row in processing.inline_keyboard[:2]] == [
+        "💬 Open chat with client",
+        "🔔 Remind client",
+    ]
 
 
 def test_chat_button_keeps_plain_tg_user_link_without_username() -> None:

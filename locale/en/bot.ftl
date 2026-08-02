@@ -84,7 +84,7 @@ btn-transfer = 🏦 Transfer
 btn-cash = 💵 Cash
 btn-wallet = 👛 Wallet
 btn-card = 💳 Card
-btn-cancel-order = ❌ Cancel
+btn-cancel-order = ❌ Cancel order
 btn-confirm-cancel-order = ❌ Confirm cancel
 btn-keep-order = ✅ Keep order
 btn-take-order = ✅ Take order
@@ -124,40 +124,49 @@ order-creation-failed = Could not create the order right now. Please try again i
 order-creation-limit-reached = You already have too many active orders. Please wait for the current ones to be processed.
 order-confirmed = ✅ Order #{ $id } is now being processed by the manager.
 customer-manager-draft = Hello! I’m contacting you about order #{ $id }. I’m ready to continue the exchange.
+order-details-caption = Order details
+order-country-thailand = Thailand
+order-country-vietnam = Vietnam
+order-country-georgia = Georgia
+order-country-internal = Internal exchange
 order-handoff-rich =
+    <footer>Order status</footer>
     <h2>✅ Order #{ $id } is being processed</h2>
-    <p>The manager is ready to continue and confirm the details with you.</p>
+    <p>The manager is ready to continue the exchange.</p>
     <hr/>
-    <h3>What to do next</h3>
-    <ol>
-      <li><b>Open the chat.</b> Tap “Message the manager”.</li>
-      <li><b>Send the message.</b> Review the prepared text and tap Send.</li>
-    </ol>
-    <aside><b>Important.</b> The text is placed in the input field but is not sent automatically.</aside>
-    <details><summary>Prepared text</summary><p>{ $draft }</p></details>
+    { $summary }
+    <h3>Open the conversation</h3>
+    <p>Message the manager first. Once you send a message, the manager can reply and confirm the exchange details.</p>
 order-handoff-html =
     <b>✅ Order #{ $id } is being processed</b>
 
-    The manager is ready to continue and confirm the details with you.
+    The manager is ready to continue the exchange.
 
-    <b>What to do next</b>
-    1. Tap “Message the manager”.
-    2. Review the prepared text and tap Send.
+    { $summary }
 
-    <blockquote><b>Important.</b> The text is placed in the input field but is not sent automatically.</blockquote>
-
-    <b>Prepared text:</b>
-    { $draft }
+    <b>Open the conversation</b>
+    Message the manager first. Once you send a message, the manager can reply and confirm the exchange details.
 order-reminder-rich =
+    <footer>Order reminder</footer>
     <h2>🔔 The manager is waiting for your message about order #{ $id }</h2>
-    <p>Tap “Message the manager”, review the prepared text and send it.</p>
-    <aside><b>Important.</b> The text is not sent automatically.</aside>
+    <p>{ $direction }</p>
+    <p>Message the manager first to open the conversation. The manager can then reply and continue the exchange.</p>
 order-reminder-html =
     <b>🔔 The manager is waiting for your message about order #{ $id }</b>
 
-    Tap “Message the manager”, review the prepared text and send it.
+    { $direction }
 
-    <blockquote><b>Important.</b> The text is not sent automatically.</blockquote>
+    Message the manager first to open the conversation. The manager can then reply and continue the exchange.
+manager-order-card-footer = Order status
+manager-order-created-title = 🆕 New order #{ $id }
+manager-order-created-lead = Waiting for a manager decision.
+manager-order-processing-title = ✅ Order #{ $id } is being processed
+manager-order-processing-lead = The customer was asked to open the conversation. Wait for their message.
+manager-order-processing-failed-lead = The order is being processed, but the message was not delivered to the customer. Check the contact settings, then send a reminder.
+manager-order-completed-title = ✅ Order #{ $id } completed
+manager-order-completed-lead = The exchange has been completed successfully.
+manager-order-cancelled-title = ❌ Order #{ $id } cancelled
+manager-order-cancelled-lead = Work on the order has stopped.
 order-completed = ✅ Order #{ $id } completed.
 
     Direction: { $direction }

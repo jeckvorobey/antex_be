@@ -1,10 +1,10 @@
 """Telegram-уведомления по жизненному циклу заявки."""
-# ruff: noqa: RUF001
 
 from __future__ import annotations
 
 import logging
 import re
+from dataclasses import replace
 from enum import StrEnum
 
 from aiogram.exceptions import TelegramBadRequest, TelegramForbiddenError
@@ -13,13 +13,14 @@ from aiogram.types import InlineKeyboardMarkup, InputRichMessage
 from app.enums.country import Country
 from app.enums.order import MethodGet, OrderStatus
 from app.telegram import messages
-from app.telegram.i18n import get_translator, get_user_translator
+from app.telegram.i18n import get_translator, get_user_translator, normalize_locale
 from app.telegram.keyboards import (
     manager_order_open_chat,
     order_created_actions,
     review_link,
     user_order_write_manager,
 )
+from app.telegram.order_cards import OrderMessageView
 
 logger = logging.getLogger(__name__)
 
@@ -42,15 +43,70 @@ async def _send_rich_or_html(
     rich_html: str,
     fallback_html: str,
     reply_markup: InlineKeyboardMarkup,
-) -> DeliveryOutcome:
+    existing_message_id: int | None = None,
+) -> tuple[DeliveryOutcome, int | None]:
     """Отправить Rich Message и один раз перейти на обычный HTML при отказе Bot API."""
+    if existing_message_id is not None:
+        try:
+            await bot.edit_message_text(
+                chat_id=chat_id,
+                message_id=existing_message_id,
+                rich_message=InputRichMessage(html=rich_html),
+                reply_markup=reply_markup,
+            )
+            return DeliveryOutcome.RICH, existing_message_id
+        except TelegramBadRequest:
+            logger.info(
+                "Rich order edit was rejected; using regular HTML fallback chat_id=%s",
+                chat_id,
+            )
+        except TelegramForbiddenError:
+            logger.warning("Order message edit skipped: chat is inaccessible chat_id=%s", chat_id)
+            return DeliveryOutcome.FAILED, None
+        except Exception:
+            logger.exception("Rich order message edit failed chat_id=%s", chat_id)
+            return DeliveryOutcome.FAILED, None
+
+        try:
+            await bot.edit_message_text(
+                chat_id=chat_id,
+                message_id=existing_message_id,
+                text=fallback_html,
+                reply_markup=reply_markup,
+            )
+            return DeliveryOutcome.FALLBACK, existing_message_id
+        except TelegramBadRequest:
+            logger.info(
+                "Order status message is no longer editable; sending one replacement chat_id=%s",
+                chat_id,
+            )
+        except TelegramForbiddenError:
+            logger.warning("Order HTML edit skipped: chat is inaccessible chat_id=%s", chat_id)
+            return DeliveryOutcome.FAILED, None
+        except Exception:
+            logger.exception("Order HTML fallback edit failed chat_id=%s", chat_id)
+            return DeliveryOutcome.FAILED, None
+
+        try:
+            sent = await bot.send_message(
+                chat_id=chat_id,
+                text=fallback_html,
+                reply_markup=reply_markup,
+            )
+            return DeliveryOutcome.FALLBACK, sent.message_id
+        except TelegramForbiddenError:
+            logger.warning("Order replacement skipped: chat is inaccessible chat_id=%s", chat_id)
+        except Exception:
+            logger.exception("Order replacement failed chat_id=%s", chat_id)
+        return DeliveryOutcome.FAILED, None
+
     try:
-        await bot.send_rich_message(
+        sent = await bot.send_rich_message(
             chat_id=chat_id,
             rich_message=InputRichMessage(html=rich_html),
             reply_markup=reply_markup,
         )
-        return DeliveryOutcome.RICH
+        return DeliveryOutcome.RICH, sent.message_id
     except TelegramBadRequest:
         logger.info(
             "Rich order message was rejected; using regular HTML fallback chat_id=%s",
@@ -58,19 +114,23 @@ async def _send_rich_or_html(
         )
     except TelegramForbiddenError:
         logger.warning("Order message skipped: chat is inaccessible chat_id=%s", chat_id)
-        return DeliveryOutcome.FAILED
+        return DeliveryOutcome.FAILED, None
     except Exception:
         logger.exception("Rich order message failed chat_id=%s", chat_id)
-        return DeliveryOutcome.FAILED
+        return DeliveryOutcome.FAILED, None
 
     try:
-        await bot.send_message(chat_id=chat_id, text=fallback_html, reply_markup=reply_markup)
-        return DeliveryOutcome.FALLBACK
+        sent = await bot.send_message(
+            chat_id=chat_id,
+            text=fallback_html,
+            reply_markup=reply_markup,
+        )
+        return DeliveryOutcome.FALLBACK, sent.message_id
     except TelegramForbiddenError:
         logger.warning("Order HTML fallback skipped: chat is inaccessible chat_id=%s", chat_id)
     except Exception:
         logger.exception("Order HTML fallback failed chat_id=%s", chat_id)
-    return DeliveryOutcome.FAILED
+    return DeliveryOutcome.FAILED, None
 
 
 def build_manager_contact_url(manager) -> str | None:
@@ -96,15 +156,21 @@ async def send_customer_handoff(order, manager) -> DeliveryOutcome:
         return DeliveryOutcome.FAILED
 
     translate = get_user_translator(user)
+    locale = normalize_locale(getattr(user, "language_code", None))
+    view = OrderMessageView.from_order(order)
     draft = messages.customer_manager_draft(order.publicNumber, translator=translate)
     markup = user_order_write_manager(translate, chat_url=manager_url, message_text=draft)
-    return await _send_rich_or_html(
+    delivery, message_id = await _send_rich_or_html(
         bot=bot,
         chat_id=user.telegram_id,
-        rich_html=messages.order_handoff_rich(order.publicNumber, translator=translate),
-        fallback_html=messages.order_handoff_html(order.publicNumber, translator=translate),
+        rich_html=messages.order_handoff_rich(view, translator=translate, locale=locale),
+        fallback_html=messages.order_handoff_html(view, translator=translate, locale=locale),
         reply_markup=markup,
+        existing_message_id=getattr(order, "userNotificationMessageId", None),
     )
+    if message_id is not None:
+        order.userNotificationMessageId = message_id
+    return delivery
 
 
 async def send_customer_reminder(order, manager) -> DeliveryOutcome:
@@ -122,18 +188,69 @@ async def send_customer_reminder(order, manager) -> DeliveryOutcome:
         return DeliveryOutcome.FAILED
 
     translate = get_user_translator(user)
+    locale = normalize_locale(getattr(user, "language_code", None))
+    view = OrderMessageView.from_order(order)
     markup = user_order_write_manager(
         translate,
         chat_url=manager_url,
         message_text=messages.customer_manager_draft(order.publicNumber, translator=translate),
     )
-    return await _send_rich_or_html(
+    delivery, _ = await _send_rich_or_html(
         bot=bot,
         chat_id=user.telegram_id,
-        rich_html=messages.order_reminder_rich(order.publicNumber, translator=translate),
-        fallback_html=messages.order_reminder_html(order.publicNumber, translator=translate),
+        rich_html=messages.order_reminder_rich(view, translator=translate, locale=locale),
+        fallback_html=messages.order_reminder_html(view, translator=translate, locale=locale),
         reply_markup=markup,
     )
+    return delivery
+
+
+async def edit_manager_order_card(
+    *,
+    message,
+    order,
+    reply_markup: InlineKeyboardMarkup | None,
+    customer_notified: bool = True,
+) -> DeliveryOutcome:
+    """Отредактировать карточку менеджера через Rich Message и резервный HTML."""
+    view = OrderMessageView.from_order(order)
+    status = OrderStatus(int(order.status))
+    try:
+        await message.edit_text(
+            rich_message=InputRichMessage(
+                html=messages.manager_order_card_rich(
+                    view,
+                    status=status,
+                    customer_notified=customer_notified,
+                    locale="ru",
+                )
+            ),
+            reply_markup=reply_markup,
+        )
+        return DeliveryOutcome.RICH
+    except TelegramBadRequest:
+        logger.info(
+            "Rich manager card edit was rejected; using regular HTML fallback order_id=%s",
+            getattr(order, "id", None),
+        )
+    except Exception:
+        logger.exception("Rich manager card edit failed order_id=%s", getattr(order, "id", None))
+        return DeliveryOutcome.FAILED
+
+    try:
+        await message.edit_text(
+            text=messages.manager_order_card_html(
+                view,
+                status=status,
+                customer_notified=customer_notified,
+                locale="ru",
+            ),
+            reply_markup=reply_markup,
+        )
+        return DeliveryOutcome.FALLBACK
+    except Exception:
+        logger.exception("Manager HTML card edit failed order_id=%s", getattr(order, "id", None))
+        return DeliveryOutcome.FAILED
 
 
 async def send_or_replace_user_status_message(
@@ -227,13 +344,23 @@ async def notify_order_created(order, user, manager, *, notify_user: bool = True
             getattr(manager, "id", None),
             getattr(manager, "telegram_id", None),
         )
-        await bot.send_message(
+        view = OrderMessageView.from_order(order)
+        if view.customer_username is None:
+            view = replace(view, customer_username=getattr(user, "username", None))
+        await _send_rich_or_html(
+            bot=bot,
             chat_id=manager.telegram_id,
-            text=_build_manager_order_text(order, user),
-            reply_markup=manager_order_open_chat(
-                translate,
-                order_id=order.id,
+            rich_html=messages.manager_order_card_rich(
+                view,
+                status=OrderStatus.CREATED,
+                locale="ru",
             ),
+            fallback_html=messages.manager_order_card_html(
+                view,
+                status=OrderStatus.CREATED,
+                locale="ru",
+            ),
+            reply_markup=manager_order_open_chat(translate, order_id=order.id),
         )
         logger.info(
             "Order notification sent to manager: order_id=%s public_number=%s "
@@ -290,9 +417,9 @@ async def notify_order_status_changed(order, *, manager_chat_url: str | None = N
 def build_chat_url_for_user(user) -> str | None:
     username = getattr(user, "username", None)
     telegram_id = getattr(user, "telegram_id", None)
-    if username:
+    if isinstance(username, str) and _TELEGRAM_USERNAME_RE.fullmatch(username):
         return f"https://t.me/{username}"
-    if telegram_id:
+    if isinstance(telegram_id, int) and not isinstance(telegram_id, bool) and telegram_id > 0:
         return f"tg://user?id={telegram_id}"
     return None
 
@@ -342,99 +469,23 @@ def _build_user_status_text(order, *, translate) -> str:
 
 
 def build_manager_status_text(order) -> str:
-    username = _format_username(getattr(order, "user", None))
-    city_name = _format_city_name(order)
-
-    if int(order.status) == int(OrderStatus.PROCESSING):
-        middle = messages.manager_order_summary(
-            country=_format_country_name(getattr(order, "country", None)),
-            rate=_format_rate(getattr(order, "rate", None)),
-            amount_sell=getattr(order, "amountSell", 0) or 0,
-            from_currency=getattr(order, "currencySell", "—"),
-            amount_buy=getattr(order, "amountBuy", 0) or 0,
-            to_currency=getattr(order, "currencyBuy", "—"),
-            method=_format_method(getattr(order, "methodGet", None)),
-            username=username,
-            city=city_name if city_name != "—" else None,
-            translator=None,
-            locale="ru",
-        )
-        return "\n".join(
-            [
-                f"🟢 Заявка #{order.publicNumber}",
-                "",
-                "⏳ Статус: В работе",
-                "",
-                middle,
-                "",
-                "💬 Клиенту отправлена просьба начать диалог. Ожидайте его сообщения.",
-            ]
-        )
-
-    if int(order.status) == int(OrderStatus.COMPLETED):
-        middle = messages.exchange_summary_middle(
-            country=_format_country_name(getattr(order, "country", None)),
-            rate=_format_rate(getattr(order, "rate", None)),
-            amount=getattr(order, "amountSell", 0) or 0,
-            from_currency=getattr(order, "currencySell", "—"),
-            result=getattr(order, "amountBuy", 0) or 0,
-            to_currency=getattr(order, "currencyBuy", "—"),
-            method=_format_method(getattr(order, "methodGet", None)),
-            city=city_name if city_name != "—" else None,
-            translator=None,
-            locale="ru",
-        )
-        return "\n".join(
-            [
-                f"✅ Заявка #{order.publicNumber} завершена",
-                "",
-                middle,
-                "",
-                "🏁 Обмен успешно выполнен",
-            ]
-        )
-
-    if int(order.status) == int(OrderStatus.CANCELLED):
-        return "\n".join(
-            [
-                f"Заявка #{order.publicNumber}",
-                "Статус: Отменена",
-                f"Город: {city_name}",
-                "Пара: "
-                f"{getattr(order, 'currencySell', '—')} -> {getattr(order, 'currencyBuy', '—')}",
-                f"Сумма: {getattr(order, 'amountSell', '—')} {getattr(order, 'currencySell', '—')}",
-            ]
-        )
-
-    return _build_manager_order_text(order, getattr(order, "user", None))
+    """Вернуть regular HTML представление manager-карточки для совместимости."""
+    return messages.manager_order_card_html(
+        OrderMessageView.from_order(order),
+        status=OrderStatus(int(order.status)),
+        locale="ru",
+    )
 
 
 def _build_manager_order_text(order, user) -> str:
-    city_name = _format_city_name(order)
-    country_name = _format_country_name(getattr(order, "country", None))
-    username = _format_username(user)
-    method = _format_method(getattr(order, "methodGet", None))
-    middle = messages.manager_order_summary(
-        country=country_name,
-        rate=_format_rate(getattr(order, "rate", None)),
-        amount_sell=getattr(order, "amountSell", 0) or 0,
-        from_currency=getattr(order, "currencySell", "—"),
-        amount_buy=getattr(order, "amountBuy", 0) or 0,
-        to_currency=getattr(order, "currencyBuy", "—"),
-        method=method,
-        username=username,
-        city=city_name if city_name != "—" else None,
-        translator=None,
+    """Вернуть fallback новой заявки для старых внутренних вызовов."""
+    view = OrderMessageView.from_order(order)
+    if view.customer_username is None:
+        view = replace(view, customer_username=getattr(user, "username", None))
+    return messages.manager_order_card_html(
+        view,
+        status=OrderStatus.CREATED,
         locale="ru",
-    )
-    return "\n".join(
-        [
-            f"🆕 Новая заявка #{order.publicNumber}",
-            "",
-            middle,
-            "",
-            "⏳ Ожидает обработки менеджером",
-        ]
     )
 
 

@@ -5,14 +5,16 @@ from types import SimpleNamespace
 from typing import Any, cast
 
 import pytest
-from aiogram.exceptions import TelegramBadRequest
+from aiogram.exceptions import TelegramBadRequest, TelegramForbiddenError
 
 from app.services import order_notifications
 from app.services.order_notifications import (
     DeliveryOutcome,
     _build_manager_order_text,
+    build_chat_url_for_user,
     build_manager_contact_url,
     build_manager_status_text,
+    edit_manager_order_card,
     notify_order_created,
     notify_order_status_changed,
     send_customer_handoff,
@@ -28,19 +30,29 @@ class _FakeBot:
         self.sent: list[dict[str, object]] = []
         self.rich_sent: list[dict[str, object]] = []
         self.edit_error: Exception | None = None
+        self.rich_edit_error: Exception | None = None
         self.rich_error: Exception | None = None
 
     async def delete_message(self, chat_id: int, message_id: int) -> None:
         self.deleted.append((chat_id, message_id))
 
-    async def edit_message_text(self, text: str, chat_id: int, message_id: int, reply_markup=None):
-        if self.edit_error is not None:
-            raise self.edit_error
+    async def edit_message_text(
+        self,
+        text: str | None = None,
+        chat_id: int | None = None,
+        message_id: int | None = None,
+        reply_markup=None,
+        rich_message=None,
+    ):
+        error = self.rich_edit_error if rich_message is not None else self.edit_error
+        if error is not None:
+            raise error
         self.edited.append(
             {
                 "chat_id": chat_id,
                 "message_id": message_id,
                 "text": text,
+                "rich_message": rich_message,
                 "reply_markup": reply_markup,
             }
         )
@@ -56,6 +68,19 @@ class _FakeBot:
             {"chat_id": chat_id, "rich_message": rich_message, "reply_markup": reply_markup}
         )
         return SimpleNamespace(message_id=89)
+
+
+class _FakeEditableMessage:
+    def __init__(self) -> None:
+        self.edits: list[dict[str, object]] = []
+        self.rich_error: Exception | None = None
+
+    async def edit_text(self, text=None, rich_message=None, reply_markup=None):
+        if rich_message is not None and self.rich_error is not None:
+            raise self.rich_error
+        self.edits.append(
+            {"text": text, "rich_message": rich_message, "reply_markup": reply_markup}
+        )
 
 
 @pytest.mark.asyncio
@@ -76,6 +101,7 @@ async def test_user_status_message_edits_previous_message() -> None:
             "chat_id": 700002,
             "message_id": 77,
             "text": "updated",
+            "rich_message": None,
             "reply_markup": None,
         }
     ]
@@ -137,22 +163,53 @@ async def test_notify_order_created_sends_user_message_with_order_payload(
 
     await notify_order_created(order, user, manager)
 
-    assert len(bot.sent) == 2
+    assert len(bot.sent) == 1
+    assert len(bot.rich_sent) == 1
     assert bot.sent[0]["chat_id"] == 700002
     assert "Заявка №" in bot.sent[0]["text"]
     assert bot.sent[0]["reply_markup"].inline_keyboard[0][0].callback_data == "menu:orders"
     assert bot.sent[0]["reply_markup"].inline_keyboard[1][0].callback_data == "fsm:cancel"
-    manager_markup = cast(Any, bot.sent[1]["reply_markup"])
+    manager_markup = cast(Any, bot.rich_sent[0]["reply_markup"])
     assert len(manager_markup.inline_keyboard) == 1
     assert manager_markup.inline_keyboard[0][0].callback_data == "op:cancel:8"
     assert manager_markup.inline_keyboard[0][1].callback_data == "op:take:8"
-    text = str(bot.sent[1]["text"])
-    assert "🌍 Страна: Таиланд" in text
-    assert "📈 Курс: 30.96" in text
-    assert "💸 Отдаёте: 100 ₮ USDT" in text
-    assert "💰 Получаете: 3,096 🇹🇭 THB" in text
-    assert "🧾 Способ получения: Наличные по QR" in text
-    assert "👤 Пользователь: @customer" in text
+    text = str(bot.rich_sent[0]["rich_message"].html)
+    assert "<footer>Статус заявки</footer>" in text
+    assert "Страна</td><td><b>Таиланд" in text
+    assert "Курс</td><td><b>30.96" in text
+    assert "Отдаёте</td><td><b>100 ₮ USDT" in text
+    assert "Получаете</td><td><b>3 096 🇹🇭 THB" in text
+    assert "Способ получения</td><td><b>Наличные по QR" in text
+    assert "Пользователь</td><td><b>@customer" in text
+
+
+@pytest.mark.asyncio
+async def test_manager_order_card_edit_falls_back_once_to_regular_html() -> None:
+    message = _FakeEditableMessage()
+    message.rich_error = TelegramBadRequest(
+        method="editMessageText",
+        message="rich message is unsupported",
+    )
+    order = SimpleNamespace(
+        publicNumber="2026050008",
+        status=2,
+        amountSell=10000,
+        currencySell="USDT",
+        amountBuy=325000,
+        currencyBuy="THB",
+        user=SimpleNamespace(username="customer"),
+    )
+
+    delivery = await edit_manager_order_card(
+        message=message,
+        order=order,
+        reply_markup=SimpleNamespace(),
+    )
+
+    assert delivery == DeliveryOutcome.FALLBACK
+    assert len(message.edits) == 1
+    assert message.edits[0]["rich_message"] is None
+    assert "Заявка #2026050008 принята в работу" in message.edits[0]["text"]
 
 
 @pytest.mark.asyncio
@@ -163,6 +220,14 @@ async def test_customer_handoff_uses_rich_message_and_public_number(
     order = SimpleNamespace(
         id=8,
         publicNumber="2026050008",
+        amountSell=10000,
+        currencySell="USDT",
+        amountBuy=325000,
+        currencyBuy="THB",
+        rate=32.5,
+        methodGet="qrcode",
+        country=SimpleNamespace(value="thailand"),
+        city=SimpleNamespace(name="Бангкок"),
         user=SimpleNamespace(telegram_id=700002, language_code="ru"),
     )
     manager = SimpleNamespace(username="manager")
@@ -174,6 +239,7 @@ async def test_customer_handoff_uses_rich_message_and_public_number(
     assert bot.sent == []
     assert bot.rich_sent[0]["rich_message"].html is not None
     assert "Заявка #2026050008" in bot.rich_sent[0]["rich_message"].html
+    assert "10 000 ₮ USDT" in bot.rich_sent[0]["rich_message"].html
     button = bot.rich_sent[0]["reply_markup"].inline_keyboard[0][0]
     assert button.text == "💬 Написать менеджеру"
     assert "text=" in button.url
@@ -199,11 +265,118 @@ async def test_customer_handoff_falls_back_once_to_regular_html(
     assert delivery == DeliveryOutcome.FALLBACK
     assert bot.rich_sent == []
     assert len(bot.sent) == 1
-    assert "Текст появится в поле ввода" in bot.sent[0]["text"]
+    assert "Напишите менеджеру первым" in bot.sent[0]["text"]
+    assert "поле ввода" not in bot.sent[0]["text"]
+
+
+@pytest.mark.asyncio
+async def test_customer_handoff_returns_failed_without_duplicate_delivery(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    bot = _FakeBot()
+    bot.rich_error = TelegramForbiddenError(method="sendRichMessage", message="bot blocked")
+    order = SimpleNamespace(
+        id=8,
+        publicNumber="2026050008",
+        user=SimpleNamespace(telegram_id=700002, language_code="ru"),
+    )
+    monkeypatch.setattr(order_notifications, "_get_telegram_bot", lambda: bot)
+
+    delivery = await send_customer_handoff(order, SimpleNamespace(username="manager"))
+
+    assert delivery == DeliveryOutcome.FAILED
+    assert bot.sent == []
+    assert bot.rich_sent == []
+
+
+@pytest.mark.asyncio
+async def test_customer_handoff_edits_existing_status_with_rich_message(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    bot = _FakeBot()
+    order = SimpleNamespace(
+        id=8,
+        publicNumber="2026050008",
+        amountSell=10000,
+        currencySell="USDT",
+        amountBuy=325000,
+        currencyBuy="THB",
+        user=SimpleNamespace(telegram_id=700002, language_code="ru"),
+        userNotificationMessageId=55,
+    )
+    monkeypatch.setattr(order_notifications, "_get_telegram_bot", lambda: bot)
+
+    delivery = await send_customer_handoff(order, SimpleNamespace(username="manager"))
+
+    assert delivery == DeliveryOutcome.RICH
+    assert bot.sent == []
+    assert bot.rich_sent == []
+    assert bot.edited[0]["message_id"] == 55
+    assert bot.edited[0]["text"] is None
+    assert bot.edited[0]["rich_message"].html is not None
+    assert order.userNotificationMessageId == 55
+
+
+@pytest.mark.asyncio
+async def test_customer_handoff_falls_back_to_regular_edit_without_duplicate(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    bot = _FakeBot()
+    bot.rich_edit_error = TelegramBadRequest(
+        method="editMessageText",
+        message="rich message is unsupported",
+    )
+    order = SimpleNamespace(
+        id=8,
+        publicNumber="2026050008",
+        amountSell=10000,
+        currencySell="USDT",
+        amountBuy=325000,
+        currencyBuy="THB",
+        user=SimpleNamespace(telegram_id=700002, language_code="ru"),
+        userNotificationMessageId=55,
+    )
+    monkeypatch.setattr(order_notifications, "_get_telegram_bot", lambda: bot)
+
+    delivery = await send_customer_handoff(order, SimpleNamespace(username="manager"))
+
+    assert delivery == DeliveryOutcome.FALLBACK
+    assert len(bot.edited) == 1
+    assert "Напишите менеджеру первым" in bot.edited[0]["text"]
+    assert bot.sent == []
+    assert bot.rich_sent == []
 
 
 def test_manager_contact_url_rejects_invalid_username() -> None:
     assert build_manager_contact_url(SimpleNamespace(username="manager?start=evil")) is None
+
+
+def test_client_chat_url_rejects_invalid_username_and_uses_telegram_id() -> None:
+    user = SimpleNamespace(username="customer?text=spoofed", telegram_id=700002)
+
+    assert build_chat_url_for_user(user) == "tg://user?id=700002"
+
+
+@pytest.mark.asyncio
+async def test_customer_handoff_without_manager_username_fails_without_leaking_draft(
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    bot = _FakeBot()
+    order = SimpleNamespace(
+        id=8,
+        publicNumber="2026050008",
+        user=SimpleNamespace(telegram_id=700002, language_code="ru"),
+    )
+    monkeypatch.setattr(order_notifications, "_get_telegram_bot", lambda: bot)
+
+    delivery = await send_customer_handoff(order, SimpleNamespace(username=None))
+
+    assert delivery == DeliveryOutcome.FAILED
+    assert bot.sent == [] and bot.rich_sent == []
+    assert "manager_username_missing" in caplog.text
+    assert "Готов продолжить обмен" not in caplog.text
+    assert "https://t.me/" not in caplog.text
 
 
 @pytest.mark.asyncio
@@ -232,7 +405,8 @@ async def test_notify_order_created_can_skip_duplicate_customer_message(
 
     await notify_order_created(order, user, manager, notify_user=False)
 
-    assert [message["chat_id"] for message in bot.sent] == [700001]
+    assert bot.sent == []
+    assert [message["chat_id"] for message in bot.rich_sent] == [700001]
 
 
 def test_build_manager_status_text_uses_new_middle_format_for_processing() -> None:
@@ -252,15 +426,14 @@ def test_build_manager_status_text_uses_new_middle_format_for_processing() -> No
 
     text = build_manager_status_text(order)
 
-    assert "🟢 Заявка #2026050020" in text
-    assert "⏳ Статус: В работе" in text
-    assert "🌍 Страна: Таиланд" in text
-    assert "🏙️ Город: Бангкок" in text
-    assert "📈 Курс: 32.8723" in text
-    assert "💸 Отдаёте: 2,350 ₮ USDT" in text
-    assert "💰 Получаете: 77,250 🇹🇭 THB" in text
-    assert "🧾 Способ получения: Наличные по QR" in text
-    assert "👤 Пользователь: @sergeywebdev" in text
+    assert "✅ Заявка #2026050020 принята в работу" in text
+    assert "Страна: <b>Таиланд</b>" in text
+    assert "Город: <b>Бангкок</b>" in text
+    assert "Курс: <b>32.8723</b>" in text
+    assert "Отдаёте: <b>2 350 ₮ USDT</b>" in text
+    assert "Получаете: <b>77 250 🇹🇭 THB</b>" in text
+    assert "Способ получения: <b>Наличные по QR</b>" in text
+    assert "Пользователь: <b>@sergeywebdev</b>" in text
     assert "Клиенту отправлена просьба начать диалог" in text
 
 
@@ -282,15 +455,15 @@ def test_build_manager_status_text_uses_shared_middle_format_for_completed() -> 
     text = build_manager_status_text(order)
 
     assert "✅ Заявка #2026050026 завершена" in text
-    assert "🌍 Страна: Грузия" in text
-    assert "🏙️ Город: Батуми" in text
-    assert "📈 Курс: 2.71" in text
-    assert "💸 Отдаёте: 10,000 ₮ USDT" in text
-    assert "💰 Получаете: 27,100 🇬🇪 GEL" in text
-    assert "🧾 Способ получения: Доставка наличных" in text
-    assert "🏁 Обмен успешно выполнен" in text
+    assert "Страна: <b>Грузия</b>" in text
+    assert "Город: <b>Батуми</b>" in text
+    assert "Курс: <b>2.71</b>" in text
+    assert "Отдаёте: <b>10 000 ₮ USDT</b>" in text
+    assert "Получаете: <b>27 100 🇬🇪 GEL</b>" in text
+    assert "Способ получения: <b>Доставка наличных</b>" in text
+    assert "Обмен успешно выполнен" in text
     assert "💱 Направление:" not in text
-    assert "👤 Пользователь:" not in text
+    assert "Пользователь: <b>@sergeywebdev</b>" in text
 
 
 @pytest.mark.asyncio
@@ -419,11 +592,11 @@ def test_build_manager_order_text_uses_new_created_format() -> None:
     text = _build_manager_order_text(order, user)
 
     assert "🆕 Новая заявка #2026050019" in text
-    assert "🌍 Страна: Таиланд" in text
-    assert "🏙️ Город: Паттайя" in text
-    assert "📈 Курс: 31.0" in text
-    assert "💸 Отдаёте: 1,000 ₮ USDT" in text
-    assert "💰 Получаете: 31,000 🇹🇭 THB" in text
-    assert "🧾 Способ получения: Доставка наличных" in text
-    assert "👤 Пользователь: @sergeywebdev" in text
-    assert "⏳ Ожидает обработки менеджером" in text
+    assert "Страна: <b>Таиланд</b>" in text
+    assert "Город: <b>Паттайя</b>" in text
+    assert "Курс: <b>31</b>" in text
+    assert "Отдаёте: <b>1 000 ₮ USDT</b>" in text
+    assert "Получаете: <b>31 000 🇹🇭 THB</b>" in text
+    assert "Способ получения: <b>Доставка наличных</b>" in text
+    assert "Пользователь: <b>@sergeywebdev</b>" in text
+    assert "Ожидает решения менеджера" in text

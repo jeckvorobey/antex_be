@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from decimal import Decimal
 from types import SimpleNamespace
-from unittest.mock import AsyncMock
+from unittest.mock import ANY, AsyncMock
 
 import pytest
 
@@ -12,6 +12,58 @@ from app.services import aex as aex_service_module
 from app.services import order_status
 from app.services import referral as referral_service_module
 from app.services.order_status import update_order_status
+
+
+@pytest.mark.parametrize(
+    "delivery",
+    [
+        order_status.DeliveryOutcome.RICH,
+        order_status.DeliveryOutcome.FALLBACK,
+        order_status.DeliveryOutcome.FAILED,
+    ],
+)
+@pytest.mark.asyncio
+async def test_take_order_in_work_uses_single_manager_and_reports_delivery(
+    monkeypatch: pytest.MonkeyPatch,
+    delivery: order_status.DeliveryOutcome,
+) -> None:
+    current_order = SimpleNamespace(id=5, status=int(OrderStatus.CREATED))
+    hydrated_order = SimpleNamespace(id=5, status=int(OrderStatus.PROCESSING))
+    manager = SimpleNamespace(id=7, username="manager")
+    handoff = AsyncMock(return_value=delivery)
+    status_update = AsyncMock(return_value=hydrated_order)
+
+    class _FakeOrderRepository:
+        def __init__(self, db) -> None:
+            self.db = db
+
+        async def get_one(self, order_id: int):
+            assert order_id == 5
+            return current_order
+
+    class _FakeUserRepository:
+        def __init__(self, db) -> None:
+            self.db = db
+
+        async def get_manager(self):
+            return manager
+
+    monkeypatch.setattr(order_status, "OrderRepository", _FakeOrderRepository)
+    monkeypatch.setattr(order_status, "UserRepository", _FakeUserRepository)
+    monkeypatch.setattr(order_status, "update_order_status", status_update)
+    monkeypatch.setattr(order_status, "send_customer_handoff", handoff)
+
+    result = await order_status.take_order_in_work(SimpleNamespace(), order_id=5)
+
+    assert result.order is hydrated_order
+    assert result.delivery == delivery
+    status_update.assert_awaited_once_with(
+        ANY,
+        order_id=5,
+        status=OrderStatus.PROCESSING,
+        notify_user=False,
+    )
+    handoff.assert_awaited_once_with(hydrated_order, manager)
 
 
 @pytest.mark.asyncio

@@ -1903,6 +1903,7 @@ async def test_reengagement_order_keeps_referral_bonus_without_marketing_ledger(
     from app.services.order_status import update_order_status
 
     _, _, customer = await seed_exchange_data(db_session)
+    db_session.add(Rate(currency="USDTRUB", price=80.0, margin=5.0, country=None, is_internal=True))
     referrer = User(telegram_id=700030, username="referrer_reengagement")
     platform = MarketingPlatform(slug="referral_ads", name="Referral Ads")
     currency = MarketingCurrency(code="MKT", name="Marketing Test")

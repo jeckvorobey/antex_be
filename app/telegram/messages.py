@@ -12,6 +12,7 @@ from typing import Any, cast
 from app.enums.order import MethodGet, OrderStatus
 from app.services.exchange import ExchangePairSnapshot
 from app.telegram.i18n import get_translator
+from app.telegram.order_cards import OrderMessageView, render_order_regular, render_order_rich
 
 Translate = Callable[[str], str]
 _CURRENCY_LABELS = {
@@ -406,59 +407,138 @@ def customer_manager_draft(
 
 
 def order_handoff_rich(
-    order_id: int | str,
+    view: OrderMessageView,
     *,
     translator: Translate | None = None,
     locale: str | None = None,
 ) -> str:
     """Rich HTML-инструкция клиенту после принятия заявки."""
     translate = _resolve_translator(translator, locale)
+    current_locale = locale or "ru"
     return _strip_fluent_isolates(
         translate(
             "order-handoff-rich",
-            id=escape(str(order_id)),
-            draft=escape(customer_manager_draft(order_id, translator=translate)),
+            id=escape(view.public_number),
+            summary=render_order_rich(view, locale=current_locale),
         )
     )
 
 
 def order_handoff_html(
-    order_id: int | str,
+    view: OrderMessageView,
     *,
     translator: Translate | None = None,
     locale: str | None = None,
 ) -> str:
     """Обычный HTML fallback для инструкции клиенту."""
     translate = _resolve_translator(translator, locale)
+    current_locale = locale or "ru"
     return _strip_fluent_isolates(
         translate(
             "order-handoff-html",
-            id=escape(str(order_id)),
-            draft=escape(customer_manager_draft(order_id, translator=translate)),
+            id=escape(view.public_number),
+            summary=render_order_regular(view, locale=current_locale),
         )
     )
 
 
 def order_reminder_rich(
-    order_id: int | str,
+    view: OrderMessageView,
     *,
     translator: Translate | None = None,
     locale: str | None = None,
 ) -> str:
     """Короткое Rich-напоминание клиенту без ложной срочности."""
     translate = _resolve_translator(translator, locale)
-    return _strip_fluent_isolates(translate("order-reminder-rich", id=escape(str(order_id))))
+    return _strip_fluent_isolates(
+        translate(
+            "order-reminder-rich",
+            id=escape(view.public_number),
+            direction=escape(view.direction or ""),
+        )
+    )
 
 
 def order_reminder_html(
-    order_id: int | str,
+    view: OrderMessageView,
     *,
     translator: Translate | None = None,
     locale: str | None = None,
 ) -> str:
     """Обычный HTML fallback напоминания."""
     translate = _resolve_translator(translator, locale)
-    return _strip_fluent_isolates(translate("order-reminder-html", id=escape(str(order_id))))
+    return _strip_fluent_isolates(
+        translate(
+            "order-reminder-html",
+            id=escape(view.public_number),
+            direction=escape(view.direction or ""),
+        )
+    )
+
+
+def _manager_order_card_copy(
+    view: OrderMessageView,
+    *,
+    status: OrderStatus,
+    customer_notified: bool,
+    locale: str,
+) -> tuple[str, str]:
+    translate = _resolve_translator(locale=locale)
+    status_key = {
+        OrderStatus.CREATED: "created",
+        OrderStatus.PROCESSING: "processing",
+        OrderStatus.COMPLETED: "completed",
+        OrderStatus.CANCELLED: "cancelled",
+    }[OrderStatus(int(status))]
+    title = _strip_fluent_isolates(
+        translate(f"manager-order-{status_key}-title", id=escape(view.public_number))
+    )
+    lead_key = f"manager-order-{status_key}-lead"
+    if status == OrderStatus.PROCESSING and not customer_notified:
+        lead_key = "manager-order-processing-failed-lead"
+    return title, translate(lead_key)
+
+
+def manager_order_card_rich(
+    view: OrderMessageView,
+    *,
+    status: OrderStatus,
+    customer_notified: bool = True,
+    locale: str = "ru",
+) -> str:
+    """Собрать единую Rich-карточку заявки для менеджера."""
+    translate = _resolve_translator(locale=locale)
+    title, lead = _manager_order_card_copy(
+        view,
+        status=status,
+        customer_notified=customer_notified,
+        locale=locale,
+    )
+    summary = render_order_rich(view, locale=locale, include_customer=True)
+    return (
+        f"<footer>{escape(translate('manager-order-card-footer'))}</footer>"
+        f"<h2>{title}</h2>"
+        f"<p>{escape(lead)}</p>"
+        f"<hr/>{summary}"
+    )
+
+
+def manager_order_card_html(
+    view: OrderMessageView,
+    *,
+    status: OrderStatus,
+    customer_notified: bool = True,
+    locale: str = "ru",
+) -> str:
+    """Собрать regular HTML fallback manager-карточки."""
+    title, lead = _manager_order_card_copy(
+        view,
+        status=status,
+        customer_notified=customer_notified,
+        locale=locale,
+    )
+    summary = render_order_regular(view, locale=locale, include_customer=True)
+    return f"<b>{title}</b>\n\n{escape(lead)}\n\n{summary}"
 
 
 def exchange_rate(sell_rate: float, buy_rate: float) -> str:
