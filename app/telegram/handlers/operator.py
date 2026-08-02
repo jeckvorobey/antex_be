@@ -12,8 +12,14 @@ from app.core.database import create_db_session
 from app.enums.order import OrderStatus
 from app.enums.user import has_operator_access
 from app.repositories.order import OrderRepository
-from app.services.order_notifications import build_chat_url_for_user, build_manager_status_text
-from app.services.order_status import update_order_status
+from app.repositories.user import UserRepository
+from app.services.order_notifications import (
+    DeliveryOutcome,
+    build_chat_url_for_user,
+    build_manager_status_text,
+    send_customer_reminder,
+)
+from app.services.order_status import take_order_in_work, update_order_status
 from app.telegram import messages
 from app.telegram.keyboards import (
     manager_order_cancel_confirm,
@@ -65,7 +71,16 @@ async def operator_take(callback: CallbackQuery) -> None:
             await callback.answer("Нет прав", show_alert=True)
             return
 
-        order = await update_order_status(db, order_id=order_id, status=OrderStatus.PROCESSING)
+        current = await OrderRepository(db).get_one(order_id)
+        if current is None:
+            await callback.answer("Заявка не найдена", show_alert=True)
+            return
+        if int(current.status) != int(OrderStatus.CREATED):
+            await callback.answer("Заявка уже изменила статус", show_alert=True)
+            return
+
+        result = await take_order_in_work(db, order_id=order_id)
+        order = result.order
         chat_url = build_chat_url_for_user(getattr(order, "user", None))
         if not chat_url:
             await callback.answer("У пользователя нет Telegram-ссылки", show_alert=True)
@@ -79,7 +94,46 @@ async def operator_take(callback: CallbackQuery) -> None:
             message_text=_manager_chat_draft_text(order),
         ),
     )
+    if result.delivery == DeliveryOutcome.FAILED:
+        await callback.answer(
+            "Заявка принята, но клиенту не удалось отправить инструкцию. "
+            "Проверьте username менеджера и повторите напоминание.",
+            show_alert=True,
+        )
+        return
     await callback.answer()
+
+
+@router.callback_query(F.data.startswith("op:remind:"))
+async def operator_remind(callback: CallbackQuery) -> None:
+    order_id = int(callback.data.split(":")[2])  # type: ignore[union-attr]
+    db = await _get_db()
+    async with db:
+        user, _ = await check_user(db, callback.from_user)
+        if not has_operator_access(user.role):
+            await callback.answer("Нет прав", show_alert=True)
+            return
+
+        order = await OrderRepository(db).get_one(order_id)
+        if order is None:
+            await callback.answer("Заявка не найдена", show_alert=True)
+            return
+        if int(order.status) != int(OrderStatus.PROCESSING):
+            await callback.answer(
+                "Напоминание доступно только для заявки в работе",
+                show_alert=True,
+            )
+            return
+        manager = await UserRepository(db).get_manager()
+        delivery = await send_customer_reminder(order, manager)
+
+    if delivery == DeliveryOutcome.FAILED:
+        await callback.answer(
+            "Не удалось отправить напоминание. Попробуйте ещё раз.",
+            show_alert=True,
+        )
+        return
+    await callback.answer("🔔 Напоминание отправлено клиенту", show_alert=False)
 
 
 @router.callback_query(F.data.startswith("op:cancel:"))

@@ -4,9 +4,11 @@
 from __future__ import annotations
 
 import logging
+import re
+from enum import StrEnum
 
 from aiogram.exceptions import TelegramBadRequest, TelegramForbiddenError
-from aiogram.types import InlineKeyboardMarkup
+from aiogram.types import InlineKeyboardMarkup, InputRichMessage
 
 from app.enums.country import Country
 from app.enums.order import MethodGet, OrderStatus
@@ -22,6 +24,116 @@ from app.telegram.keyboards import (
 logger = logging.getLogger(__name__)
 
 REVIEW_URL = "https://t.me/+Rw2BRymXRnk1ZGUy"
+_TELEGRAM_USERNAME_RE = re.compile(r"^[A-Za-z][A-Za-z0-9_]{4,31}$")
+
+
+class DeliveryOutcome(StrEnum):
+    """Результат доставки, который нужен manager callback-ам."""
+
+    RICH = "rich"
+    FALLBACK = "fallback"
+    FAILED = "failed"
+
+
+async def _send_rich_or_html(
+    *,
+    bot,
+    chat_id: int,
+    rich_html: str,
+    fallback_html: str,
+    reply_markup: InlineKeyboardMarkup,
+) -> DeliveryOutcome:
+    """Отправить Rich Message и один раз перейти на обычный HTML при отказе Bot API."""
+    try:
+        await bot.send_rich_message(
+            chat_id=chat_id,
+            rich_message=InputRichMessage(html=rich_html),
+            reply_markup=reply_markup,
+        )
+        return DeliveryOutcome.RICH
+    except TelegramBadRequest:
+        logger.info(
+            "Rich order message was rejected; using regular HTML fallback chat_id=%s",
+            chat_id,
+        )
+    except TelegramForbiddenError:
+        logger.warning("Order message skipped: chat is inaccessible chat_id=%s", chat_id)
+        return DeliveryOutcome.FAILED
+    except Exception:
+        logger.exception("Rich order message failed chat_id=%s", chat_id)
+        return DeliveryOutcome.FAILED
+
+    try:
+        await bot.send_message(chat_id=chat_id, text=fallback_html, reply_markup=reply_markup)
+        return DeliveryOutcome.FALLBACK
+    except TelegramForbiddenError:
+        logger.warning("Order HTML fallback skipped: chat is inaccessible chat_id=%s", chat_id)
+    except Exception:
+        logger.exception("Order HTML fallback failed chat_id=%s", chat_id)
+    return DeliveryOutcome.FAILED
+
+
+def build_manager_contact_url(manager) -> str | None:
+    """Вернуть ссылку, способную передать клиенту предварительно заполненный draft."""
+    username = getattr(manager, "username", None)
+    if not isinstance(username, str) or not _TELEGRAM_USERNAME_RE.fullmatch(username):
+        return None
+    return f"https://t.me/{username}"
+
+
+async def send_customer_handoff(order, manager) -> DeliveryOutcome:
+    """Отправить клиенту первичную инструкцию для единственного менеджера."""
+    bot = _get_telegram_bot()
+    user = getattr(order, "user", None)
+    manager_url = build_manager_contact_url(manager)
+    if bot is None or user is None or not getattr(user, "telegram_id", None) or not manager_url:
+        logger.warning(
+            "Customer handoff skipped order_id=%s public_number=%s reason=%s",
+            getattr(order, "id", None),
+            getattr(order, "publicNumber", None),
+            "manager_username_missing" if manager_url is None else "chat_or_bot_unavailable",
+        )
+        return DeliveryOutcome.FAILED
+
+    translate = get_user_translator(user)
+    draft = messages.customer_manager_draft(order.publicNumber, translator=translate)
+    markup = user_order_write_manager(translate, chat_url=manager_url, message_text=draft)
+    return await _send_rich_or_html(
+        bot=bot,
+        chat_id=user.telegram_id,
+        rich_html=messages.order_handoff_rich(order.publicNumber, translator=translate),
+        fallback_html=messages.order_handoff_html(order.publicNumber, translator=translate),
+        reply_markup=markup,
+    )
+
+
+async def send_customer_reminder(order, manager) -> DeliveryOutcome:
+    """Отправить новое напоминание по активной заявке через существующего бота."""
+    bot = _get_telegram_bot()
+    user = getattr(order, "user", None)
+    manager_url = build_manager_contact_url(manager)
+    if bot is None or user is None or not getattr(user, "telegram_id", None) or not manager_url:
+        logger.warning(
+            "Customer reminder skipped order_id=%s public_number=%s reason=%s",
+            getattr(order, "id", None),
+            getattr(order, "publicNumber", None),
+            "manager_username_missing" if manager_url is None else "chat_or_bot_unavailable",
+        )
+        return DeliveryOutcome.FAILED
+
+    translate = get_user_translator(user)
+    markup = user_order_write_manager(
+        translate,
+        chat_url=manager_url,
+        message_text=messages.customer_manager_draft(order.publicNumber, translator=translate),
+    )
+    return await _send_rich_or_html(
+        bot=bot,
+        chat_id=user.telegram_id,
+        rich_html=messages.order_reminder_rich(order.publicNumber, translator=translate),
+        fallback_html=messages.order_reminder_html(order.publicNumber, translator=translate),
+        reply_markup=markup,
+    )
 
 
 async def send_or_replace_user_status_message(
@@ -161,13 +273,7 @@ async def notify_order_status_changed(order, *, manager_chat_url: str | None = N
         reply_markup = user_order_write_manager(
             translate,
             chat_url=manager_chat_url,
-            message_text=messages.user_chat_open_text(
-                order_id=order.publicNumber,
-                amount_sell=getattr(order, "amountSell", 0) or 0,
-                currency_sell=getattr(order, "currencySell", "—"),
-                translator=None,
-                locale="ru",
-            ),
+            message_text=messages.customer_manager_draft(order.publicNumber, translator=translate),
         )
     if order.status == 3:
         reply_markup = review_link(translate, REVIEW_URL)
@@ -261,7 +367,7 @@ def build_manager_status_text(order) -> str:
                 "",
                 middle,
                 "",
-                "💬 Ожидает завершения обмена",
+                "💬 Клиенту отправлена просьба начать диалог. Ожидайте его сообщения.",
             ]
         )
 

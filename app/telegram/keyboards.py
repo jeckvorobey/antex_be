@@ -38,10 +38,14 @@ def _chat_url_with_draft(chat_url: str, message_text: str | None = None) -> str:
 
 
 def _chat_button(
-    translate, chat_url: str, *, message_text: str | None = None
+    translate,
+    chat_url: str,
+    *,
+    label_key: str,
+    message_text: str | None = None,
 ) -> InlineKeyboardButton:
     return InlineKeyboardButton(
-        text=translate("btn-open-chat"),
+        text=translate(label_key),
         url=_chat_url_with_draft(chat_url, message_text),
     )
 
@@ -525,6 +529,21 @@ def manager_order_close(
     return InlineKeyboardMarkup(
         inline_keyboard=[
             [
+                _chat_button(
+                    translate,
+                    chat_url,
+                    label_key="btn-open-client-chat",
+                    message_text=message_text,
+                ),
+            ],
+            [
+                InlineKeyboardButton(
+                    text=translate("btn-remind-client"),
+                    callback_data=f"op:remind:{order_id}",
+                    style="primary",
+                ),
+            ],
+            [
                 InlineKeyboardButton(
                     text=translate("btn-cancel-order"),
                     callback_data=f"op:cancel:{order_id}",
@@ -535,9 +554,6 @@ def manager_order_close(
                     callback_data=f"op:close:{order_id}",
                     style="success",
                 ),
-            ],
-            [
-                _chat_button(translate, chat_url, message_text=message_text),
             ],
         ]
     )
@@ -592,7 +608,12 @@ def manager_order_chat_only(
     return InlineKeyboardMarkup(
         inline_keyboard=[
             [
-                _chat_button(translate, chat_url, message_text=message_text),
+                _chat_button(
+                    translate,
+                    chat_url,
+                    label_key="btn-open-client-chat",
+                    message_text=message_text,
+                ),
             ]
         ]
     )
@@ -613,7 +634,12 @@ def user_order_write_manager(
     return InlineKeyboardMarkup(
         inline_keyboard=[
             [
-                _chat_button(translate, chat_url, message_text=message_text),
+                _chat_button(
+                    translate,
+                    chat_url,
+                    label_key="btn-write-manager",
+                    message_text=message_text,
+                ),
             ]
         ]
     )

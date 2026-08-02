@@ -472,11 +472,13 @@ async def test_manager_order_keyboards_use_new_callbacks() -> None:
     assert open_chat.inline_keyboard[0][1].callback_data == "op:take:17"
     assert open_chat.inline_keyboard[0][1].style == "success"
 
-    assert close_order.inline_keyboard[0][0].callback_data == "op:cancel:17"
-    assert close_order.inline_keyboard[0][0].style == "danger"
-    assert close_order.inline_keyboard[0][1].callback_data == "op:close:17"
-    assert close_order.inline_keyboard[0][1].style == "success"
-    assert close_order.inline_keyboard[1][0].url == "https://t.me/customer"
+    assert close_order.inline_keyboard[0][0].text == "💬 Открыть чат с клиентом"  # noqa: RUF001
+    assert close_order.inline_keyboard[0][0].url == "https://t.me/customer"
+    assert close_order.inline_keyboard[1][0].callback_data == "op:remind:17"
+    assert close_order.inline_keyboard[2][0].callback_data == "op:cancel:17"
+    assert close_order.inline_keyboard[2][0].style == "danger"
+    assert close_order.inline_keyboard[2][1].callback_data == "op:close:17"
+    assert close_order.inline_keyboard[2][1].style == "success"
     assert review.inline_keyboard[0][0].url == "https://example.com/review"
     assert review.inline_keyboard[0][0].style == "success"
     assert review.inline_keyboard[1][0].callback_data == "fsm:cancel"
@@ -502,7 +504,7 @@ async def test_chat_buttons_open_direct_chat_with_prepared_text() -> None:
         ),
     )
 
-    manager_url = manager_btn.inline_keyboard[1][0].url
+    manager_url = manager_btn.inline_keyboard[0][0].url
     user_url = user_btn.inline_keyboard[0][0].url
     assert manager_url is not None and user_url is not None
 

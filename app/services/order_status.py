@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+from dataclasses import dataclass
 from decimal import Decimal
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -12,8 +13,10 @@ from app.exceptions import AntExException
 from app.repositories.order import OrderRepository
 from app.repositories.user import UserRepository
 from app.services.order_notifications import (
+    DeliveryOutcome,
     build_chat_url_for_user,
     notify_order_status_changed,
+    send_customer_handoff,
 )
 from app.telegram import messages
 from app.telegram.i18n import get_user_translator
@@ -21,6 +24,12 @@ from app.telegram.i18n import get_user_translator
 logger = logging.getLogger(__name__)
 TOKEN_CURRENCY = "ATXG"
 _TOKEN_TERMINAL_STATUSES = frozenset({OrderStatus.COMPLETED, OrderStatus.CANCELLED})
+
+
+@dataclass(frozen=True)
+class OrderTakeResult:
+    order: object
+    delivery: DeliveryOutcome
 
 
 async def _notify_referral_reversal(
@@ -65,6 +74,7 @@ async def update_order_status(
     *,
     order_id: int,
     status: OrderStatus | int,
+    notify_user: bool = True,
 ) -> object:
     try:
         target_status = OrderStatus(int(status))
@@ -108,6 +118,7 @@ async def update_order_status(
                 order_amount=order_amount,
                 referred_user_id=hydrated.UserId,
                 currency_sell=str(hydrated.currencySell),
+                currency_buy=str(hydrated.currencyBuy),
             )
 
     if target_status == OrderStatus.CANCELLED and _is_aex_withdrawal_order(hydrated):
@@ -189,6 +200,9 @@ async def update_order_status(
                 order_id,
             )
 
+    if not notify_user:
+        return hydrated
+
     manager = await UserRepository(db).get_manager()
     manager_chat_url = build_chat_url_for_user(manager) if manager is not None else None
 
@@ -203,6 +217,29 @@ async def update_order_status(
         )
         await db.rollback()
     return hydrated
+
+
+async def take_order_in_work(db: AsyncSession, *, order_id: int) -> OrderTakeResult:
+    """Перевести заявку в работу и отдельно зафиксировать результат Telegram handoff."""
+    current = await OrderRepository(db).get_one(order_id)
+    if current is None:
+        raise AntExException("Order not found", code="ORDER_NOT_FOUND", status_code=404)
+    if int(current.status) != int(OrderStatus.CREATED):
+        raise AntExException(
+            "Order is no longer available for taking",
+            code="ORDER_STATUS_CONFLICT",
+            status_code=409,
+        )
+
+    order = await update_order_status(
+        db,
+        order_id=order_id,
+        status=OrderStatus.PROCESSING,
+        notify_user=False,
+    )
+    manager = await UserRepository(db).get_manager()
+    delivery = await send_customer_handoff(order, manager)
+    return OrderTakeResult(order=order, delivery=delivery)
 
 
 def _is_aex_withdrawal_order(order: object) -> bool:

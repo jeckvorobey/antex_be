@@ -9,10 +9,13 @@ from aiogram.exceptions import TelegramBadRequest
 
 from app.services import order_notifications
 from app.services.order_notifications import (
+    DeliveryOutcome,
     _build_manager_order_text,
+    build_manager_contact_url,
     build_manager_status_text,
     notify_order_created,
     notify_order_status_changed,
+    send_customer_handoff,
     send_or_replace_user_status_message,
 )
 from app.telegram.i18n import get_translator
@@ -23,7 +26,9 @@ class _FakeBot:
         self.deleted: list[tuple[int, int]] = []
         self.edited: list[dict[str, object]] = []
         self.sent: list[dict[str, object]] = []
+        self.rich_sent: list[dict[str, object]] = []
         self.edit_error: Exception | None = None
+        self.rich_error: Exception | None = None
 
     async def delete_message(self, chat_id: int, message_id: int) -> None:
         self.deleted.append((chat_id, message_id))
@@ -43,6 +48,14 @@ class _FakeBot:
     async def send_message(self, chat_id: int, text: str, reply_markup=None):
         self.sent.append({"chat_id": chat_id, "text": text, "reply_markup": reply_markup})
         return SimpleNamespace(message_id=88)
+
+    async def send_rich_message(self, chat_id: int, rich_message, reply_markup=None):
+        if self.rich_error is not None:
+            raise self.rich_error
+        self.rich_sent.append(
+            {"chat_id": chat_id, "rich_message": rich_message, "reply_markup": reply_markup}
+        )
+        return SimpleNamespace(message_id=89)
 
 
 @pytest.mark.asyncio
@@ -143,6 +156,57 @@ async def test_notify_order_created_sends_user_message_with_order_payload(
 
 
 @pytest.mark.asyncio
+async def test_customer_handoff_uses_rich_message_and_public_number(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    bot = _FakeBot()
+    order = SimpleNamespace(
+        id=8,
+        publicNumber="2026050008",
+        user=SimpleNamespace(telegram_id=700002, language_code="ru"),
+    )
+    manager = SimpleNamespace(username="manager")
+    monkeypatch.setattr(order_notifications, "_get_telegram_bot", lambda: bot)
+
+    delivery = await send_customer_handoff(order, manager)
+
+    assert delivery == DeliveryOutcome.RICH
+    assert bot.sent == []
+    assert bot.rich_sent[0]["rich_message"].html is not None
+    assert "Заявка #2026050008" in bot.rich_sent[0]["rich_message"].html
+    button = bot.rich_sent[0]["reply_markup"].inline_keyboard[0][0]
+    assert button.text == "💬 Написать менеджеру"
+    assert "text=" in button.url
+    assert "%232026050008" in button.url
+
+
+@pytest.mark.asyncio
+async def test_customer_handoff_falls_back_once_to_regular_html(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    bot = _FakeBot()
+    bot.rich_error = TelegramBadRequest(method="sendRichMessage", message="method not found")
+    order = SimpleNamespace(
+        id=8,
+        publicNumber="2026050008",
+        user=SimpleNamespace(telegram_id=700002, language_code="ru"),
+    )
+    manager = SimpleNamespace(username="manager")
+    monkeypatch.setattr(order_notifications, "_get_telegram_bot", lambda: bot)
+
+    delivery = await send_customer_handoff(order, manager)
+
+    assert delivery == DeliveryOutcome.FALLBACK
+    assert bot.rich_sent == []
+    assert len(bot.sent) == 1
+    assert "Текст появится в поле ввода" in bot.sent[0]["text"]
+
+
+def test_manager_contact_url_rejects_invalid_username() -> None:
+    assert build_manager_contact_url(SimpleNamespace(username="manager?start=evil")) is None
+
+
+@pytest.mark.asyncio
 async def test_notify_order_created_can_skip_duplicate_customer_message(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -197,7 +261,7 @@ def test_build_manager_status_text_uses_new_middle_format_for_processing() -> No
     assert "💰 Получаете: 77,250 🇹🇭 THB" in text
     assert "🧾 Способ получения: Наличные по QR" in text
     assert "👤 Пользователь: @sergeywebdev" in text
-    assert "💬 Ожидает завершения обмена" in text
+    assert "Клиенту отправлена просьба начать диалог" in text
 
 
 def test_build_manager_status_text_uses_shared_middle_format_for_completed() -> None:
@@ -321,9 +385,7 @@ async def test_notify_order_status_changed_adds_write_manager_button_for_process
     assert "принята в работу" in bot.edited[0]["text"]
     reply_markup = cast(Any, bot.edited[0]["reply_markup"])
     user_text = str(user_button["message_text"]).replace("\u2068", "").replace("\u2069", "")
-    assert user_text == (
-        "Здравствуйте! По заявке #2026050008 на сумму 5,000 RUB подтверждаю готовность к обмену."
-    )
+    assert user_text == "Здравствуйте! Я по заявке #2026050008. Готов продолжить обмен."
     assert reply_markup.inline_keyboard[0][0].text == "💬 Написать в чат"
     assert reply_markup.inline_keyboard[0][0].url == "https://t.me/share/url"
 
