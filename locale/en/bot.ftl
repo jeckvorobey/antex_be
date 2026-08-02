@@ -121,6 +121,7 @@ order-created-offline =
 
     <blockquote>A manager will process the order in the morning after the working day begins.</blockquote>
 order-creation-failed = Could not create the order right now. Please try again in a minute.
+order-created-notification-failed = Order #{ $id } was created, but the confirmation could not be sent. Open “My orders” to check its status.
 order-creation-limit-reached = You already have too many active orders. Please wait for the current ones to be processed.
 order-confirmed = ✅ Order #{ $id } is now being processed by the manager.
 customer-manager-draft = Hello! I’m contacting you about order #{ $id }. I’m ready to continue the exchange.

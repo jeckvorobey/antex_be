@@ -1,4 +1,3 @@
-# ruff: noqa: RUF002
 """Сервис создания предварительной заявки."""
 
 from __future__ import annotations
@@ -45,8 +44,9 @@ async def create_order_for_user(
     payload: MiniappOrderCreate,
     *,
     notify_user: bool = True,
+    defer_notifications: bool = False,
 ) -> object:
-    """Создаёт предварительную заявку с клиентским расчётом miniapp."""
+    """Создать заявку и при необходимости отложить Telegram-уведомления вызывающему flow."""
     order_repo = OrderRepository(db)
     logger.info(
         "Order creation requested: user_id=%s telegram_id=%s country=%s method=%s "
@@ -144,6 +144,9 @@ async def create_order_for_user(
         getattr(user, "id", None),
         getattr(order, "status", None),
     )
+
+    if defer_notifications:
+        return hydrated
 
     notification_message_id_before = getattr(hydrated, "userNotificationMessageId", None)
     try:

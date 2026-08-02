@@ -55,7 +55,7 @@ async def _send_rich_or_html(
                 reply_markup=reply_markup,
             )
             return DeliveryOutcome.RICH, existing_message_id
-        except TelegramBadRequest:
+        except (TelegramBadRequest, TelegramNotFound):
             logger.info(
                 "Rich order edit was rejected; using regular HTML fallback chat_id=%s",
                 chat_id,
@@ -75,7 +75,7 @@ async def _send_rich_or_html(
                 reply_markup=reply_markup,
             )
             return DeliveryOutcome.FALLBACK, existing_message_id
-        except TelegramBadRequest:
+        except (TelegramBadRequest, TelegramNotFound):
             logger.info(
                 "Order status message is no longer editable; sending one replacement chat_id=%s",
                 chat_id,
@@ -228,7 +228,7 @@ async def edit_manager_order_card(
             reply_markup=reply_markup,
         )
         return DeliveryOutcome.RICH
-    except TelegramBadRequest:
+    except (TelegramBadRequest, TelegramNotFound):
         logger.info(
             "Rich manager card edit was rejected; using regular HTML fallback order_id=%s",
             getattr(order, "id", None),

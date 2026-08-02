@@ -20,6 +20,7 @@ from app.models.city import City
 from app.repositories.city import CityRepository
 from app.repositories.config import ConfigRepository
 from app.repositories.order import OrderRepository
+from app.repositories.user import UserRepository
 from app.schemas.miniapp import MiniappOrderCreate
 from app.services.exchange import (
     CANONICAL_SELL_CURRENCIES,
@@ -29,6 +30,7 @@ from app.services.exchange import (
     ExchangeService,
 )
 from app.services.manager_working_hours import ManagerWorkingHoursService
+from app.services.notifications import notify_order_created
 from app.services.order_flow import create_order_for_user, get_min_amount
 from app.telegram import messages
 from app.telegram.i18n import get_user_translator
@@ -101,6 +103,12 @@ async def _safe_delete_message(message) -> None:
     except TelegramBadRequest as exc:
         if "message to delete not found" not in str(exc).lower():
             raise
+
+
+async def _notify_manager_order_created(db, order, user) -> None:
+    """Уведомить единственного менеджера после сохранения исходной карточки клиента."""
+    manager = await UserRepository(db).get_manager()
+    await notify_order_created(order, user, manager, notify_user=False)
 
 
 async def _safe_delete_chat_message(bot, chat_id: int, message_id: int) -> None:
@@ -735,19 +743,54 @@ async def confirm_exchange_callback(callback: CallbackQuery, state: FSMContext) 
                     methodGet=data["method"],
                 ),
                 notify_user=False,
+                defer_notifications=True,
             )
             availability = getattr(created_order, "manager_availability", None)
-            initial_message = await callback.message.answer(
-                messages.order_created(
+            try:
+                initial_message = await callback.message.answer(
+                    messages.order_created(
+                        created_order.publicNumber,
+                        translator=translate,
+                        managers_offline=getattr(availability, "status", None) == "offline",
+                    ),
+                    reply_markup=order_created_actions(translate),
+                )
+            except Exception:
+                logger.exception(
+                    "Order created but initial customer card failed: order_id=%s public_number=%s",
+                    created_order.id,
                     created_order.publicNumber,
-                    translator=translate,
-                    managers_offline=getattr(availability, "status", None) == "offline",
-                ),
-                reply_markup=order_created_actions(translate),
-            )
+                )
+                await state.clear()
+                await state.set_state(ExchangeState.choosing_country)
+                await _safe_delete_message(callback.message)
+                await callback.answer(
+                    translate("order-created-notification-failed", id=created_order.publicNumber),
+                    show_alert=True,
+                )
+                return
             # При принятии заявки бот редактирует эту карточку вместо отправки дубликата.
             created_order.userNotificationMessageId = initial_message.message_id
-            await db.commit()
+            try:
+                await db.commit()
+            except SQLAlchemyError:
+                await db.rollback()
+                logger.exception(
+                    "Order created but customer card id was not persisted: order_id=%s "
+                    "public_number=%s",
+                    created_order.id,
+                    created_order.publicNumber,
+                )
+            else:
+                try:
+                    await _notify_manager_order_created(db, created_order, user)
+                except Exception:
+                    logger.exception(
+                        "Failed to send deferred manager notification: order_id=%s "
+                        "public_number=%s",
+                        created_order.id,
+                        created_order.publicNumber,
+                    )
     except AntExException as exc:
         await callback.answer(
             messages.order_creation_failed(

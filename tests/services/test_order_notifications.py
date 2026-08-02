@@ -213,6 +213,30 @@ async def test_manager_order_card_edit_falls_back_once_to_regular_html() -> None
 
 
 @pytest.mark.asyncio
+async def test_manager_order_card_edit_falls_back_when_rich_edit_is_not_found() -> None:
+    message = _FakeEditableMessage()
+    message.rich_error = TelegramNotFound(
+        method="editMessageText",
+        message="rich edit method not found",
+    )
+    order = SimpleNamespace(
+        publicNumber="2026050008",
+        status=2,
+        user=SimpleNamespace(username="customer"),
+    )
+
+    delivery = await edit_manager_order_card(
+        message=message,
+        order=order,
+        reply_markup=SimpleNamespace(),
+    )
+
+    assert delivery == DeliveryOutcome.FALLBACK
+    assert len(message.edits) == 1
+    assert message.edits[0]["rich_message"] is None
+
+
+@pytest.mark.asyncio
 async def test_customer_handoff_uses_rich_message_and_public_number(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -365,6 +389,31 @@ async def test_customer_handoff_falls_back_to_regular_edit_without_duplicate(
     assert "Напишите менеджеру первым" in bot.edited[0]["text"]
     assert bot.sent == []
     assert bot.rich_sent == []
+
+
+@pytest.mark.asyncio
+async def test_customer_handoff_falls_back_when_rich_edit_is_not_found(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    bot = _FakeBot()
+    bot.rich_edit_error = TelegramNotFound(
+        method="editMessageText",
+        message="rich edit method not found",
+    )
+    order = SimpleNamespace(
+        id=8,
+        publicNumber="2026050008",
+        user=SimpleNamespace(telegram_id=700002, language_code="ru"),
+        userNotificationMessageId=55,
+    )
+    monkeypatch.setattr(order_notifications, "_get_telegram_bot", lambda: bot)
+
+    delivery = await send_customer_handoff(order, SimpleNamespace(username="manager"))
+
+    assert delivery == DeliveryOutcome.FALLBACK
+    assert len(bot.edited) == 1
+    assert bot.edited[0]["rich_message"] is None
+    assert bot.sent == []
 
 
 def test_manager_contact_url_rejects_invalid_username() -> None:
