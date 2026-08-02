@@ -5,7 +5,7 @@ from types import SimpleNamespace
 from typing import Any, cast
 
 import pytest
-from aiogram.exceptions import TelegramBadRequest, TelegramForbiddenError
+from aiogram.exceptions import TelegramBadRequest, TelegramForbiddenError, TelegramNotFound
 
 from app.services import order_notifications
 from app.services.order_notifications import (
@@ -267,6 +267,26 @@ async def test_customer_handoff_falls_back_once_to_regular_html(
     assert len(bot.sent) == 1
     assert "Напишите менеджеру первым" in bot.sent[0]["text"]
     assert "поле ввода" not in bot.sent[0]["text"]
+
+
+@pytest.mark.asyncio
+async def test_customer_handoff_falls_back_when_rich_method_is_not_found(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    bot = _FakeBot()
+    bot.rich_error = TelegramNotFound(method="sendRichMessage", message="method not found")
+    order = SimpleNamespace(
+        id=8,
+        publicNumber="2026050008",
+        user=SimpleNamespace(telegram_id=700002, language_code="ru"),
+    )
+    monkeypatch.setattr(order_notifications, "_get_telegram_bot", lambda: bot)
+
+    delivery = await send_customer_handoff(order, SimpleNamespace(username="manager"))
+
+    assert delivery == DeliveryOutcome.FALLBACK
+    assert bot.rich_sent == []
+    assert len(bot.sent) == 1
 
 
 @pytest.mark.asyncio

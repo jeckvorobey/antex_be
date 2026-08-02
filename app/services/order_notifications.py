@@ -7,7 +7,7 @@ import re
 from dataclasses import replace
 from enum import StrEnum
 
-from aiogram.exceptions import TelegramBadRequest, TelegramForbiddenError
+from aiogram.exceptions import TelegramBadRequest, TelegramForbiddenError, TelegramNotFound
 from aiogram.types import InlineKeyboardMarkup, InputRichMessage
 
 from app.enums.country import Country
@@ -107,7 +107,7 @@ async def _send_rich_or_html(
             reply_markup=reply_markup,
         )
         return DeliveryOutcome.RICH, sent.message_id
-    except TelegramBadRequest:
+    except (TelegramBadRequest, TelegramNotFound):
         logger.info(
             "Rich order message was rejected; using regular HTML fallback chat_id=%s",
             chat_id,

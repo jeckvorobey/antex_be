@@ -668,6 +668,7 @@ async def choose_method(callback: CallbackQuery, state: FSMContext) -> None:
 
 @router.callback_query(F.data == "exchange:confirm", ExchangeState.confirming)
 async def confirm_exchange_callback(callback: CallbackQuery, state: FSMContext) -> None:
+    """Создать заявку и сохранить идентификатор её исходной клиентской карточки."""
     translate = get_user_translator(callback.from_user)
     data = await state.get_data()
     quote = data.get("quote")
@@ -735,6 +736,18 @@ async def confirm_exchange_callback(callback: CallbackQuery, state: FSMContext) 
                 ),
                 notify_user=False,
             )
+            availability = getattr(created_order, "manager_availability", None)
+            initial_message = await callback.message.answer(
+                messages.order_created(
+                    created_order.publicNumber,
+                    translator=translate,
+                    managers_offline=getattr(availability, "status", None) == "offline",
+                ),
+                reply_markup=order_created_actions(translate),
+            )
+            # При принятии заявки бот редактирует эту карточку вместо отправки дубликата.
+            created_order.userNotificationMessageId = initial_message.message_id
+            await db.commit()
     except AntExException as exc:
         await callback.answer(
             messages.order_creation_failed(
@@ -752,15 +765,6 @@ async def confirm_exchange_callback(callback: CallbackQuery, state: FSMContext) 
         )
         return
 
-    availability = getattr(created_order, "manager_availability", None)
-    await callback.message.answer(
-        messages.order_created(
-            created_order.publicNumber,
-            translator=translate,
-            managers_offline=getattr(availability, "status", None) == "offline",
-        ),
-        reply_markup=order_created_actions(translate),
-    )
     await state.clear()
     await state.set_state(ExchangeState.choosing_country)
     await _safe_delete_message(callback.message)

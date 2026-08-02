@@ -59,8 +59,9 @@ class _FakeMessage:
                 ),
             )
 
-    async def answer(self, text: str, reply_markup=None) -> None:
+    async def answer(self, text: str, reply_markup=None):
         self.answers.append({"text": text, "reply_markup": reply_markup})
+        return SimpleNamespace(message_id=self.message_id + len(self.answers))
 
     async def delete(self) -> None:
         self.deletes.append({"message_id": self.message_id})
@@ -948,7 +949,8 @@ async def test_confirm_exchange_creates_order_with_default_qrcode(monkeypatch) -
     await exchange_handler.confirm_exchange_callback(callback, state)
 
     assert state.cleared is True
-    assert fake_db.committed is False
+    assert fake_db.committed is True
+    assert created_order.userNotificationMessageId == callback.message.message_id + 1
     assert len(callback.message.edits) == 0
     assert callback.message.deletes == [{"message_id": callback.message.message_id}]
     assert len(callback.message.answers) == 1
