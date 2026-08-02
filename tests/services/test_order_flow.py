@@ -20,6 +20,7 @@ from app.models.user import User
 from app.repositories.config import ConfigRepository
 from app.schemas.miniapp import MiniappOrderCreate
 from app.services import order_flow
+from app.services.order_notifications import DeliveryOutcome
 
 
 @pytest.mark.asyncio
@@ -68,6 +69,53 @@ async def test_create_order_for_user_passes_global_manager_to_notification(
     _, _, notified_manager = notify_mock.await_args.args
     assert notified_manager is not None
     assert notified_manager.id == manager.id
+
+
+@pytest.mark.asyncio
+async def test_create_order_persists_customer_notification_message_id(
+    db_session: AsyncSession,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    city = City(name="Bangkok", country=Country.THAILAND)
+    manager = User(
+        telegram_id=700001,
+        username="manager",
+        first_name="Order",
+        role=int(UserRole.MANAGER),
+    )
+    customer = User(telegram_id=700002, username="customer", first_name="Happy")
+    rate = Rate(currency="RUBTHB", price=0.41, margin=3.0, country=Country.THAILAND)
+    db_session.add_all([city, manager, customer, rate])
+    await db_session.flush()
+    customer.city_id = city.id
+    await db_session.commit()
+
+    async def notify(order, user, assigned_manager, *, notify_user=True):
+        assert user is customer
+        assert assigned_manager is manager
+        assert notify_user is True
+        order.userNotificationMessageId = 89
+        return DeliveryOutcome.RICH
+
+    monkeypatch.setattr(order_flow, "notify_order_created", notify)
+    payload = MiniappOrderCreate(
+        country=Country.THAILAND,
+        cityId=city.id,
+        currencySell="RUB",
+        amountSell=30000,
+        currencyBuy="THB",
+        amountBuy=12000,
+        rate=0.4,
+        methodGet="cash",
+    )
+
+    created = await order_flow.create_order_for_user(db_session, customer, payload)
+    order_id = created.id
+    await db_session.rollback()
+    stored = await db_session.get(Order, order_id)
+
+    assert stored is not None
+    assert stored.userNotificationMessageId == 89
 
 
 @pytest.mark.asyncio

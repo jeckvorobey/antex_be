@@ -409,6 +409,30 @@ async def test_notify_order_created_can_skip_duplicate_customer_message(
     assert [message["chat_id"] for message in bot.rich_sent] == [700001]
 
 
+@pytest.mark.asyncio
+async def test_notify_order_created_reports_failed_manager_delivery(
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    bot = _FakeBot()
+    bot.rich_error = TelegramForbiddenError(method="sendRichMessage", message="bot blocked")
+    order = SimpleNamespace(
+        id=9,
+        publicNumber="2026050009",
+        status=1,
+        user=SimpleNamespace(username="customer"),
+    )
+    user = SimpleNamespace(telegram_id=700002, username="customer", phone=None)
+    manager = SimpleNamespace(id=7, telegram_id=700001)
+    monkeypatch.setattr(order_notifications, "_get_telegram_bot", lambda: bot)
+
+    delivery = await notify_order_created(order, user, manager, notify_user=False)
+
+    assert delivery == DeliveryOutcome.FAILED
+    assert "Order notification sent to manager" not in caplog.text
+    assert "Order notification delivery to manager failed" in caplog.text
+
+
 def test_build_manager_status_text_uses_new_middle_format_for_processing() -> None:
     order = SimpleNamespace(
         publicNumber="2026050020",

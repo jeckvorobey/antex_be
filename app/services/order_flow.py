@@ -22,6 +22,7 @@ from app.services.aex import AexService
 from app.services.exchange import CANONICAL_BUY_CURRENCIES, ExchangeService, get_client_rate
 from app.services.manager_working_hours import ManagerWorkingHoursService
 from app.services.notifications import notify_order_created
+from app.services.order_notifications import DeliveryOutcome
 from app.services.order_numbers import OrderNumberService
 
 logger = logging.getLogger(__name__)
@@ -144,6 +145,7 @@ async def create_order_for_user(
         getattr(order, "status", None),
     )
 
+    notification_message_id_before = getattr(hydrated, "userNotificationMessageId", None)
     try:
         logger.info(
             "Order notification attempt: order_id=%s public_number=%s manager_user_id=%s "
@@ -153,12 +155,20 @@ async def create_order_for_user(
             getattr(manager, "id", None),
             getattr(manager, "telegram_id", None),
         )
-        await notify_order_created(hydrated, user, manager, notify_user=notify_user)
-        logger.info(
-            "Order notification completed: order_id=%s public_number=%s",
-            order.id,
-            getattr(order, "publicNumber", None),
-        )
+        delivery = await notify_order_created(hydrated, user, manager, notify_user=notify_user)
+        if delivery == DeliveryOutcome.FAILED:
+            logger.warning(
+                "Order notification completed with manager delivery failure: "
+                "order_id=%s public_number=%s",
+                order.id,
+                getattr(order, "publicNumber", None),
+            )
+        else:
+            logger.info(
+                "Order notification completed: order_id=%s public_number=%s",
+                order.id,
+                getattr(order, "publicNumber", None),
+            )
     except Exception:
         logger.exception(
             "Failed to send order created notifications: order_id=%s public_number=%s "
@@ -168,6 +178,18 @@ async def create_order_for_user(
             getattr(manager, "id", None),
             getattr(manager, "telegram_id", None),
         )
+    finally:
+        notification_message_id = getattr(hydrated, "userNotificationMessageId", None)
+        if notification_message_id != notification_message_id_before:
+            try:
+                await db.commit()
+            except Exception:
+                await db.rollback()
+                logger.exception(
+                    "Failed to persist order notification message: order_id=%s public_number=%s",
+                    order.id,
+                    getattr(order, "publicNumber", None),
+                )
 
     return hydrated
 

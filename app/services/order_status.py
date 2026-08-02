@@ -238,7 +238,14 @@ async def take_order_in_work(db: AsyncSession, *, order_id: int) -> OrderTakeRes
         notify_user=False,
     )
     manager = await UserRepository(db).get_manager()
+    notification_message_id_before = getattr(order, "userNotificationMessageId", None)
     delivery = await send_customer_handoff(order, manager)
+    notification_message_id = getattr(order, "userNotificationMessageId", None)
+    if (
+        delivery != DeliveryOutcome.FAILED
+        and notification_message_id != notification_message_id_before
+    ):
+        await db.commit()
     return OrderTakeResult(order=order, delivery=delivery)
 
 

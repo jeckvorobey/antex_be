@@ -67,6 +67,50 @@ async def test_take_order_in_work_uses_single_manager_and_reports_delivery(
 
 
 @pytest.mark.asyncio
+async def test_take_order_in_work_persists_replacement_message_id(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    current_order = SimpleNamespace(id=5, status=int(OrderStatus.CREATED))
+    hydrated_order = SimpleNamespace(
+        id=5,
+        status=int(OrderStatus.PROCESSING),
+        userNotificationMessageId=None,
+    )
+    manager = SimpleNamespace(id=7, username="manager")
+    commit = AsyncMock()
+    db = SimpleNamespace(commit=commit)
+
+    class _FakeOrderRepository:
+        def __init__(self, db) -> None:
+            self.db = db
+
+        async def get_one(self, order_id: int):
+            assert order_id == 5
+            return current_order
+
+    class _FakeUserRepository:
+        def __init__(self, db) -> None:
+            self.db = db
+
+        async def get_manager(self):
+            return manager
+
+    async def handoff(order, assigned_manager):
+        assert assigned_manager is manager
+        order.userNotificationMessageId = 89
+        return order_status.DeliveryOutcome.RICH
+
+    monkeypatch.setattr(order_status, "OrderRepository", _FakeOrderRepository)
+    monkeypatch.setattr(order_status, "UserRepository", _FakeUserRepository)
+    monkeypatch.setattr(order_status, "update_order_status", AsyncMock(return_value=hydrated_order))
+    monkeypatch.setattr(order_status, "send_customer_handoff", handoff)
+
+    await order_status.take_order_in_work(db, order_id=5)
+
+    commit.assert_awaited_once()
+
+
+@pytest.mark.asyncio
 async def test_update_order_status_persists_and_notifies(monkeypatch) -> None:
     initial_order = SimpleNamespace(id=5, status=int(OrderStatus.CREATED))
     updated_order = SimpleNamespace(id=5, status=int(OrderStatus.PROCESSING))

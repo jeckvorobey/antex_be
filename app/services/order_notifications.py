@@ -287,7 +287,13 @@ async def send_or_replace_user_status_message(
     return sent.message_id
 
 
-async def notify_order_created(order, user, manager, *, notify_user: bool = True) -> None:
+async def notify_order_created(
+    order,
+    user,
+    manager,
+    *,
+    notify_user: bool = True,
+) -> DeliveryOutcome:
     bot = _get_telegram_bot()
     if bot is None:
         logger.warning(
@@ -295,7 +301,7 @@ async def notify_order_created(order, user, manager, *, notify_user: bool = True
             getattr(order, "id", None),
             getattr(order, "publicNumber", None),
         )
-        return
+        return DeliveryOutcome.FAILED
 
     if notify_user and getattr(user, "telegram_id", None):
         logger.info(
@@ -347,7 +353,7 @@ async def notify_order_created(order, user, manager, *, notify_user: bool = True
         view = OrderMessageView.from_order(order)
         if view.customer_username is None:
             view = replace(view, customer_username=getattr(user, "username", None))
-        await _send_rich_or_html(
+        delivery, _ = await _send_rich_or_html(
             bot=bot,
             chat_id=manager.telegram_id,
             rich_html=messages.manager_order_card_rich(
@@ -362,6 +368,16 @@ async def notify_order_created(order, user, manager, *, notify_user: bool = True
             ),
             reply_markup=manager_order_open_chat(translate, order_id=order.id),
         )
+        if delivery == DeliveryOutcome.FAILED:
+            logger.warning(
+                "Order notification delivery to manager failed: order_id=%s "
+                "public_number=%s manager_user_id=%s manager_telegram_id=%s",
+                getattr(order, "id", None),
+                getattr(order, "publicNumber", None),
+                getattr(manager, "id", None),
+                getattr(manager, "telegram_id", None),
+            )
+            return delivery
         logger.info(
             "Order notification sent to manager: order_id=%s public_number=%s "
             "manager_user_id=%s manager_telegram_id=%s",
@@ -370,6 +386,7 @@ async def notify_order_created(order, user, manager, *, notify_user: bool = True
             getattr(manager, "id", None),
             getattr(manager, "telegram_id", None),
         )
+        return delivery
     else:
         logger.warning(
             "Order manager notification skipped: manager chat is unavailable order_id=%s "
@@ -378,6 +395,7 @@ async def notify_order_created(order, user, manager, *, notify_user: bool = True
             getattr(order, "publicNumber", None),
             getattr(manager, "id", None),
         )
+        return DeliveryOutcome.FAILED
 
 
 async def notify_order_status_changed(order, *, manager_chat_url: str | None = None) -> None:
