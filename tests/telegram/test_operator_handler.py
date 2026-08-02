@@ -9,6 +9,8 @@ from aiogram.types import User as TgUser
 os.environ.setdefault("DATABASE_URL", "sqlite+aiosqlite:///:memory:")
 
 from app.enums.order import OrderStatus
+from app.services.order_notifications import DeliveryOutcome
+from app.services.order_status import OrderTakeResult
 from app.telegram.handlers import operator as operator_handler
 
 
@@ -73,14 +75,22 @@ async def test_operator_take_moves_order_to_processing(monkeypatch) -> None:
     async def _fake_check_user(db, tg_user):
         return SimpleNamespace(role=2), False
 
-    async def _fake_update_order_status(db, *, order_id: int, status):
+    class _FakeOrderRepository:
+        def __init__(self, session) -> None:
+            self.session = session
+
+        async def get_one(self, order_id: int):
+            assert order_id == 5
+            return SimpleNamespace(status=int(OrderStatus.CREATED))
+
+    async def _fake_take_order_in_work(db, *, order_id: int):
         assert order_id == 5
-        assert status == OrderStatus.PROCESSING
-        return updated_order
+        return OrderTakeResult(order=updated_order, delivery=DeliveryOutcome.RICH)
 
     monkeypatch.setattr(operator_handler, "_get_db", _fake_get_db)
     monkeypatch.setattr(operator_handler, "check_user", _fake_check_user)
-    monkeypatch.setattr(operator_handler, "update_order_status", _fake_update_order_status)
+    monkeypatch.setattr(operator_handler, "OrderRepository", _FakeOrderRepository)
+    monkeypatch.setattr(operator_handler, "take_order_in_work", _fake_take_order_in_work)
 
     await operator_handler.operator_take(callback)
 
@@ -90,19 +100,19 @@ async def test_operator_take_moves_order_to_processing(monkeypatch) -> None:
         "url": None,
     }
     assert (
-        callback.message.edits[0]["reply_markup"].inline_keyboard[0][0].callback_data
+        callback.message.edits[0]["reply_markup"].inline_keyboard[2][0].callback_data
         == "op:cancel:5"
     )
     assert (
-        callback.message.edits[0]["reply_markup"].inline_keyboard[0][1].callback_data
+        callback.message.edits[0]["reply_markup"].inline_keyboard[2][1].callback_data
         == "op:close:5"
     )
-    chat_url = callback.message.edits[0]["reply_markup"].inline_keyboard[1][0].url
+    chat_url = callback.message.edits[0]["reply_markup"].inline_keyboard[0][0].url
     assert chat_url is not None
     assert chat_url.startswith("https://t.me/customer?text=")
     assert "🟢 Заявка #2026050001" in callback.message.edits[0]["text"]
     assert "⏳ Статус: В работе" in callback.message.edits[0]["text"]
-    assert "💬 Ожидает завершения обмена" in callback.message.edits[0]["text"]
+    assert "Клиенту отправлена просьба начать диалог" in callback.message.edits[0]["text"]
 
 
 async def test_operator_open_chat_handler_is_no_longer_used(monkeypatch) -> None:
@@ -228,9 +238,9 @@ async def test_operator_cancel_keep_restores_processing_keyboard(monkeypatch) ->
 
     assert callback.answers[-1] == {"text": None, "show_alert": False, "url": None}
     markup = callback.message.edits[0]["reply_markup"]
-    assert markup.inline_keyboard[0][0].callback_data == "op:cancel:9"
-    assert markup.inline_keyboard[0][1].callback_data == "op:close:9"
-    chat_url = markup.inline_keyboard[1][0].url
+    assert markup.inline_keyboard[2][0].callback_data == "op:cancel:9"
+    assert markup.inline_keyboard[2][1].callback_data == "op:close:9"
+    chat_url = markup.inline_keyboard[0][0].url
     assert chat_url is not None
     assert chat_url.startswith("https://t.me/customer?text=")
 

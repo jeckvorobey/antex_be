@@ -6,6 +6,7 @@ from __future__ import annotations
 from collections.abc import Callable
 from datetime import UTC, datetime
 from decimal import Decimal
+from html import escape
 from typing import Any, cast
 
 from app.enums.order import MethodGet, OrderStatus
@@ -390,6 +391,74 @@ def user_chat_open_text(
         amount=_format_number(amount_sell),
         currency=currency_sell,
     )
+
+
+def customer_manager_draft(
+    order_id: int | str,
+    *,
+    translator: Translate | None = None,
+    locale: str | None = None,
+) -> str:
+    """Подготовленный клиенту текст для первого сообщения менеджеру."""
+    return _strip_fluent_isolates(
+        _resolve_translator(translator, locale)("customer-manager-draft", id=order_id)
+    )
+
+
+def order_handoff_rich(
+    order_id: int | str,
+    *,
+    translator: Translate | None = None,
+    locale: str | None = None,
+) -> str:
+    """Rich HTML-инструкция клиенту после принятия заявки."""
+    translate = _resolve_translator(translator, locale)
+    return _strip_fluent_isolates(
+        translate(
+            "order-handoff-rich",
+            id=escape(str(order_id)),
+            draft=escape(customer_manager_draft(order_id, translator=translate)),
+        )
+    )
+
+
+def order_handoff_html(
+    order_id: int | str,
+    *,
+    translator: Translate | None = None,
+    locale: str | None = None,
+) -> str:
+    """Обычный HTML fallback для инструкции клиенту."""
+    translate = _resolve_translator(translator, locale)
+    return _strip_fluent_isolates(
+        translate(
+            "order-handoff-html",
+            id=escape(str(order_id)),
+            draft=escape(customer_manager_draft(order_id, translator=translate)),
+        )
+    )
+
+
+def order_reminder_rich(
+    order_id: int | str,
+    *,
+    translator: Translate | None = None,
+    locale: str | None = None,
+) -> str:
+    """Короткое Rich-напоминание клиенту без ложной срочности."""
+    translate = _resolve_translator(translator, locale)
+    return _strip_fluent_isolates(translate("order-reminder-rich", id=escape(str(order_id))))
+
+
+def order_reminder_html(
+    order_id: int | str,
+    *,
+    translator: Translate | None = None,
+    locale: str | None = None,
+) -> str:
+    """Обычный HTML fallback напоминания."""
+    translate = _resolve_translator(translator, locale)
+    return _strip_fluent_isolates(translate("order-reminder-html", id=escape(str(order_id))))
 
 
 def exchange_rate(sell_rate: float, buy_rate: float) -> str:

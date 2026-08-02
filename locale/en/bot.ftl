@@ -123,6 +123,41 @@ order-created-offline =
 order-creation-failed = Could not create the order right now. Please try again in a minute.
 order-creation-limit-reached = You already have too many active orders. Please wait for the current ones to be processed.
 order-confirmed = ✅ Order #{ $id } is now being processed by the manager.
+customer-manager-draft = Hello! I’m contacting you about order #{ $id }. I’m ready to continue the exchange.
+order-handoff-rich =
+    <h2>✅ Order #{ $id } is being processed</h2>
+    <p>The manager is ready to continue and confirm the details with you.</p>
+    <hr/>
+    <h3>What to do next</h3>
+    <ol>
+      <li><b>Open the chat.</b> Tap “Message the manager”.</li>
+      <li><b>Send the message.</b> Review the prepared text and tap Send.</li>
+    </ol>
+    <aside><b>Important.</b> The text is placed in the input field but is not sent automatically.</aside>
+    <details><summary>Prepared text</summary><p>{ $draft }</p></details>
+order-handoff-html =
+    <b>✅ Order #{ $id } is being processed</b>
+
+    The manager is ready to continue and confirm the details with you.
+
+    <b>What to do next</b>
+    1. Tap “Message the manager”.
+    2. Review the prepared text and tap Send.
+
+    <blockquote><b>Important.</b> The text is placed in the input field but is not sent automatically.</blockquote>
+
+    <b>Prepared text:</b>
+    { $draft }
+order-reminder-rich =
+    <h2>🔔 The manager is waiting for your message about order #{ $id }</h2>
+    <p>Tap “Message the manager”, review the prepared text and send it.</p>
+    <aside><b>Important.</b> The text is not sent automatically.</aside>
+order-reminder-html =
+    <b>🔔 The manager is waiting for your message about order #{ $id }</b>
+
+    Tap “Message the manager”, review the prepared text and send it.
+
+    <blockquote><b>Important.</b> The text is not sent automatically.</blockquote>
 order-completed = ✅ Order #{ $id } completed.
 
     Direction: { $direction }
@@ -136,6 +171,9 @@ order-completed-bottom = Thanks for using our service! If you have a minute, we�
 order-cancelled = ❌ Order #{ $id } cancelled.
 manager-chat-open-text = Hello! You had left order #{ $id } for exchanging { $amount } { $currency }. Are you ready to continue?
 user-chat-open-text = Hello! For order #{ $id } in the amount of { $amount } { $currency }, I confirm I’m ready to exchange.
+btn-write-manager = 💬 Message the manager
+btn-open-client-chat = 💬 Open chat with client
+btn-remind-client = 🔔 Remind client
 referral-bonus-credited =
     🎁 Referral program reward: +{ $amount } ATXG
     For completed order #{ $order_id }.
