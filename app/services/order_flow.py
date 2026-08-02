@@ -137,6 +137,9 @@ async def create_order_for_user(
         hydrated.manager_availability = ManagerWorkingHoursService().get_availability(
             await ConfigRepository(db).get_or_create()
         )
+    saved_order_id = order.id
+    saved_public_number = order.publicNumber
+    manager_availability = getattr(hydrated, "manager_availability", None)
     logger.info(
         "Order saved: order_id=%s public_number=%s user_id=%s status=%s",
         order.id,
@@ -190,9 +193,13 @@ async def create_order_for_user(
                 await db.rollback()
                 logger.exception(
                     "Failed to persist order notification message: order_id=%s public_number=%s",
-                    order.id,
-                    getattr(order, "publicNumber", None),
+                    saved_order_id,
+                    saved_public_number,
                 )
+                reloaded = await order_repo.get_one(saved_order_id)
+                if reloaded is not None:
+                    reloaded.manager_availability = manager_availability
+                    hydrated = reloaded
 
     return hydrated
 

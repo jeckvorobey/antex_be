@@ -46,6 +46,7 @@ from app.telegram.keyboards import (
     order_created_actions,
     orders_pagination,
 )
+from app.telegram.order_cards import OrderMessageView
 from app.telegram.services.user_service import check_user
 
 logger = logging.getLogger(__name__)
@@ -126,8 +127,33 @@ async def _safe_notify_manager_order_created(db, order, user) -> None:
 
 def _detached_order_snapshot(order):
     """Snapshot loaded order fields before rolling back the secondary card update."""
+    view = OrderMessageView.from_order(order)
     return SimpleNamespace(
-        **{name: value for name, value in vars(order).items() if not name.startswith("_")}
+        id=getattr(order, "id", None),
+        publicNumber=view.public_number,
+        amountSell=view.amount_sell,
+        currencySell=view.currency_sell,
+        amountBuy=view.amount_buy,
+        currencyBuy=view.currency_buy,
+        rate=view.rate,
+        methodGet=view.method,
+        country=view.country,
+        city=SimpleNamespace(name=view.city) if view.city is not None else None,
+        user=(
+            SimpleNamespace(username=view.customer_username)
+            if view.customer_username is not None
+            else None
+        ),
+    )
+
+
+def _detached_user_snapshot(user):
+    """Snapshot user fields required by a manager notification after rollback."""
+    return SimpleNamespace(
+        id=getattr(user, "id", None),
+        telegram_id=getattr(user, "telegram_id", None),
+        username=getattr(user, "username", None),
+        language_code=getattr(user, "language_code", None),
     )
 
 
@@ -767,6 +793,7 @@ async def confirm_exchange_callback(callback: CallbackQuery, state: FSMContext) 
             )
             availability = getattr(created_order, "manager_availability", None)
             manager_notification_order = _detached_order_snapshot(created_order)
+            manager_notification_user = _detached_user_snapshot(user)
             try:
                 initial_message = await callback.message.answer(
                     messages.order_created(
@@ -798,6 +825,7 @@ async def confirm_exchange_callback(callback: CallbackQuery, state: FSMContext) 
             except SQLAlchemyError:
                 await db.rollback()
                 created_order = manager_notification_order
+                user = manager_notification_user
                 logger.exception(
                     "Order created but customer card id was not persisted: order_id=%s "
                     "public_number=%s",

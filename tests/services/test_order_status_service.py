@@ -5,6 +5,7 @@ from types import SimpleNamespace
 from unittest.mock import ANY, AsyncMock
 
 import pytest
+from sqlalchemy.exc import SQLAlchemyError
 
 from app.enums.order import OrderStatus
 from app.repositories import aex as aex_repositories
@@ -108,6 +109,62 @@ async def test_take_order_in_work_persists_replacement_message_id(
     await order_status.take_order_in_work(db, order_id=5)
 
     commit.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_take_order_in_work_keeps_delivery_when_message_id_commit_fails(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    current_order = SimpleNamespace(id=5, status=int(OrderStatus.CREATED))
+    hydrated_order = SimpleNamespace(
+        id=5,
+        status=int(OrderStatus.PROCESSING),
+        userNotificationMessageId=None,
+    )
+    reloaded_order = SimpleNamespace(
+        id=5,
+        status=int(OrderStatus.PROCESSING),
+        userNotificationMessageId=None,
+    )
+    manager = SimpleNamespace(id=7, username="manager")
+    rollback = AsyncMock()
+    db = SimpleNamespace(
+        commit=AsyncMock(side_effect=SQLAlchemyError("tracking write unavailable")),
+        rollback=rollback,
+    )
+    get_count = 0
+
+    class _FakeOrderRepository:
+        def __init__(self, db) -> None:
+            self.db = db
+
+        async def get_one(self, order_id: int):
+            nonlocal get_count
+            assert order_id == 5
+            get_count += 1
+            return current_order if get_count == 1 else reloaded_order
+
+    class _FakeUserRepository:
+        def __init__(self, db) -> None:
+            self.db = db
+
+        async def get_manager(self):
+            return manager
+
+    async def handoff(order, assigned_manager):
+        order.userNotificationMessageId = 89
+        return order_status.DeliveryOutcome.RICH
+
+    monkeypatch.setattr(order_status, "OrderRepository", _FakeOrderRepository)
+    monkeypatch.setattr(order_status, "UserRepository", _FakeUserRepository)
+    monkeypatch.setattr(order_status, "update_order_status", AsyncMock(return_value=hydrated_order))
+    monkeypatch.setattr(order_status, "send_customer_handoff", handoff)
+
+    result = await order_status.take_order_in_work(db, order_id=5)
+
+    assert result.order is reloaded_order
+    assert result.delivery == order_status.DeliveryOutcome.RICH
+    rollback.assert_awaited_once()
 
 
 @pytest.mark.asyncio

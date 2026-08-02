@@ -19,6 +19,7 @@ from app.models.city import City
 from app.models.user import User
 from app.services.exchange import ExchangePairSnapshot
 from app.telegram.handlers import exchange as exchange_handler
+from app.telegram.order_cards import OrderMessageView
 
 
 class _FakeDbSession:
@@ -40,6 +41,32 @@ class _FakeDbSession:
 
     async def rollback(self) -> None:
         self.rolled_back = True
+
+
+def test_manager_notification_snapshot_detaches_relationship_values() -> None:
+    user = SimpleNamespace(username="customer")
+    city = SimpleNamespace(name="Bangkok")
+    order = SimpleNamespace(
+        id=99,
+        publicNumber="202607270001",
+        amountSell=15000,
+        currencySell="RUB",
+        amountBuy=5100,
+        currencyBuy="THB",
+        rate=0.34,
+        methodGet="qrcode",
+        country=Country.THAILAND,
+        user=user,
+        city=city,
+    )
+
+    snapshot = exchange_handler._detached_order_snapshot(order)
+    user.username = "expired-user"
+    city.name = "expired-city"
+
+    view = OrderMessageView.from_order(snapshot)
+    assert view.customer_username == "customer"
+    assert view.city == "Bangkok"
 
 
 class _FakeMessage:
@@ -1068,7 +1095,9 @@ async def test_confirm_exchange_does_not_repeat_created_order_when_message_id_co
     assert notification_db is fake_db
     assert notification_order.id == created_order.id
     assert notification_order.publicNumber == created_order.publicNumber
-    assert notification_user is user
+    assert notification_user.id == user.id
+    assert notification_user.telegram_id == user.telegram_id
+    assert notification_user.username == user.username
 
 
 async def test_confirm_exchange_notifies_manager_when_initial_customer_card_fails(

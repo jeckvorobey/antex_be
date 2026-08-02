@@ -6,6 +6,7 @@ import logging
 from dataclasses import dataclass
 from decimal import Decimal
 
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.enums.order import OrderStatus
@@ -245,7 +246,18 @@ async def take_order_in_work(db: AsyncSession, *, order_id: int) -> OrderTakeRes
         delivery != DeliveryOutcome.FAILED
         and notification_message_id != notification_message_id_before
     ):
-        await db.commit()
+        try:
+            await db.commit()
+        except SQLAlchemyError:
+            await db.rollback()
+            logger.exception(
+                "Failed to persist handoff message id: order_id=%s message_id=%s",
+                order_id,
+                notification_message_id,
+            )
+            reloaded = await OrderRepository(db).get_one(order_id)
+            if reloaded is not None:
+                order = reloaded
     return OrderTakeResult(order=order, delivery=delivery)
 
 
