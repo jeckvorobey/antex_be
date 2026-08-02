@@ -10,10 +10,15 @@ from pydantic import BaseModel, Field, field_validator
 from app.enums.country import Country
 from app.services.exchange import (
     format_admin_rate_value,
+    format_direct_admin_rate_value,
     format_rate_value,
     get_admin_base_rate,
     get_admin_final_rate,
     get_client_rate,
+    get_direct_base_rate,
+    get_direct_final_rate,
+    get_display_pair,
+    should_reverse_display_pair,
 )
 from app.services.rate_fetcher import INTERNAL_RATE_CURRENCIES
 
@@ -40,6 +45,13 @@ class AdminRateOut(RateOut):
     finalRate: float
     finalRateDisplay: str
     margin: float
+    isReversed: bool
+    displayCurrencySell: str
+    displayCurrencyBuy: str
+    directBaseRate: float
+    directBaseRateDisplay: str
+    directFinalRate: float
+    directFinalRateDisplay: str
 
 
 class RateCreate(BaseModel):
@@ -111,6 +123,9 @@ def build_rate_out(rate) -> RateOut:
 def build_admin_rate_out(rate) -> AdminRateOut:
     base_price = get_admin_base_rate(rate)
     final_price = get_admin_final_rate(rate)
+    display_sell, display_buy = get_display_pair(rate)
+    direct_base_price = get_direct_base_rate(rate)
+    direct_final_price = get_direct_final_rate(rate)
     return AdminRateOut(
         id=rate.id,
         currency=rate.currency,
@@ -124,6 +139,13 @@ def build_admin_rate_out(rate) -> AdminRateOut:
         finalRate=final_price,
         finalRateDisplay=format_admin_rate_value(rate, final_price),
         margin=rate.margin,
+        isReversed=should_reverse_display_pair(rate.currency),
+        displayCurrencySell=display_sell,
+        displayCurrencyBuy=display_buy,
+        directBaseRate=direct_base_price,
+        directBaseRateDisplay=format_direct_admin_rate_value(rate, direct_base_price),
+        directFinalRate=direct_final_price,
+        directFinalRateDisplay=format_direct_admin_rate_value(rate, direct_final_price),
         createdAt=rate.createdAt,
         updatedAt=rate.updatedAt,
     )

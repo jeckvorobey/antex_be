@@ -51,7 +51,7 @@ DEFAULT_METHODS_BY_BUY_CURRENCY = {
 SUPPORTED_CURRENCIES = ("USDT", "RUB", "THB", "GEL", "VND")
 CANONICAL_SELL_CURRENCIES = frozenset({"RUB", "USDT"})
 CANONICAL_BUY_CURRENCIES = frozenset({"THB", "GEL", "VND"})
-REVERSED_DISPLAY_PAIRS = frozenset({"RUBTHB", "RUBGEL"})
+REVERSED_DISPLAY_PAIRS = frozenset({"RUBTHB", "RUBGEL", "RUBUSDT"})
 
 
 def round_rate_value(rate: float) -> float:
@@ -67,6 +67,11 @@ def is_admin_inverse_rate(rate: Rate) -> bool:
 
 
 def format_admin_rate_value(rate: Rate, value: float) -> str:
+    return f"{round(value, RATE_PRECISION):.{RATE_PRECISION}f}"
+
+
+def format_direct_admin_rate_value(rate: Rate, value: float) -> str:
+    """Форматирует прямое значение, сохраняя точность внутреннего RUBUSDT."""
     precision = ADMIN_INVERSE_RATE_PRECISION if is_admin_inverse_rate(rate) else RATE_PRECISION
     return f"{round(value, precision):.{precision}f}"
 
@@ -113,12 +118,15 @@ def get_admin_base_rate(rate: Rate) -> float:
 
 
 def get_admin_final_rate(rate: Rate) -> float:
-    if is_admin_inverse_rate(rate):
-        return round(
-            apply_margin_to_rate(rate.price, rate.margin),
-            ADMIN_INVERSE_RATE_PRECISION,
-        )
     return get_display_final_rate(rate)
+
+
+def get_direct_base_rate(rate: Rate) -> float:
+    return rate.price
+
+
+def get_direct_final_rate(rate: Rate) -> float:
+    return apply_margin_to_rate(rate.price, rate.margin)
 
 
 @dataclass(frozen=True)

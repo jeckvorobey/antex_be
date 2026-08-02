@@ -232,7 +232,8 @@ async def test_admin_summary_returns_featured_rates(
     assert payload["rates"][0]["rateText"].startswith("1 ")
     assert payload["rates"][0]["baseRateDisplay"] == "2.44"
     inverse_rate = next(rate for rate in payload["rates"] if rate["pairId"] == "rub-usdt")
-    assert inverse_rate["baseRateDisplay"] == "0.011111"
+    assert inverse_rate["baseRateDisplay"] == "90.00"
+    assert inverse_rate["finalRateDisplay"] == "92.78"
     assert any(rate["label"] == "USDT/RUB" for rate in payload["rates"])
     assert payload["generatedAt"]
 
@@ -314,10 +315,17 @@ async def test_internal_rates_are_visible_only_in_admin_list(
     assert admin_rows["USDTRUB"]["countryRuName"] is None
     assert admin_rows["USDTRUB"]["isInternal"] is True
     assert admin_rows["RUBUSDT"]["isInternal"] is True
-    assert admin_rows["RUBUSDT"]["baseRate"] == pytest.approx(1 / 90.0)
-    assert admin_rows["RUBUSDT"]["baseRateDisplay"] == "0.011111"
-    assert admin_rows["RUBUSDT"]["finalRate"] == pytest.approx(0.010778)
-    assert admin_rows["RUBUSDT"]["finalRateDisplay"] == "0.010778"
+    assert admin_rows["RUBUSDT"]["isReversed"] is True
+    assert admin_rows["RUBUSDT"]["displayCurrencySell"] == "USDT"
+    assert admin_rows["RUBUSDT"]["displayCurrencyBuy"] == "RUB"
+    assert admin_rows["RUBUSDT"]["baseRate"] == pytest.approx(90.0)
+    assert admin_rows["RUBUSDT"]["baseRateDisplay"] == "90.00"
+    assert admin_rows["RUBUSDT"]["finalRate"] == pytest.approx(92.78)
+    assert admin_rows["RUBUSDT"]["finalRateDisplay"] == "92.78"
+    assert admin_rows["RUBUSDT"]["directBaseRate"] == pytest.approx(1 / 90.0)
+    assert admin_rows["RUBUSDT"]["directBaseRateDisplay"] == "0.011111"
+    assert admin_rows["RUBUSDT"]["directFinalRate"] == pytest.approx((1 / 90.0) * 0.97)
+    assert admin_rows["RUBUSDT"]["directFinalRateDisplay"] == "0.010778"
     assert detail_response.status_code == 404
     assert patch_response.status_code == 200
     assert patch_response.json()["margin"] == 5.0
