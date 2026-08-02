@@ -11,6 +11,10 @@ from app.services.exchange import (
     ExchangePairSnapshot,
     ExchangeQuoteInput,
     ExchangeService,
+    get_admin_base_rate,
+    get_admin_final_rate,
+    get_display_pair,
+    should_reverse_display_pair,
 )
 
 
@@ -35,6 +39,21 @@ def _make_rate(
 
 
 class TestExchangeService:
+    def test_rubusdt_admin_rate_is_displayed_as_rub_per_usdt(self) -> None:
+        rate = Rate(
+            id=9,
+            currency="RUBUSDT",
+            price=1 / 70,
+            margin=10.0,
+            country=None,
+            is_internal=True,
+        )
+
+        assert should_reverse_display_pair(rate.currency) is True
+        assert get_display_pair(rate) == ("USDT", "RUB")
+        assert get_admin_base_rate(rate) == pytest.approx(70.0)
+        assert get_admin_final_rate(rate) == pytest.approx(77.78)
+
     def test_list_pairs_returns_canonical_user_facing_pairs(self) -> None:
         rates = [
             _make_rate("RUBTHB", 0.41, 3.0, country=Country.THAILAND),
