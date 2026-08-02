@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+from types import SimpleNamespace
 from typing import cast
 
 from aiogram import F, Router
@@ -106,9 +107,28 @@ async def _safe_delete_message(message) -> None:
 
 
 async def _notify_manager_order_created(db, order, user) -> None:
-    """Уведомить единственного менеджера после сохранения исходной карточки клиента."""
+    """Notify the single manager about a created order."""
     manager = await UserRepository(db).get_manager()
     await notify_order_created(order, user, manager, notify_user=False)
+
+
+async def _safe_notify_manager_order_created(db, order, user) -> None:
+    """Keep manager notification failures from changing the order creation result."""
+    try:
+        await _notify_manager_order_created(db, order, user)
+    except Exception:
+        logger.exception(
+            "Failed to send deferred manager notification: order_id=%s public_number=%s",
+            getattr(order, "id", None),
+            getattr(order, "publicNumber", None),
+        )
+
+
+def _detached_order_snapshot(order):
+    """Snapshot loaded order fields before rolling back the secondary card update."""
+    return SimpleNamespace(
+        **{name: value for name, value in vars(order).items() if not name.startswith("_")}
+    )
 
 
 async def _safe_delete_chat_message(bot, chat_id: int, message_id: int) -> None:
@@ -746,6 +766,7 @@ async def confirm_exchange_callback(callback: CallbackQuery, state: FSMContext) 
                 defer_notifications=True,
             )
             availability = getattr(created_order, "manager_availability", None)
+            manager_notification_order = _detached_order_snapshot(created_order)
             try:
                 initial_message = await callback.message.answer(
                     messages.order_created(
@@ -761,6 +782,7 @@ async def confirm_exchange_callback(callback: CallbackQuery, state: FSMContext) 
                     created_order.id,
                     created_order.publicNumber,
                 )
+                await _safe_notify_manager_order_created(db, created_order, user)
                 await state.clear()
                 await state.set_state(ExchangeState.choosing_country)
                 await _safe_delete_message(callback.message)
@@ -775,22 +797,14 @@ async def confirm_exchange_callback(callback: CallbackQuery, state: FSMContext) 
                 await db.commit()
             except SQLAlchemyError:
                 await db.rollback()
+                created_order = manager_notification_order
                 logger.exception(
                     "Order created but customer card id was not persisted: order_id=%s "
                     "public_number=%s",
                     created_order.id,
                     created_order.publicNumber,
                 )
-            else:
-                try:
-                    await _notify_manager_order_created(db, created_order, user)
-                except Exception:
-                    logger.exception(
-                        "Failed to send deferred manager notification: order_id=%s "
-                        "public_number=%s",
-                        created_order.id,
-                        created_order.publicNumber,
-                    )
+            await _safe_notify_manager_order_created(db, created_order, user)
     except AntExException as exc:
         await callback.answer(
             messages.order_creation_failed(

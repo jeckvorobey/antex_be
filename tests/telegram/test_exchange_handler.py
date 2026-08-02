@@ -1063,7 +1063,80 @@ async def test_confirm_exchange_does_not_repeat_created_order_when_message_id_co
     assert state.cleared is True
     assert fake_db.rolled_back is True
     assert callback.answers[-1] == {"text": None, "show_alert": False}
-    manager_notification.assert_not_awaited()
+    manager_notification.assert_awaited_once()
+    notification_db, notification_order, notification_user = manager_notification.await_args.args
+    assert notification_db is fake_db
+    assert notification_order.id == created_order.id
+    assert notification_order.publicNumber == created_order.publicNumber
+    assert notification_user is user
+
+
+async def test_confirm_exchange_notifies_manager_when_initial_customer_card_fails(
+    monkeypatch,
+) -> None:
+    fake_db = _FakeDbSession()
+    user = User(
+        id=22,
+        telegram_id=777001,
+        username="customer",
+        first_name="Test",
+        role=3,
+    )
+    created_order = SimpleNamespace(
+        id=99,
+        publicNumber="202607270001",
+        status=int(OrderStatus.CREATED),
+        manager_availability=SimpleNamespace(status="working"),
+    )
+    callback = _FakeCallback(
+        TgUser(
+            id=777001,
+            is_bot=False,
+            first_name="Test",
+            username="customer",
+            language_code="ru",
+        )
+    )
+    callback.message.answer = AsyncMock(side_effect=RuntimeError("Telegram unavailable"))
+    state = _FakeState(
+        {
+            "currency_sell": "RUB",
+            "amount_sell": 15000,
+            "currency_buy": "THB",
+            "quote": {"amountBuy": 5100, "rate": 0.34},
+            "method": "qrcode",
+            "country": Country.THAILAND.value,
+        }
+    )
+
+    async def _fake_get_db():
+        return fake_db
+
+    async def _fake_check_user(db, tg_user):
+        return user, False
+
+    async def _fake_create_order_for_user(db, current_user, payload, **kwargs):
+        return created_order
+
+    manager_notification = AsyncMock()
+
+    monkeypatch.setattr(exchange_handler, "_get_db", _fake_get_db)
+    monkeypatch.setattr(exchange_handler, "check_user", _fake_check_user)
+    monkeypatch.setattr(exchange_handler, "ConfigRepository", _FakeConfigRepository)
+    monkeypatch.setattr(exchange_handler, "ManagerWorkingHoursService", _WorkingWorkingHoursService)
+    monkeypatch.setattr(exchange_handler, "create_order_for_user", _fake_create_order_for_user)
+    monkeypatch.setattr(
+        exchange_handler,
+        "_notify_manager_order_created",
+        manager_notification,
+    )
+
+    await exchange_handler.confirm_exchange_callback(callback, state)
+
+    assert state.cleared is True
+    assert callback.answers[-1]["show_alert"] is True
+    assert "202607270001" in callback.answers[-1]["text"]
+    manager_notification.assert_awaited_once_with(fake_db, created_order, user)
 
 
 async def test_confirm_exchange_shows_human_error_on_order_creation_failure(monkeypatch) -> None:
