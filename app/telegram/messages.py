@@ -14,6 +14,7 @@ from app.services.exchange import ExchangePairSnapshot
 from app.telegram.i18n import get_translator
 from app.telegram.message_templates import (
     EXCHANGE_CITY_TEMPLATE,
+    EXCHANGE_CURRENCY_TEMPLATE,
     EXCHANGE_SERVICE_TEMPLATE,
     EXCHANGE_START_TEMPLATE,
     OFF_HOURS_BLOCK_TEMPLATE,
@@ -199,11 +200,42 @@ def exchange_step(
 
 
 def choose_currency_prompt(
+    pairs: list[ExchangePairSnapshot],
     *,
     translator: Translate | None = None,
     locale: str | None = None,
 ) -> str:
-    return _resolve_translator(translator, locale)("exchange-choose-currency")
+    """Собирает Rich Message выбора исходной валюты с таблицей актуальных курсов."""
+    translate = cast(Any, _resolve_translator(translator, locale))
+    if not pairs:
+        return translate("exchange-rate-unavailable")
+
+    rate_rows = "\n".join(
+        (
+            "<tr>"
+            f"<td>{_format_currency_emoji(pair.currency_sell)} <b>{escape(pair.currency_sell)}</b></td>"
+            f"<td>1 {escape(pair.currency_sell)} "
+            f"{escape(_strip_fluent_isolates(translate('exchange-choose-currency-rate-from')))} "
+            f"<b>{escape(pair.rate_display)} {escape(pair.currency_buy)}</b> "
+            f"{_format_currency_emoji(pair.currency_buy)}</td>"
+            "</tr>"
+        )
+        for pair in pairs
+    )
+    return EXCHANGE_CURRENCY_TEMPLATE.format(
+        category=escape(_strip_fluent_isolates(translate("exchange-choose-currency-category"))),
+        title=escape(_strip_fluent_isolates(translate("exchange-choose-currency-title"))),
+        description=escape(_strip_fluent_isolates(translate("exchange-choose-currency-description"))),
+        rates_title=escape(_strip_fluent_isolates(translate("exchange-choose-currency-rates-title"))),
+        currency_column=escape(
+            _strip_fluent_isolates(translate("exchange-choose-currency-currency-column"))
+        ),
+        rate_column=escape(
+            _strip_fluent_isolates(translate("exchange-choose-currency-rate-column"))
+        ),
+        rate_rows=rate_rows,
+        options_hint=escape(_strip_fluent_isolates(translate("exchange-choose-currency-options-hint"))),
+    )
 
 
 def enter_amount_prompt(
