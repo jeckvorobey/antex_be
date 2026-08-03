@@ -254,10 +254,16 @@ def test_choose_service_prompt_uses_rich_structure_and_list() -> None:
     assert "<li><b>🧰 Оплата сервисов</b><br/>Поможем оплатить нужные услуги.</li>" in text
 
 
-def test_choose_city_prompt_mentions_cash_delivery() -> None:
+def test_choose_city_prompt_uses_rich_structure() -> None:
     text = messages.choose_city_prompt("cash_delivery", locale="ru")
 
-    assert "Выберите город доставки наличных" in text
+    assert "<footer>Доставка наличных</footer>" in text
+    assert "<h2>📍 Выберите город</h2>" in text
+    assert "<p>Укажите город, куда нужно привезти наличные.</p>" in text
+    assert "<hr/>" in text
+    assert "<h3>Доступные города</h3>" in text
+    assert "<p>Выберите город на кнопке ниже.</p>" in text
+    assert "Шаг 3" not in text
 
 
 def test_exchange_pair_rates_match_miniapp_display_orientation() -> None:
