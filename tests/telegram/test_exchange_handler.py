@@ -1395,6 +1395,7 @@ async def test_fsm_cancel_returns_to_country_step() -> None:
     assert reply_markup.inline_keyboard[1][0].callback_data == "menu:orders"
     assert callback.answers[-1] == {"text": None, "show_alert": False}
 
+
 async def test_show_city_step_edits_as_rich_message_without_step_counter(monkeypatch) -> None:
     callback = _FakeCallback(
         TgUser(
