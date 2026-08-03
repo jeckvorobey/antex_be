@@ -21,13 +21,13 @@ from app.services.order_notifications import build_manager_status_text
 from app.telegram import messages
 from app.telegram.handlers.exchange import ExchangeState
 from app.telegram.i18n import get_user_translator
-from app.telegram.rich_messages import answer_rich
 from app.telegram.keyboards import (
     choose_country,
     manager_home,
     manager_new_orders_list,
     manager_order_open_chat,
 )
+from app.telegram.rich_messages import answer_rich
 from app.telegram.services.user_service import check_user
 
 logger = logging.getLogger(__name__)
