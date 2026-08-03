@@ -12,6 +12,11 @@ from typing import Any, cast
 from app.enums.order import MethodGet, OrderStatus
 from app.services.exchange import ExchangePairSnapshot
 from app.telegram.i18n import get_translator
+from app.telegram.message_templates import (
+    EXCHANGE_START_TEMPLATE,
+    OFF_HOURS_BLOCK_TEMPLATE,
+    WORKING_HOURS_BLOCK_TEMPLATE,
+)
 from app.telegram.order_cards import OrderMessageView, render_order_regular, render_order_rich
 
 Translate = Callable[[str], str]
@@ -89,12 +94,38 @@ def exchange_start_welcome(
     translator: Translate | None = None,
     locale: str | None = None,
     business_hours_text: str | None = None,
+    managers_offline: bool = False,
 ) -> str:
-    translate = _resolve_translator(translator, locale)
-    text = translate("exchange-start-welcome", name=first_name)
-    if business_hours_text is None:
-        return text
-    return f"{text}\n\n{translate('manager-working-hours', hours=business_hours_text)}"
+    """Собирает локализованное HTML-приветствие с режимом работы менеджеров."""
+    translate = cast(Any, _resolve_translator(translator, locale))
+    greeting = _strip_fluent_isolates(
+        translate("exchange-start-greeting", name=escape(first_name))
+    )
+    working_hours_block = ""
+    if business_hours_text is not None:
+        working_hours_block = WORKING_HOURS_BLOCK_TEMPLATE.format(
+            title=_strip_fluent_isolates(translate("manager-working-hours-title")),
+            requests_anytime=_strip_fluent_isolates(translate("manager-requests-anytime")),
+            managers_label=_strip_fluent_isolates(translate("manager-label")),
+            hours=escape(business_hours_text),
+        )
+
+    off_hours_block = ""
+    if managers_offline:
+        off_hours_block = OFF_HOURS_BLOCK_TEMPLATE.format(
+            title=_strip_fluent_isolates(translate("exchange-start-off-hours-title")),
+            text=_strip_fluent_isolates(translate("exchange-start-off-hours-text")),
+        )
+
+    return EXCHANGE_START_TEMPLATE.format(
+        greeting=greeting,
+        title=_strip_fluent_isolates(translate("exchange-start-title")),
+        description=_strip_fluent_isolates(translate("exchange-start-description")),
+        instruction_title=_strip_fluent_isolates(translate("exchange-start-instruction-title")),
+        instruction=_strip_fluent_isolates(translate("exchange-start-instruction")),
+        working_hours_block=working_hours_block,
+        off_hours_block=off_hours_block,
+    )
 
 
 def choose_country_prompt(
