@@ -199,26 +199,68 @@ def exchange_step(
     return _resolve_translator(translator, locale)("exchange-step", current=current, total=total)
 
 
+def _country_label(country: str | None, translate: Translate) -> str:
+    """Возвращает локализованное название страны из состояния сценария."""
+    if country is None:
+        return ""
+    translation_key = {
+        "thailand": "order-country-thailand",
+        "vietnam": "order-country-vietnam",
+        "georgia": "order-country-georgia",
+        "internal": "order-country-internal",
+    }.get(country.lower())
+    return (
+        _strip_fluent_isolates(translate(translation_key))
+        if translation_key is not None
+        else country
+    )
+
+
 def choose_currency_prompt(
     pairs: list[ExchangePairSnapshot],
     *,
+    country: str | None = None,
+    service: str | None = None,
+    city: str | None = None,
     translator: Translate | None = None,
     locale: str | None = None,
 ) -> str:
-    """Собирает Rich Message выбора исходной валюты с таблицей актуальных курсов."""
+    """Собирает Rich Message выбора валюты с контекстом заявки и курсами."""
     translate = cast(Any, _resolve_translator(translator, locale))
     if not pairs:
         return translate("exchange-rate-unavailable")
 
-    rate_rows = "\n".join(
+    selection = [
         (
-            "<tr>"
-            f"<td>{_format_currency_emoji(pair.currency_sell)} <b>{escape(pair.currency_sell)}</b></td>"
-            f"<td>1 {escape(pair.currency_sell)} "
+            _strip_fluent_isolates(translate("exchange-choose-currency-summary-country")),
+            _country_label(country, translate),
+        ),
+        (
+            _strip_fluent_isolates(translate("exchange-choose-currency-summary-service")),
+            service or "",
+        ),
+    ]
+    if city:
+        selection.append(
+            (
+                _strip_fluent_isolates(translate("exchange-choose-currency-summary-city")),
+                city,
+            )
+        )
+    selection_rows = "\n".join(
+        f"<tr><th>{escape(label)}</th><td>{escape(value)}</td></tr>"
+        for label, value in selection
+        if value
+    )
+    rate_items = "\n".join(
+        (
+            "<li>"
+            f"<b>{_format_currency_emoji(pair.currency_sell)} {escape(pair.currency_sell)} "
+            f"→ {_format_currency_emoji(pair.currency_buy)} {escape(pair.currency_buy)}</b><br/>"
+            f"1 {escape(pair.currency_sell)} "
             f"{escape(_strip_fluent_isolates(translate('exchange-choose-currency-rate-from')))} "
-            f"<b>{escape(pair.rate_display)} {escape(pair.currency_buy)}</b> "
-            f"{_format_currency_emoji(pair.currency_buy)}</td>"
-            "</tr>"
+            f"<b>{escape(pair.rate_display)} {escape(pair.currency_buy)}</b>"
+            "</li>"
         )
         for pair in pairs
     )
@@ -226,17 +268,14 @@ def choose_currency_prompt(
         category=escape(_strip_fluent_isolates(translate("exchange-choose-currency-category"))),
         title=escape(_strip_fluent_isolates(translate("exchange-choose-currency-title"))),
         description=escape(_strip_fluent_isolates(translate("exchange-choose-currency-description"))),
+        selection_title=escape(
+            _strip_fluent_isolates(translate("exchange-choose-currency-selection-title"))
+        ),
+        selection_rows=selection_rows,
         rates_title=escape(_strip_fluent_isolates(translate("exchange-choose-currency-rates-title"))),
-        currency_column=escape(
-            _strip_fluent_isolates(translate("exchange-choose-currency-currency-column"))
-        ),
-        rate_column=escape(
-            _strip_fluent_isolates(translate("exchange-choose-currency-rate-column"))
-        ),
-        rate_rows=rate_rows,
+        rate_items=rate_items,
         options_hint=escape(_strip_fluent_isolates(translate("exchange-choose-currency-options-hint"))),
     )
-
 
 def enter_amount_prompt(
     currency: str,
