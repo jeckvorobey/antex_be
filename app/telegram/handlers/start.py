@@ -99,6 +99,7 @@ async def cmd_start(message: Message, state: FSMContext) -> None:
                         if availability.schedule_enabled
                         else None
                     ),
+                    managers_offline=availability.status == "offline",
                 ),
                 reply_markup=choose_country(translate),
             )
