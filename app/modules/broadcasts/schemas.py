@@ -10,7 +10,7 @@ from pydantic import BaseModel, Field, model_validator
 
 
 class BroadcastCreate(BaseModel):
-    text: str = Field(min_length=1)
+    text: str = Field(min_length=1, max_length=4096)
     format: Literal["plain", "html"] = "plain"
     button_text: str | None = None
     button_url: str | None = None

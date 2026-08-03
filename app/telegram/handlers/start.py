@@ -19,14 +19,14 @@ from app.repositories.order import OrderRepository
 from app.services.manager_working_hours import ManagerWorkingHoursService
 from app.services.order_notifications import build_manager_status_text
 from app.telegram import messages
-from app.telegram.handlers.exchange import ExchangeState
-from app.telegram.i18n import get_user_translator
+from app.telegram.i18n import get_translator, get_user_translator
 from app.telegram.keyboards import (
-    choose_country,
     manager_home,
     manager_new_orders_list,
     manager_order_open_chat,
+    start_channel_choice,
 )
+from app.telegram.presentation.delivery import send_to_actor
 from app.telegram.services.user_service import check_user
 
 logger = logging.getLogger(__name__)
@@ -77,16 +77,21 @@ async def cmd_start(message: Message, state: FSMContext) -> None:
     menu_type = "manager" if has_operator_access(user.role) else "user"
     try:
         if menu_type == "manager":
-            await message.answer(
-                messages.welcome(message.from_user.first_name, translator=translate),
-                reply_markup=manager_home(translate),
+            manager_translate = get_translator("ru")
+            await send_to_actor(
+                message,
+                spec=messages.manager_start_message(
+                    message.from_user.first_name,
+                    translator=manager_translate,
+                ),
+                reply_markup=manager_home(manager_translate),
             )
         else:
             await state.clear()
-            await state.set_state(ExchangeState.choosing_country)
             availability = ManagerWorkingHoursService().get_availability(config)
-            await message.answer(
-                messages.exchange_start_welcome(
+            await send_to_actor(
+                message,
+                spec=messages.customer_start_message(
                     message.from_user.first_name,
                     translator=translate,
                     business_hours_text=(
@@ -100,7 +105,7 @@ async def cmd_start(message: Message, state: FSMContext) -> None:
                         else None
                     ),
                 ),
-                reply_markup=choose_country(translate),
+                reply_markup=start_channel_choice(translate),
             )
     except Exception:
         logger.exception(
@@ -117,7 +122,7 @@ async def cmd_start(message: Message, state: FSMContext) -> None:
 
 @router.callback_query(F.data == "manager:new_orders")
 async def manager_new_orders(callback: CallbackQuery) -> None:
-    translate = get_user_translator(callback.from_user)
+    translate = get_translator("ru")
     db = await _get_db()
     async with db:
         user, created = await check_user(db, callback.from_user)
@@ -145,7 +150,7 @@ async def manager_new_orders(callback: CallbackQuery) -> None:
 
 @router.callback_query(F.data.startswith("manager:order:"))
 async def manager_order_detail(callback: CallbackQuery) -> None:
-    translate = get_user_translator(callback.from_user)
+    translate = get_translator("ru")
     order_id = int(callback.data.rsplit(":", 1)[-1])  # type: ignore[union-attr]
     db = await _get_db()
     async with db:

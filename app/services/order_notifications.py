@@ -42,7 +42,7 @@ async def _send_rich_or_html(
     chat_id: int,
     rich_html: str,
     fallback_html: str,
-    reply_markup: InlineKeyboardMarkup,
+    reply_markup: InlineKeyboardMarkup | None,
     existing_message_id: int | None = None,
 ) -> tuple[DeliveryOutcome, int | None]:
     """Отправить Rich Message и один раз перейти на обычный HTML при отказе Bot API."""
@@ -260,7 +260,22 @@ async def send_or_replace_user_status_message(
     order,
     text: str,
     reply_markup: InlineKeyboardMarkup | None,
+    rich_html: str | None = None,
 ) -> int | None:
+    if rich_html is not None:
+        delivery, message_id = await _send_rich_or_html(
+            bot=bot,
+            chat_id=chat_id,
+            rich_html=rich_html,
+            fallback_html=text,
+            reply_markup=reply_markup,
+            existing_message_id=getattr(order, "userNotificationMessageId", None),
+        )
+        if delivery != DeliveryOutcome.FAILED and message_id is not None:
+            order.userNotificationMessageId = message_id
+            return message_id
+        return None
+
     old_message_id = getattr(order, "userNotificationMessageId", None)
     if old_message_id:
         try:
@@ -314,15 +329,18 @@ async def notify_order_created(
         )
         translate = get_user_translator(user)
         availability = getattr(order, "manager_availability", None)
+        status_text = messages.order_created(
+            order.publicNumber,
+            translator=translate,
+            managers_offline=getattr(availability, "status", None) == "offline",
+        )
+        status_spec = messages.status_message(status_text)
         await send_or_replace_user_status_message(
             bot=bot,
             chat_id=user.telegram_id,
             order=order,
-            text=messages.order_created(
-                order.publicNumber,
-                translator=translate,
-                managers_offline=getattr(availability, "status", None) == "offline",
-            ),
+            text=status_spec.fallback_html,
+            rich_html=status_spec.rich_html,
             reply_markup=order_created_actions(translate),
         )
         logger.info(
@@ -423,11 +441,14 @@ async def notify_order_status_changed(order, *, manager_chat_url: str | None = N
     if order.status == 3:
         reply_markup = review_link(translate, REVIEW_URL)
 
+    status_text = _build_user_status_text(order, translate=translate)
+    status_spec = messages.status_message(status_text)
     await send_or_replace_user_status_message(
         bot=bot,
         chat_id=user.telegram_id,
         order=order,
-        text=_build_user_status_text(order, translate=translate),
+        text=status_spec.fallback_html,
+        rich_html=status_spec.rich_html,
         reply_markup=reply_markup,
     )
 

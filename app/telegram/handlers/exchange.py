@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+from dataclasses import replace
 from types import SimpleNamespace
 from typing import cast
 
@@ -45,8 +46,11 @@ from app.telegram.keyboards import (
     confirm_off_hours_exchange,
     order_created_actions,
     orders_pagination,
+    start_channel_choice,
 )
 from app.telegram.order_cards import OrderMessageView
+from app.telegram.presentation.components import build_message, strip_telegram_html
+from app.telegram.presentation.delivery import edit_actor_message, send_to_actor
 from app.telegram.services.user_service import check_user
 
 logger = logging.getLogger(__name__)
@@ -197,15 +201,31 @@ async def _render_step(
     translate = get_user_translator(actor.from_user)
     if featured_pairs is None:
         featured_pairs = await _get_exchange_pairs()
-    parts = [messages.exchange_step(current, TOTAL_STEPS, translator=translate)]
+    stage = messages.exchange_step(current, TOTAL_STEPS, translator=translate)
+    parts = [stage]
     if featured_pairs:
         parts.append(messages.exchange_pair_rates(featured_pairs, translator=translate))
     parts.append(body)
     text = "\n\n".join(parts)
+    rates = (
+        messages.exchange_pair_rates(featured_pairs, translator=translate)
+        if featured_pairs
+        else None
+    )
+    spec = replace(
+        build_message(
+            family="input" if current == TOTAL_STEPS else "selection",
+            eyebrow=stage,
+            title=stage,
+            lead=strip_telegram_html(body),
+            facts=((translate("menu-rate-header"), rates),) if rates else (),
+        ),
+        fallback_html=text,
+    )
     if edit:
-        await _safe_edit_text(actor.message, text, reply_markup=reply_markup)
+        await edit_actor_message(actor.message, spec=spec, reply_markup=reply_markup)
     else:
-        await actor.answer(text, reply_markup=reply_markup)
+        await send_to_actor(actor, spec=spec, reply_markup=reply_markup)
 
 
 def _format_method_label(method: str, translate) -> str:
@@ -261,14 +281,20 @@ async def _show_confirmation(actor, state: FSMContext, *, edit: bool) -> None:
     translate = get_user_translator(actor.from_user)
     data = await state.get_data()
     text = _build_confirmation_text(translate=translate, data=data)
+    spec = replace(
+        build_message(
+            family="summary",
+            eyebrow=messages.exchange_step(TOTAL_STEPS, TOTAL_STEPS, translator=translate),
+            title=translate("exchange-confirm-title"),
+            lead=strip_telegram_html(text),
+            action=translate("exchange-confirm-summary-bottom"),
+        ),
+        fallback_html=text,
+    )
     if edit:
-        await _safe_edit_text(
-            actor.message,
-            text,
-            reply_markup=confirm_exchange(translate),
-        )
+        await edit_actor_message(actor.message, spec=spec, reply_markup=confirm_exchange(translate))
     else:
-        await actor.answer(text, reply_markup=confirm_exchange(translate))
+        await send_to_actor(actor, spec=spec, reply_markup=confirm_exchange(translate))
 
 
 async def _show_country_step(actor, state: FSMContext, *, edit: bool) -> None:
@@ -288,7 +314,6 @@ async def _show_country_step(actor, state: FSMContext, *, edit: bool) -> None:
 async def _show_start_welcome(actor, state: FSMContext, *, edit: bool) -> None:
     translate = get_user_translator(actor.from_user)
     await state.clear()
-    await state.set_state(ExchangeState.choosing_country)
     business_hours_text = None
     try:
         db = await _get_db()
@@ -304,15 +329,16 @@ async def _show_start_welcome(actor, state: FSMContext, *, edit: bool) -> None:
             )
     except SQLAlchemyError:
         logger.warning("Не удалось загрузить график менеджеров для Telegram-приветствия")  # noqa: RUF001
-    text = messages.exchange_start_welcome(
+    spec = messages.customer_start_message(
         actor.from_user.first_name,
         locale=getattr(actor.from_user, "language_code", None),
         business_hours_text=business_hours_text,
     )
+    reply_markup = start_channel_choice(translate)
     if edit:
-        await _safe_edit_text(actor.message, text, reply_markup=choose_country(translate))
+        await edit_actor_message(actor.message, spec=spec, reply_markup=reply_markup)
     else:
-        await actor.answer(text, reply_markup=choose_country(translate))
+        await send_to_actor(actor, spec=spec, reply_markup=reply_markup)
 
 
 async def _show_country_fallback(
@@ -550,6 +576,13 @@ async def _show_enter_amount_step(
 @router.callback_query(F.data == "menu:orders", ExchangeState.choosing_country)
 async def menu_orders(callback: CallbackQuery) -> None:
     await _show_orders(callback, edit=True)
+    await callback.answer()
+
+
+@router.callback_query(F.data == "exchange:start")
+async def start_telegram_exchange(callback: CallbackQuery, state: FSMContext) -> None:
+    """Запускает Telegram-native exchange-flow после явного выбора пользователя."""
+    await _show_country_step(callback, state, edit=True)
     await callback.answer()
 
 
