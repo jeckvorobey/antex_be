@@ -117,6 +117,7 @@ def exchange_start_welcome(
             text=_strip_fluent_isolates(translate("exchange-start-off-hours-text")),
         )
 
+    category = _strip_fluent_isolates(translate("exchange-start-category"))
     title = _strip_fluent_isolates(translate("exchange-start-title"))
     description = _strip_fluent_isolates(translate("exchange-start-description"))
     instruction_title = _strip_fluent_isolates(translate("exchange-start-instruction-title"))
@@ -124,6 +125,7 @@ def exchange_start_welcome(
 
     return EXCHANGE_START_TEMPLATE.format(
         greeting=greeting,
+        category=category,
         title=title,
         description=description,
         instruction_title=instruction_title,
