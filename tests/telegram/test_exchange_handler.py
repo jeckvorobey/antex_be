@@ -237,9 +237,8 @@ async def test_render_step_shows_all_loaded_pairs(monkeypatch) -> None:
     )
 
     text = str(callback.message.edits[0]["text"])
-    assert "Шаг" in text
-    assert "1" in text
-    assert "5" in text
+    assert "Новая заявка · Страна" in text
+    assert "Шаг" not in text
     assert "🏦 Текущий курс:" not in text
     for pair in pairs:
         assert pair.rate_text not in text
@@ -295,7 +294,7 @@ async def test_enter_amount_moves_directly_to_confirmation(monkeypatch) -> None:
     assert state._data["method"] == "qrcode"
     assert state._data["quote"]["amountBuy"] == 5100.0
     assert len(message.answers) == 1
-    assert "Проверьте заявку" in message.answers[0]["text"]
+    assert "Проверьте параметры заявки" in message.answers[0]["text"]
     assert message.deletes == [{"message_id": message.message_id}]
     assert message.bot.deleted == [{"chat_id": message.chat.id, "message_id": 999}]
 
@@ -350,7 +349,7 @@ async def test_enter_amount_preserves_selected_cash_method(monkeypatch) -> None:
     assert state._data["city_id"] == 11
     assert state._data["quote"]["amountBuy"] == 5100.0
     assert len(message.answers) == 1
-    assert "Проверьте заявку" in message.answers[0]["text"]
+    assert "Проверьте параметры заявки" in message.answers[0]["text"]
     assert "Фукуок" in message.answers[0]["text"]
 
 
@@ -608,9 +607,10 @@ async def test_fsm_back_from_service_returns_to_country_step(monkeypatch) -> Non
 
     await exchange_handler.fsm_back(callback, state)
 
-    assert state.state == exchange_handler.ExchangeState.choosing_country.state
-    assert "<b>AntEx</b>" in str(callback.message.edits[0]["text"])
-    assert "выберите страну в списке ниже" in str(callback.message.edits[0]["text"])
+    assert state.cleared is True
+    markup = callback.message.edits[-1]["reply_markup"]
+    assert markup.inline_keyboard[0][0].callback_data == "exchange:start"
+    assert "Выберите удобный способ создания заявки" in str(callback.message.edits[0]["text"])
     assert callback.answers[-1] == {"text": None, "show_alert": False}
 
 
@@ -775,7 +775,7 @@ async def test_confirm_exchange_warns_before_creating_order_when_managers_offlin
     assert state.cleared is False
     assert state._data.get("off_hours_confirmed") is None
     assert callback.answers[-1] == {
-        "text": "Менеджер обработает заявку утром после начала рабочего дня.",
+        "text": "Заявка попадёт в очередь до ближайшего рабочего интервала.",
         "show_alert": True,
     }
     assert "⚠️ Менеджеры сейчас не работают" in callback.message.edits[0]["text"]
@@ -923,7 +923,10 @@ async def test_confirm_offline_exchange_creates_order_after_warning(monkeypatch)
     assert "Заявка №202607270101 создана" in callback.message.answers[0]["text"].replace(
         "\u2068", ""
     ).replace("\u2069", "")
-    assert "<blockquote>Менеджер обработает заявку утром" in callback.message.answers[0]["text"]
+    assert (
+        "<blockquote>Менеджер начнёт обработку в ближайший рабочий интервал"
+        in callback.message.answers[0]["text"]
+    )
     manager_notification.assert_awaited_once_with(fake_db, created_order, user)
 
 
@@ -1022,7 +1025,7 @@ async def test_confirm_exchange_creates_order_with_default_qrcode(monkeypatch) -
     assert len(callback.message.edits) == 0
     assert callback.message.deletes == [{"message_id": callback.message.message_id}]
     assert len(callback.message.answers) == 1
-    assert "после начала рабочего дня" in callback.message.answers[0]["text"]
+    assert "ближайший рабочий интервал" in callback.message.answers[0]["text"]
     assert callback.answers[-1] == {"text": None, "show_alert": False}
 
 
@@ -1381,16 +1384,15 @@ async def test_fsm_cancel_returns_to_country_step() -> None:
     await exchange_handler.fsm_cancel(callback, state)
 
     assert state.cleared is True
-    assert state.state == exchange_handler.ExchangeState.choosing_country.state
+    assert state.cleared is True
+    markup = callback.message.edits[-1]["reply_markup"]
+    assert markup.inline_keyboard[0][0].callback_data == "exchange:start"
     assert len(callback.message.edits) == 1
     text = str(callback.message.edits[0]["text"])
-    assert "<b>AntEx</b>" in text
-    assert "выберите страну в списке ниже" in text
+    assert "Выберите удобный способ создания заявки" in text
     reply_markup = callback.message.edits[0]["reply_markup"]
     assert [button.callback_data for button in reply_markup.inline_keyboard[0]] == [
-        "exchange:country:thailand",
-        "exchange:country:vietnam",
-        "exchange:country:georgia",
+        "exchange:start"
     ]
-    assert reply_markup.inline_keyboard[1][0].callback_data == "menu:orders"
+    assert reply_markup.inline_keyboard[-1][0].callback_data == "menu:orders"
     assert callback.answers[-1] == {"text": None, "show_alert": False}

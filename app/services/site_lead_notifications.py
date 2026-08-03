@@ -6,6 +6,9 @@ from __future__ import annotations
 import logging
 
 from app.models.site_lead import SiteLead
+from app.telegram.presentation.components import build_message, truncate_text
+from app.telegram.presentation.delivery import DeliveryKind, deliver
+from app.telegram.presentation.models import TelegramMessageSpec
 
 logger = logging.getLogger(__name__)
 
@@ -31,11 +34,16 @@ async def notify_site_lead_created(lead: SiteLead, manager) -> None:
         getattr(manager, "id", None),
         getattr(manager, "telegram_id", None),
     )
-    await bot.send_message(
+    spec = build_site_lead_manager_message(lead)
+    outcome = await deliver(
+        bot,
         chat_id=manager.telegram_id,
-        text=build_site_lead_manager_text(lead),
+        spec=spec,
+        kind=DeliveryKind.SEND,
         reply_markup=None,
     )
+    if not outcome.delivered:
+        raise outcome.error or RuntimeError("Site lead notification was not delivered")
     logger.info(
         "Site lead notification sent: lead_id=%s manager_user_id=%s manager_telegram_id=%s",
         lead.id,
@@ -45,16 +53,24 @@ async def notify_site_lead_created(lead: SiteLead, manager) -> None:
 
 
 def build_site_lead_manager_text(lead: SiteLead) -> str:
-    return "\n".join(
-        [
-            f"🆕 Заявка с сайта #{lead.id}",
-            "",
-            f"💬 Мессенджер: {_format_value(lead.messenger)}",
-            f"👤 Контакт: {lead.contact}",
-            f"📌 Тема: {_format_value(lead.topic)}",
-            f"📝 Сообщение: {lead.message}",
-            f"🌐 Источник: {lead.source}",
-        ]
+    """Возвращает regular HTML fallback для старых внутренних вызовов."""
+    return build_site_lead_manager_message(lead).fallback_html
+
+
+def build_site_lead_manager_message(lead: SiteLead) -> TelegramMessageSpec:
+    """Собирает manager-card и сокращает только длинный свободный комментарий лида."""
+    return build_message(
+        family="manager",
+        eyebrow="Заявка с сайта",
+        title=f"Новый лид #{lead.id}",
+        lead="Свяжитесь с клиентом по указанному контакту.",
+        facts=(
+            ("Мессенджер", _format_value(lead.messenger)),
+            ("Контакт", lead.contact),
+            ("Тема", _format_value(lead.topic)),
+            ("Сообщение", truncate_text(lead.message or "—", limit=1_000)),
+            ("Источник", lead.source),
+        ),
     )
 
 

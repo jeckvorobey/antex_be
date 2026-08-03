@@ -21,6 +21,7 @@ from app.services.order_notifications import (
 )
 from app.telegram import messages
 from app.telegram.i18n import get_user_translator
+from app.telegram.presentation.delivery import DeliveryKind, deliver
 
 logger = logging.getLogger(__name__)
 TOKEN_CURRENCY = "ATXG"
@@ -54,14 +55,19 @@ async def _notify_referral_reversal(
 
     try:
         translate = get_user_translator(referrer)
-        await telegram_bot.bot.send_message(
+        outcome = await deliver(
+            telegram_bot.bot,
             chat_id=referrer.telegram_id,
-            text=messages.referral_bonus_reversed(
+            spec=messages.referral_bonus_message(
                 amount=amount,
                 order_id=order_public_number or order_id,
+                reversed=True,
                 translator=translate,
             ),
+            kind=DeliveryKind.SEND,
         )
+        if not outcome.delivered:
+            raise outcome.error or RuntimeError("Referral reversal notification was not delivered")
     except Exception:
         logger.exception(
             "Failed to send referral bonus reversal notification: referrer_id=%s order_id=%s",

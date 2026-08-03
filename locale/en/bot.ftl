@@ -4,6 +4,15 @@ welcome =
 
     I will help you create an exchange order in a few simple steps.
     Tap "New exchange" to start.
+start-customer-eyebrow = AntEx · Currency exchange
+start-customer-title = Hello, { $name }
+start-customer-lead = Create an order in Telegram or open the app for an expanded interface.
+start-customer-hours = Requests are accepted around the clock. Managers work { $hours }.
+start-customer-action = Choose the way that is more convenient for you.
+start-manager-eyebrow = AntEx · Workspace
+start-manager-title = Hello, { $name }
+start-manager-lead = New orders and a quick app link are available here.
+start-manager-action = Open new orders to begin work.
 
 exchange-start-welcome =
     👋 Hello, { $name }!
@@ -37,7 +46,13 @@ bot-turned-on = ✅ Bot enabled.
 bot-turned-off = 🔴 Bot disabled.
 
 ## FSM — exchange flow
-exchange-step = Step { $current }/{ $total }
+exchange-step = New order
+exchange-stage-country = New order · Country
+exchange-stage-service = New order · Receive method
+exchange-stage-city = New order · City
+exchange-stage-currency = New order · Currency
+exchange-stage-amount = New order · Amount
+exchange-stage-summary = New order · Review
 exchange-choose-currency = Choose the currency you want to exchange.
 exchange-choose-buy-currency = Choose what you want to receive for { $currency }:
 exchange-enter-amount = <b>Enter the amount you want to exchange in { $currency }:</b>
@@ -47,13 +62,14 @@ exchange-amount-invalid = Enter an amount greater than zero.
 exchange-amount-below-minimum = The amount must be at least { $minAmount }. Enter a valid amount for this receive method.
 exchange-choose-method = How would you like to receive { $currency }?
 exchange-rate-unavailable = ⚠️ Exchange rate is temporarily unavailable. Please try again later.
-exchange-confirm-summary-top = 📋 Review your order — step { $current }/{ $total }
-exchange-confirm-summary-bottom = If everything is correct, press “Confirm”.
-exchange-off-hours-alert = A manager will process the order in the morning after the working day begins.
+exchange-confirm-summary-top = 📋 Review your order details
+exchange-confirm-title = Review your order details
+exchange-confirm-summary-bottom = If everything is correct, confirm the order.
+exchange-off-hours-alert = The order will wait for the next manager working interval.
 exchange-off-hours-confirmation =
     ⚠️ Managers are not working right now.
 
-    The order will be processed in the morning after the working day begins. You can create it now — working hours do not affect order creation.
+    The order will be passed to a manager during the next working interval. You can create it now — working hours do not affect order creation.
 
     Working hours: { $hours }.
 
@@ -64,10 +80,20 @@ exchange-summary-rate = Rate
 exchange-summary-sell = You send
 exchange-summary-buy = You receive
 exchange-summary-method = Receive method
+exchange-rate-from = from
 manager-summary-user = User
+atxg-eyebrow = AntEx wallet
+atxg-credit-title = ATXG credited
+atxg-debit-title = ATXG debited
+atxg-credit-lead = The funds are now available in your wallet.
+atxg-debit-lead = The operation is reflected in your wallet.
+atxg-amount-label = Amount
+atxg-description-label = Reason
 
 ## Buttons
 btn-confirm = ✅ Confirm
+btn-start-telegram = 💬 Create in Telegram
+btn-start-miniapp = 📲 Open Mini App
 btn-yes = ✅ Yes
 btn-cancel = ❌ Cancel
 btn-cancel-short = ❌ Cancel
@@ -92,6 +118,9 @@ btn-open-chat = 💬 Open chat
 btn-write-manager = 💬 Write manager
 btn-close-order = ✅ Close order
 btn-leave-review = ⭐ Leave a review
+country-thailand = 🇹🇭 Thailand
+country-vietnam = 🇻🇳 Vietnam
+country-georgia = 🇬🇪 Georgia
 menu-open-site = 🚀 Open app
 
 ## Orders
@@ -119,7 +148,7 @@ order-created = ✅ Order #{ $id } created. Please wait for confirmation.
 order-created-offline =
     ✅ Order #{ $id } created. Your request has been accepted.
 
-    <blockquote>A manager will process the order in the morning after the working day begins.</blockquote>
+    <blockquote>A manager will begin processing during the next working interval.</blockquote>
 order-creation-failed = Could not create the order right now. Please try again in a minute.
 order-created-notification-failed = Order #{ $id } was created, but the confirmation could not be sent. Open “My orders” to check its status.
 order-creation-limit-reached = You already have too many active orders. Please wait for the current ones to be processed.
@@ -177,11 +206,15 @@ order-completed = ✅ Order #{ $id } completed.
 
     The exchange has been completed successfully.
 order-completed-top = 🎉 Order #{ $id } completed successfully.
-order-completed-bottom = Thanks for using our service! If you have a minute, we’d love your review.
+order-completed-bottom =
+    Thank you for choosing AntEx!
+
+    Send a video review as a Telegram video note and receive a <b>$5 bonus toward your next exchange</b>.
+
+    ⭐ We would be happy to hear about your experience.
 order-cancelled = ❌ Order #{ $id } cancelled.
 manager-chat-open-text = Hello! You had left order #{ $id } for exchanging { $amount } { $currency }. Are you ready to continue?
 user-chat-open-text = Hello! For order #{ $id } in the amount of { $amount } { $currency }, I confirm I’m ready to exchange.
-btn-write-manager = 💬 Message the manager
 btn-open-client-chat = 💬 Open chat with client
 btn-remind-client = 🔔 Remind client
 referral-bonus-credited =
@@ -190,6 +223,13 @@ referral-bonus-credited =
 referral-bonus-reversed =
     💸 Referral program reward reversed: -{ $amount } ATXG
     Order #{ $order_id } was cancelled.
+referral-eyebrow = Referral program
+referral-credited-title = ATXG credited
+referral-reversed-title = ATXG reversed
+referral-credited-lead = The reward for the completed order is now available in your wallet.
+referral-reversed-lead = The reward was reversed with the order.
+referral-amount-label = Amount
+referral-order-label = Order
 miniapp-aex-referral-reward = Referral reward
 miniapp-aex-referral-reward-with-order = Referral reward for order { $order_number }
 miniapp-aex-withdraw-hold = Reserved

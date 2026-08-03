@@ -22,6 +22,7 @@ from app.repositories.user import UserRepository
 from app.services.aex_rate import ATXG_RATE_QUANTIZER
 from app.telegram import messages
 from app.telegram.i18n import get_user_translator
+from app.telegram.presentation.delivery import DeliveryKind, deliver
 
 logger = logging.getLogger(__name__)
 
@@ -416,14 +417,19 @@ class ReferralService:
 
         try:
             translate = get_user_translator(referrer)
-            await telegram_bot.bot.send_message(
+            outcome = await deliver(
+                telegram_bot.bot,
                 chat_id=referrer.telegram_id,
-                text=messages.referral_bonus_credited(
+                spec=messages.referral_bonus_message(
                     amount=amount,
                     order_id=order_public_number or order_id,
+                    reversed=False,
                     translator=translate,
                 ),
+                kind=DeliveryKind.SEND,
             )
+            if not outcome.delivered:
+                raise outcome.error or RuntimeError("Referral bonus notification was not delivered")
         except Exception:
             logger.exception(
                 "Failed to send referral bonus notification: referrer_id=%s order_id=%s",

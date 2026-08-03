@@ -76,9 +76,15 @@ def choose_country(_, **kwargs) -> InlineKeyboardMarkup:
     translate = _resolve_translator(_)
     inline_keyboard = [
         [
-            InlineKeyboardButton(text="🇹🇭 Таиланд", callback_data="exchange:country:thailand"),
-            InlineKeyboardButton(text="🇻🇳 Вьетнам", callback_data="exchange:country:vietnam"),
-            InlineKeyboardButton(text="🇬🇪 Грузия", callback_data="exchange:country:georgia"),
+            InlineKeyboardButton(
+                text=translate("country-thailand"), callback_data="exchange:country:thailand"
+            ),
+            InlineKeyboardButton(
+                text=translate("country-vietnam"), callback_data="exchange:country:vietnam"
+            ),
+            InlineKeyboardButton(
+                text=translate("country-georgia"), callback_data="exchange:country:georgia"
+            ),
         ],
         [
             InlineKeyboardButton(
@@ -100,6 +106,40 @@ def choose_country(_, **kwargs) -> InlineKeyboardMarkup:
             ]
         )
 
+    return InlineKeyboardMarkup(inline_keyboard=inline_keyboard)
+
+
+def start_channel_choice(_, **kwargs) -> InlineKeyboardMarkup:
+    """Равноправный выбор канала создания пользовательской заявки."""
+    del kwargs
+    translate = _resolve_translator(_)
+    inline_keyboard = [
+        [
+            InlineKeyboardButton(
+                text=translate("btn-start-telegram"),
+                callback_data="exchange:start",
+                style="primary",
+            )
+        ]
+    ]
+    if settings.frontend_webapp_url:
+        inline_keyboard.append(
+            [
+                InlineKeyboardButton(
+                    text=translate("btn-start-miniapp"),
+                    web_app=WebAppInfo(url=settings.frontend_webapp_url),
+                    style="success",
+                )
+            ]
+        )
+    inline_keyboard.append(
+        [
+            InlineKeyboardButton(
+                text=translate("menu-orders"),
+                callback_data="menu:orders",
+            )
+        ]
+    )
     return InlineKeyboardMarkup(inline_keyboard=inline_keyboard)
 
 
