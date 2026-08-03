@@ -6,9 +6,10 @@ welcome =
     Tap "New exchange" to start.
 
 exchange-start-greeting = Hello, { $name }!
-exchange-start-title = AntEx — currency exchange and service payments
+exchange-start-category = Currency exchange and service payments
+exchange-start-title = AntEx
 exchange-start-description = Exchange currency and pay for the services you need with fewer steps.
-exchange-start-instruction-title = How to create an order
+exchange-start-instruction-title = How to get started
 exchange-start-instruction = Open the app or choose a country below — we’ll guide you through each step.
 manager-working-hours-title = Working hours
 manager-requests-anytime = Orders are accepted around the clock.
