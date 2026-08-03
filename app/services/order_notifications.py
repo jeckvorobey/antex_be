@@ -133,6 +133,31 @@ async def _send_rich_or_html(
     return DeliveryOutcome.FAILED, None
 
 
+async def _delete_previous_user_status_message(
+    *,
+    bot,
+    chat_id: int,
+    message_id: int | None,
+) -> None:
+    """Удалить старую карточку только после успешной доставки новой."""
+    if message_id is None:
+        return
+    try:
+        await bot.delete_message(chat_id=chat_id, message_id=message_id)
+    except (TelegramBadRequest, TelegramForbiddenError, TelegramNotFound):
+        logger.info(
+            "Previous order status message could not be deleted chat_id=%s message_id=%s",
+            chat_id,
+            message_id,
+        )
+    except Exception:
+        logger.exception(
+            "Failed to delete previous order status message chat_id=%s message_id=%s",
+            chat_id,
+            message_id,
+        )
+
+
 def build_manager_contact_url(manager) -> str | None:
     """Вернуть ссылку, способную передать клиенту предварительно заполненный draft."""
     username = getattr(manager, "username", None)
@@ -170,24 +195,11 @@ async def send_customer_handoff(order, manager) -> DeliveryOutcome:
     )
     if message_id is not None:
         order.userNotificationMessageId = message_id
-        if previous_message_id is not None:
-            try:
-                await bot.delete_message(
-                    chat_id=user.telegram_id,
-                    message_id=previous_message_id,
-                )
-            except (TelegramBadRequest, TelegramForbiddenError, TelegramNotFound):
-                logger.info(
-                    "Previous order status message could not be deleted chat_id=%s message_id=%s",
-                    user.telegram_id,
-                    previous_message_id,
-                )
-            except Exception:
-                logger.exception(
-                    "Failed to delete previous order status message chat_id=%s message_id=%s",
-                    user.telegram_id,
-                    previous_message_id,
-                )
+        await _delete_previous_user_status_message(
+            bot=bot,
+            chat_id=user.telegram_id,
+            message_id=previous_message_id,
+        )
     return delivery
 
 
@@ -303,6 +315,34 @@ async def send_or_replace_user_status_message(
     sent = await bot.send_message(chat_id=chat_id, text=text, reply_markup=reply_markup)
     order.userNotificationMessageId = sent.message_id
     return sent.message_id
+
+
+async def send_new_rich_user_status_message(
+    *,
+    bot,
+    chat_id: int,
+    order,
+    rich_html: str,
+    fallback_html: str,
+    reply_markup: InlineKeyboardMarkup | None,
+) -> DeliveryOutcome:
+    """Отправить новую Rich-карточку статуса и удалить её предшественницу."""
+    previous_message_id = getattr(order, "userNotificationMessageId", None)
+    delivery, message_id = await _send_rich_or_html(
+        bot=bot,
+        chat_id=chat_id,
+        rich_html=rich_html,
+        fallback_html=fallback_html,
+        reply_markup=reply_markup,
+    )
+    if message_id is not None:
+        order.userNotificationMessageId = message_id
+        await _delete_previous_user_status_message(
+            bot=bot,
+            chat_id=chat_id,
+            message_id=previous_message_id,
+        )
+    return delivery
 
 
 async def notify_order_created(
@@ -440,6 +480,21 @@ async def notify_order_status_changed(order, *, manager_chat_url: str | None = N
         )
     if order.status == 3:
         reply_markup = review_link(translate, REVIEW_URL)
+
+        locale = normalize_locale(getattr(user, "language_code", None))
+        await send_new_rich_user_status_message(
+            bot=bot,
+            chat_id=user.telegram_id,
+            order=order,
+            rich_html=messages.order_completed_rich(
+                OrderMessageView.from_order(order),
+                translator=translate,
+                locale=locale,
+            ),
+            fallback_html=_build_user_status_text(order, translate=translate),
+            reply_markup=reply_markup,
+        )
+        return
 
     await send_or_replace_user_status_message(
         bot=bot,

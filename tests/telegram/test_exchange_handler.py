@@ -483,6 +483,7 @@ async def test_choose_exchange_currency_amount_prompt_contains_minimum(monkeypat
 
     text = str(edit_rich_mock.await_args.args[1])
     assert "Введите сумму" in text
+    assert "Отправьте одним сообщением сумму" in text
     assert "<blockquote>⚠️ Минимальная сумма: «<b>15000 RUB</b>»</blockquote>" in text
 
 
@@ -957,7 +958,7 @@ async def test_confirm_offline_exchange_creates_order_after_warning(monkeypatch)
     await exchange_handler.confirm_offline_exchange_callback(callback, state)
 
     assert state.cleared is True
-    assert "Заявка №202607270101 создана" in callback.message.answers[0]["text"].replace(
+    assert "Заявка #202607270101 создана" in callback.message.answers[0]["text"].replace(
         "\u2068", ""
     ).replace("\u2069", "")
     assert "<blockquote>Менеджер обработает заявку утром" in callback.message.answers[0]["text"]

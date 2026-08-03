@@ -210,6 +210,8 @@ def test_enter_amount_rich_highlights_minimum_with_quotes() -> None:
     assert "<h2>💱 Введите сумму обмена</h2>" in text
     assert "<p>🇷🇺 1 RUB от 0.41 THB 🇹🇭</p>" in text
     assert "<blockquote>⚠️ Минимальная сумма: «<b>5000 RUB</b>»</blockquote>" in text
+    assert "Отправьте одним сообщением сумму в 🇷🇺 RUB" in text
+    assert "100 RUB" not in text
 
 
 def test_order_creation_failed_for_limit_is_human_readable() -> None:

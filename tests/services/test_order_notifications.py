@@ -611,22 +611,21 @@ async def test_notify_order_status_changed_adds_summary_for_completed_order(
 
     await notify_order_status_changed(order, manager_chat_url="https://t.me/manager")
 
-    assert bot.edited[0]["chat_id"] == 700002
-    text = str(bot.edited[0]["text"])
-    assert "🎉 Заявка" in text and "успешно завершена." in text
-    assert "🌍 Страна: Таиланд" in text
-    assert "🏙️ Город: Бангкок" in text
-    assert "📈 Курс: 31.5" in text
-    assert "💸 Отдаёте: 1,500 ₮ USDT" in text
-    assert "💰 Получаете: 47,250 🇹🇭 THB" in text
-    assert "🧾 Способ получения: Доставка наличных" in text
-    assert (
-        "Спасибо, что воспользовались нашим сервисом!\n\n"
-        "Мы ценим обратную связь. За видео-отзыв (кружок) предоставляем "
-        "<b>бонус 5$ к следующему обмену 💰</b>\n\n"
-        "⭐ Будем рады вашему отзыву. Это помогает нам становиться лучше."
-    ) in text
-    reply_markup = cast(Any, bot.edited[0]["reply_markup"])
+    assert bot.edited == []
+    assert bot.deleted == [(700002, 55)]
+    assert len(bot.rich_sent) == 1
+    rich = str(bot.rich_sent[0]["rich_message"].html)
+    assert "🎉 Заявка #2026050009 успешно завершена." in rich
+    assert "<table bordered striped>" in rich
+    assert "Страна</td><td><b>Таиланд" in rich
+    assert "Город</td><td><b>Бангкок" in rich
+    assert "Курс</td><td><b>31.5" in rich
+    assert "Отдаёте</td><td><b>1 500 ₮ USDT" in rich
+    assert "Получаете</td><td><b>47 250 🇹🇭 THB" in rich
+    assert "Способ получения</td><td><b>Доставка наличных" in rich
+    assert "Спасибо, что воспользовались нашим сервисом!" in rich
+    assert "бонус 5$ к следующему обмену" in rich
+    reply_markup = cast(Any, bot.rich_sent[0]["reply_markup"])
     assert reply_markup.inline_keyboard[0][0].text == "⭐ Оставить отзыв"
     assert reply_markup.inline_keyboard[1][0].text == "🏠 Главное меню"
     assert reply_markup.inline_keyboard[1][0].callback_data == "fsm:cancel"

@@ -59,3 +59,10 @@ EXCHANGE_CONFIRM_TEMPLATE = """<footer>{step}</footer>
 <h2>📋 {title}</h2>
 {order_summary}
 <p>{hint}</p>"""
+
+
+ORDER_COMPLETED_TEMPLATE = """<footer>{footer}</footer>
+<h2>{title}</h2>
+{order_summary}
+<hr/>
+{bottom}"""

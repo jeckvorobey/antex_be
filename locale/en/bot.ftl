@@ -65,7 +65,7 @@ exchange-enter-amount = <b>Enter the amount you want to exchange in { $currency 
 exchange-enter-amount-with-min = <b>Enter the amount you want to exchange in { $currency }:</b>
     ⚠️ Minimum amount: <b>{ $minAmount } { $minCurrency }</b>
 exchange-enter-amount-title = Enter the exchange amount
-exchange-enter-amount-prompt = Enter the amount in { $currency }.
+exchange-enter-amount-prompt = Send the amount in { $currency } you want to exchange in one message.
 exchange-enter-amount-minimum-label = Minimum amount
 exchange-amount-invalid = Enter an amount greater than zero.
 exchange-amount-below-minimum = The amount must be at least { $minAmount }. Enter a valid amount for this receive method.
@@ -222,6 +222,7 @@ order-completed = ✅ Order #{ $id } completed.
 
     The exchange has been completed successfully.
 order-completed-top = 🎉 Order #{ $id } completed successfully.
+order-completed-footer = Order completed
 order-completed-bottom = Thanks for using our service! If you have a minute, we’d love your review.
 order-cancelled = ❌ Order #{ $id } cancelled.
 manager-chat-open-text = Hello! You had left order #{ $id } for exchanging { $amount } { $currency }. Are you ready to continue?

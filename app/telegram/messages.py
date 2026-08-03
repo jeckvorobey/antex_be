@@ -20,6 +20,7 @@ from app.telegram.message_templates import (
     EXCHANGE_SERVICE_TEMPLATE,
     EXCHANGE_START_TEMPLATE,
     OFF_HOURS_BLOCK_TEMPLATE,
+    ORDER_COMPLETED_TEMPLATE,
     WORKING_HOURS_BLOCK_TEMPLATE,
 )
 from app.telegram.order_cards import OrderMessageView, render_order_regular, render_order_rich
@@ -778,6 +779,29 @@ def order_completed_bottom(
     *, translator: Translate | None = None, locale: str | None = None
 ) -> str:
     return _resolve_translator(translator, locale)("order-completed-bottom")
+
+
+def order_completed_rich(
+    view: OrderMessageView,
+    *,
+    translator: Translate | None = None,
+    locale: str | None = None,
+) -> str:
+    """Собрать Rich-карточку завершённой заявки с итогами и отзывом."""
+    translate = _resolve_translator(translator, locale)
+    current_locale = locale or "ru"
+    return ORDER_COMPLETED_TEMPLATE.format(
+        footer=escape(_strip_fluent_isolates(translate("order-completed-footer"))),
+        title=escape(
+            _strip_fluent_isolates(
+                order_completed(view.public_number, translator=translate, locale=current_locale)
+            )
+        ),
+        order_summary=render_order_rich(view, locale=current_locale),
+        bottom=_strip_fluent_isolates(
+            order_completed_bottom(translator=translate, locale=current_locale)
+        ),
+    )
 
 
 def order_cancelled(

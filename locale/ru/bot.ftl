@@ -66,7 +66,7 @@ exchange-enter-amount = <b>Введите сумму, которую хотит�
 exchange-enter-amount-with-min = <b>Введите сумму, которую хотите обменять в { $currency }:</b>
     ⚠️ Минимальная сумма: <b>{ $minAmount } { $minCurrency }</b>
 exchange-enter-amount-title = Введите сумму обмена
-exchange-enter-amount-prompt = Укажите сумму в { $currency }.
+exchange-enter-amount-prompt = Отправьте одним сообщением сумму в { $currency }, которую хотите обменять.
 exchange-enter-amount-minimum-label = Минимальная сумма
 exchange-amount-invalid = Укажите сумму числом, больше нуля.
 exchange-amount-below-minimum = Сумма должна быть не меньше { $minAmount }. Введите допустимую сумму для данного способа получения.
@@ -237,6 +237,7 @@ order-completed =
     🏁 Обмен успешно выполнен
 order-completed-top =
     🎉 Заявка #{ $id } успешно завершена.
+order-completed-footer = Заявка завершена
 order-completed-bottom =
     Спасибо, что воспользовались нашим сервисом!
 
