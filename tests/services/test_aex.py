@@ -7,7 +7,7 @@ from decimal import Decimal
 import pytest
 from sqlalchemy import select
 
-from app.enums.country import Country
+from app.exceptions import AntExException
 from app.models.attribution import UserAcquisition
 from app.models.rate import Rate
 from app.models.user import User
@@ -341,7 +341,6 @@ class TestReferralBonus:
         )
 
         assert aex_amount == Decimal("2.000000")
-        
 
     async def test_credit_referral_bonus_rub_requires_internal_usdtrub(
         self,
@@ -375,7 +374,6 @@ class TestReferralBonus:
             )
 
         assert exc_info.value.code == "REFERRAL_BONUS_RATE_UNAVAILABLE"
-        
 
     async def test_credit_referral_bonus_no_referrer(self, db_session):
         user = await create_user(db_session, telegram_id=700003)

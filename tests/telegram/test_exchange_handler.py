@@ -8,6 +8,7 @@ from unittest.mock import AsyncMock
 
 from aiogram.exceptions import TelegramBadRequest
 from aiogram.types import User as TgUser
+from sqlalchemy.exc import SQLAlchemyError
 
 os.environ.setdefault("DATABASE_URL", "sqlite+aiosqlite:///:memory:")
 
@@ -18,11 +19,14 @@ from app.models.city import City
 from app.models.user import User
 from app.services.exchange import ExchangePairSnapshot
 from app.telegram.handlers import exchange as exchange_handler
+from app.telegram.order_cards import OrderMessageView
 
 
 class _FakeDbSession:
-    def __init__(self) -> None:
+    def __init__(self, *, commit_error: Exception | None = None) -> None:
         self.committed = False
+        self.rolled_back = False
+        self.commit_error = commit_error
 
     async def __aenter__(self):
         return self
@@ -31,7 +35,38 @@ class _FakeDbSession:
         return False
 
     async def commit(self) -> None:
+        if self.commit_error is not None:
+            raise self.commit_error
         self.committed = True
+
+    async def rollback(self) -> None:
+        self.rolled_back = True
+
+
+def test_manager_notification_snapshot_detaches_relationship_values() -> None:
+    user = SimpleNamespace(username="customer")
+    city = SimpleNamespace(name="Bangkok")
+    order = SimpleNamespace(
+        id=99,
+        publicNumber="202607270001",
+        amountSell=15000,
+        currencySell="RUB",
+        amountBuy=5100,
+        currencyBuy="THB",
+        rate=0.34,
+        methodGet="qrcode",
+        country=Country.THAILAND,
+        user=user,
+        city=city,
+    )
+
+    snapshot = exchange_handler._detached_order_snapshot(order)
+    user.username = "expired-user"
+    city.name = "expired-city"
+
+    view = OrderMessageView.from_order(snapshot)
+    assert view.customer_username == "customer"
+    assert view.city == "Bangkok"
 
 
 class _FakeMessage:
@@ -59,8 +94,9 @@ class _FakeMessage:
                 ),
             )
 
-    async def answer(self, text: str, reply_markup=None) -> None:
+    async def answer(self, text: str, reply_markup=None):
         self.answers.append({"text": text, "reply_markup": reply_markup})
+        return SimpleNamespace(message_id=self.message_id + len(self.answers))
 
     async def delete(self) -> None:
         self.deletes.append({"message_id": self.message_id})
@@ -251,6 +287,8 @@ async def test_enter_amount_moves_directly_to_confirmation(monkeypatch) -> None:
 
     monkeypatch.setattr(exchange_handler, "_get_db", _fake_get_db)
     monkeypatch.setattr(exchange_handler.ExchangeService, "get_quote", _fake_get_quote)
+    answer_rich_mock = AsyncMock()
+    monkeypatch.setattr(exchange_handler, "answer_rich", answer_rich_mock)
 
     await exchange_handler.enter_amount(message, state)
 
@@ -258,8 +296,8 @@ async def test_enter_amount_moves_directly_to_confirmation(monkeypatch) -> None:
     assert state._data["amount_sell"] == 15000
     assert state._data["method"] == "qrcode"
     assert state._data["quote"]["amountBuy"] == 5100.0
-    assert len(message.answers) == 1
-    assert "Проверьте заявку" in message.answers[0]["text"]
+    answer_rich_mock.assert_awaited_once()
+    assert "<table bordered striped>" in answer_rich_mock.await_args.args[1]
     assert message.deletes == [{"message_id": message.message_id}]
     assert message.bot.deleted == [{"chat_id": message.chat.id, "message_id": 999}]
 
@@ -306,6 +344,8 @@ async def test_enter_amount_preserves_selected_cash_method(monkeypatch) -> None:
 
     monkeypatch.setattr(exchange_handler, "_get_db", _fake_get_db)
     monkeypatch.setattr(exchange_handler.ExchangeService, "get_quote", _fake_get_quote)
+    answer_rich_mock = AsyncMock()
+    monkeypatch.setattr(exchange_handler, "answer_rich", answer_rich_mock)
 
     await exchange_handler.enter_amount(message, state)
 
@@ -313,9 +353,9 @@ async def test_enter_amount_preserves_selected_cash_method(monkeypatch) -> None:
     assert state._data["method"] == "cash"
     assert state._data["city_id"] == 11
     assert state._data["quote"]["amountBuy"] == 5100.0
-    assert len(message.answers) == 1
-    assert "Проверьте заявку" in message.answers[0]["text"]
-    assert "Фукуок" in message.answers[0]["text"]
+    answer_rich_mock.assert_awaited_once()
+    assert "<table bordered striped>" in answer_rich_mock.await_args.args[1]
+    assert "Фукуок" in answer_rich_mock.await_args.args[1]
 
 
 async def test_country_sets_buy_currency_and_shows_only_canonical_sell_currencies(
@@ -341,17 +381,46 @@ async def test_country_sets_buy_currency_and_shows_only_canonical_sell_currencie
         assert country == Country.THAILAND.value
         return pairs
 
-    monkeypatch.setattr(exchange_handler, "_get_exchange_pairs", _fake_get_exchange_pairs)
+    edit_mock = AsyncMock()
+    monkeypatch.setattr(exchange_handler, "_get_currency_pairs", _fake_get_exchange_pairs)
+    monkeypatch.setattr(exchange_handler, "edit_rich", edit_mock)
 
     await exchange_handler._show_currency_step(callback, state, edit=True)
 
     assert state.state == exchange_handler.ExchangeState.choosing_currency.state
     assert state._data["currency_buy"] == "THB"
-    reply_markup = callback.message.edits[0]["reply_markup"]
+    edit_mock.assert_awaited_once()
+    text = edit_mock.await_args.args[1]
+    assert "<table" not in text
+    assert '<p><tg-emoji emoji-id="6195150966229048345">💰</tg-emoji> 1 USDT' in text
+    assert "<p>🇷🇺 1 RUB" in text
+    assert "Шаг 4" not in text
+    reply_markup = edit_mock.await_args.kwargs["reply_markup"]
     assert [button.callback_data for button in reply_markup.inline_keyboard[0]] == [
         "exchange:currency:USDT",
         "exchange:currency:RUB",
     ]
+
+
+async def test_currency_pair_loader_keeps_rub_in_exchange_orientation(monkeypatch) -> None:
+    """Шаг выбора валюты получает RUB→THB вместо витринной обратной пары THB→RUB."""
+    db = _FakeDbSession()
+    pairs = [
+        _pair_snapshot("rub-thb", "RUB", "THB", "1 RUB = 0.41 THB"),
+        _pair_snapshot("usdt-thb", "USDT", "THB", "1 USDT = 30.05 THB"),
+    ]
+    get_pairs = AsyncMock(return_value=pairs)
+
+    async def _fake_get_db():
+        return db
+
+    monkeypatch.setattr(exchange_handler, "_get_db", _fake_get_db)
+    monkeypatch.setattr(exchange_handler.ExchangeService, "list_pair_snapshots", get_pairs)
+
+    result = await exchange_handler._get_currency_pairs(Country.THAILAND.value)
+
+    assert result == pairs
+    get_pairs.assert_awaited_once_with(db)
 
 
 async def test_choose_exchange_currency_moves_directly_to_amount(monkeypatch) -> None:
@@ -372,12 +441,14 @@ async def test_choose_exchange_currency_moves_directly_to_amount(monkeypatch) ->
         return [_pair_snapshot("rub-thb", "RUB", "THB", "1 RUB = 0.34 THB")]
 
     monkeypatch.setattr(exchange_handler, "_get_exchange_pairs", _fake_get_exchange_pairs)
+    edit_rich_mock = AsyncMock()
+    monkeypatch.setattr(exchange_handler, "edit_rich", edit_rich_mock)
 
     await exchange_handler.choose_exchange_currency(callback, state)
 
     assert state.state == exchange_handler.ExchangeState.entering_amount.state
     assert state._data["currency_sell"] == "RUB"
-    assert "Введите сумму" in callback.message.edits[0]["text"]
+    assert "Введите сумму" in edit_rich_mock.await_args.args[1]
     assert callback.answers[-1] == {"text": None, "show_alert": False}
 
 
@@ -405,12 +476,15 @@ async def test_choose_exchange_currency_amount_prompt_contains_minimum(monkeypat
         return [_pair_snapshot("rub-thb", "RUB", "THB", "1 RUB = 0.34 THB")]
 
     monkeypatch.setattr(exchange_handler, "_get_exchange_pairs", _fake_get_exchange_pairs)
+    edit_rich_mock = AsyncMock()
+    monkeypatch.setattr(exchange_handler, "edit_rich", edit_rich_mock)
 
     await exchange_handler.choose_exchange_currency(callback, state)
 
-    text = str(callback.message.edits[0]["text"])
+    text = str(edit_rich_mock.await_args.args[1])
     assert "Введите сумму" in text
-    assert "\n\n⚠️ Минимальная сумма: <b>15000 RUB</b>" in text
+    assert "Отправьте одним сообщением сумму" in text
+    assert "<blockquote>⚠️ Минимальная сумма: «<b>15000 RUB</b>»</blockquote>" in text
 
 
 async def test_choose_exchange_currency_falls_back_to_direct_pair_rate_for_reversed_display_pairs(
@@ -609,7 +683,7 @@ async def test_fsm_back_from_amount_returns_to_sell_currency_step(monkeypatch) -
         assert country == Country.THAILAND.value
         return pairs
 
-    monkeypatch.setattr(exchange_handler, "_get_exchange_pairs", _fake_get_exchange_pairs)
+    monkeypatch.setattr(exchange_handler, "_get_currency_pairs", _fake_get_exchange_pairs)
 
     await exchange_handler.fsm_back(callback, state)
 
@@ -854,24 +928,41 @@ async def test_confirm_offline_exchange_creates_order_after_warning(monkeypatch)
     async def _fake_check_user(db, tg_user):
         return user, False
 
-    async def _fake_create_order_for_user(db, current_user, payload, *, notify_user=True):
+    async def _fake_create_order_for_user(
+        db,
+        current_user,
+        payload,
+        *,
+        notify_user=True,
+        defer_notifications=False,
+    ):
         assert current_user is user
         assert payload.amount_sell == 15000
+        assert notify_user is False
+        assert defer_notifications is True
         return created_order
+
+    manager_notification = AsyncMock()
 
     monkeypatch.setattr(exchange_handler, "_get_db", _fake_get_db)
     monkeypatch.setattr(exchange_handler, "check_user", _fake_check_user)
     monkeypatch.setattr(exchange_handler, "ConfigRepository", _FakeConfigRepository)
     monkeypatch.setattr(exchange_handler, "ManagerWorkingHoursService", _OfflineWorkingHoursService)
     monkeypatch.setattr(exchange_handler, "create_order_for_user", _fake_create_order_for_user)
+    monkeypatch.setattr(
+        exchange_handler,
+        "_notify_manager_order_created",
+        manager_notification,
+    )
 
     await exchange_handler.confirm_offline_exchange_callback(callback, state)
 
     assert state.cleared is True
-    assert "Заявка №202607270101 создана" in callback.message.answers[0]["text"].replace(
+    assert "Заявка #202607270101 создана" in callback.message.answers[0]["text"].replace(
         "\u2068", ""
     ).replace("\u2069", "")
     assert "<blockquote>Менеджер обработает заявку утром" in callback.message.answers[0]["text"]
+    manager_notification.assert_awaited_once_with(fake_db, created_order, user)
 
 
 async def test_confirm_exchange_creates_order_with_default_qrcode(monkeypatch) -> None:
@@ -925,7 +1016,14 @@ async def test_confirm_exchange_creates_order_with_default_qrcode(monkeypatch) -
     async def _fake_check_user(db, tg_user):
         return user, False
 
-    async def _fake_create_order_for_user(db, current_user, payload, *, notify_user=True):
+    async def _fake_create_order_for_user(
+        db,
+        current_user,
+        payload,
+        *,
+        notify_user=True,
+        defer_notifications=False,
+    ):
         assert db is fake_db
         assert current_user is user
         assert payload.city_id is None
@@ -937,23 +1035,175 @@ async def test_confirm_exchange_creates_order_with_default_qrcode(monkeypatch) -
         assert payload.rate == 0.34
         assert payload.method_get == "qrcode"
         assert notify_user is False
+        assert defer_notifications is True
         return created_order
+
+    manager_notification = AsyncMock()
 
     monkeypatch.setattr(exchange_handler, "_get_db", _fake_get_db)
     monkeypatch.setattr(exchange_handler, "check_user", _fake_check_user)
     monkeypatch.setattr(exchange_handler, "ConfigRepository", _FakeConfigRepository)
     monkeypatch.setattr(exchange_handler, "ManagerWorkingHoursService", _WorkingWorkingHoursService)
     monkeypatch.setattr(exchange_handler, "create_order_for_user", _fake_create_order_for_user)
+    monkeypatch.setattr(
+        exchange_handler,
+        "_notify_manager_order_created",
+        manager_notification,
+    )
 
     await exchange_handler.confirm_exchange_callback(callback, state)
 
     assert state.cleared is True
-    assert fake_db.committed is False
+    assert fake_db.committed is True
+    assert created_order.userNotificationMessageId == callback.message.message_id + 1
+    manager_notification.assert_awaited_once_with(fake_db, created_order, user)
     assert len(callback.message.edits) == 0
     assert callback.message.deletes == [{"message_id": callback.message.message_id}]
     assert len(callback.message.answers) == 1
     assert "после начала рабочего дня" in callback.message.answers[0]["text"]
     assert callback.answers[-1] == {"text": None, "show_alert": False}
+
+
+async def test_confirm_exchange_does_not_repeat_created_order_when_message_id_commit_fails(
+    monkeypatch,
+) -> None:
+    fake_db = _FakeDbSession(commit_error=SQLAlchemyError("write unavailable"))
+    user = User(
+        id=22,
+        telegram_id=777001,
+        username="customer",
+        first_name="Test",
+        role=3,
+    )
+    created_order = SimpleNamespace(
+        id=99,
+        publicNumber="202607270001",
+        status=int(OrderStatus.CREATED),
+        manager_availability=SimpleNamespace(status="working"),
+    )
+    callback = _FakeCallback(
+        TgUser(
+            id=777001,
+            is_bot=False,
+            first_name="Test",
+            username="customer",
+            language_code="ru",
+        )
+    )
+    state = _FakeState(
+        {
+            "currency_sell": "RUB",
+            "amount_sell": 15000,
+            "currency_buy": "THB",
+            "quote": {"amountBuy": 5100, "rate": 0.34},
+            "method": "qrcode",
+            "country": Country.THAILAND.value,
+        }
+    )
+
+    async def _fake_get_db():
+        return fake_db
+
+    async def _fake_check_user(db, tg_user):
+        return user, False
+
+    async def _fake_create_order_for_user(db, current_user, payload, **kwargs):
+        return created_order
+
+    manager_notification = AsyncMock()
+
+    monkeypatch.setattr(exchange_handler, "_get_db", _fake_get_db)
+    monkeypatch.setattr(exchange_handler, "check_user", _fake_check_user)
+    monkeypatch.setattr(exchange_handler, "ConfigRepository", _FakeConfigRepository)
+    monkeypatch.setattr(exchange_handler, "ManagerWorkingHoursService", _WorkingWorkingHoursService)
+    monkeypatch.setattr(exchange_handler, "create_order_for_user", _fake_create_order_for_user)
+    monkeypatch.setattr(
+        exchange_handler,
+        "_notify_manager_order_created",
+        manager_notification,
+    )
+
+    await exchange_handler.confirm_exchange_callback(callback, state)
+
+    assert state.cleared is True
+    assert fake_db.rolled_back is True
+    assert callback.answers[-1] == {"text": None, "show_alert": False}
+    manager_notification.assert_awaited_once()
+    notification_db, notification_order, notification_user = manager_notification.await_args.args
+    assert notification_db is fake_db
+    assert notification_order.id == created_order.id
+    assert notification_order.publicNumber == created_order.publicNumber
+    assert notification_user.id == user.id
+    assert notification_user.telegram_id == user.telegram_id
+    assert notification_user.username == user.username
+
+
+async def test_confirm_exchange_notifies_manager_when_initial_customer_card_fails(
+    monkeypatch,
+) -> None:
+    fake_db = _FakeDbSession()
+    user = User(
+        id=22,
+        telegram_id=777001,
+        username="customer",
+        first_name="Test",
+        role=3,
+    )
+    created_order = SimpleNamespace(
+        id=99,
+        publicNumber="202607270001",
+        status=int(OrderStatus.CREATED),
+        manager_availability=SimpleNamespace(status="working"),
+    )
+    callback = _FakeCallback(
+        TgUser(
+            id=777001,
+            is_bot=False,
+            first_name="Test",
+            username="customer",
+            language_code="ru",
+        )
+    )
+    callback.message.answer = AsyncMock(side_effect=RuntimeError("Telegram unavailable"))
+    state = _FakeState(
+        {
+            "currency_sell": "RUB",
+            "amount_sell": 15000,
+            "currency_buy": "THB",
+            "quote": {"amountBuy": 5100, "rate": 0.34},
+            "method": "qrcode",
+            "country": Country.THAILAND.value,
+        }
+    )
+
+    async def _fake_get_db():
+        return fake_db
+
+    async def _fake_check_user(db, tg_user):
+        return user, False
+
+    async def _fake_create_order_for_user(db, current_user, payload, **kwargs):
+        return created_order
+
+    manager_notification = AsyncMock()
+
+    monkeypatch.setattr(exchange_handler, "_get_db", _fake_get_db)
+    monkeypatch.setattr(exchange_handler, "check_user", _fake_check_user)
+    monkeypatch.setattr(exchange_handler, "ConfigRepository", _FakeConfigRepository)
+    monkeypatch.setattr(exchange_handler, "ManagerWorkingHoursService", _WorkingWorkingHoursService)
+    monkeypatch.setattr(exchange_handler, "create_order_for_user", _fake_create_order_for_user)
+    monkeypatch.setattr(
+        exchange_handler,
+        "_notify_manager_order_created",
+        manager_notification,
+    )
+
+    await exchange_handler.confirm_exchange_callback(callback, state)
+
+    assert state.cleared is True
+    assert callback.answers[-1]["show_alert"] is True
+    assert "202607270001" in callback.answers[-1]["text"]
+    manager_notification.assert_awaited_once_with(fake_db, created_order, user)
 
 
 async def test_confirm_exchange_shows_human_error_on_order_creation_failure(monkeypatch) -> None:
@@ -994,7 +1244,16 @@ async def test_confirm_exchange_shows_human_error_on_order_creation_failure(monk
     async def _fake_check_user(db, tg_user):
         return user, False
 
-    async def _fake_create_order_for_user(db, current_user, payload, *, notify_user=True):
+    async def _fake_create_order_for_user(
+        db,
+        current_user,
+        payload,
+        *,
+        notify_user=True,
+        defer_notifications=False,
+    ):
+        assert notify_user is False
+        assert defer_notifications is True
         raise AntExException(
             "User has reached active orders limit",
             code="ORDER_ALREADY_EXISTS",
@@ -1173,3 +1432,42 @@ async def test_fsm_cancel_returns_to_country_step() -> None:
     ]
     assert reply_markup.inline_keyboard[1][0].callback_data == "menu:orders"
     assert callback.answers[-1] == {"text": None, "show_alert": False}
+
+
+async def test_show_city_step_edits_as_rich_message_without_step_counter(monkeypatch) -> None:
+    callback = _FakeCallback(
+        TgUser(
+            id=777030,
+            is_bot=False,
+            first_name="City",
+            username="city-user",
+            language_code="ru",
+        )
+    )
+    state = _FakeState(
+        {"country": Country.VIETNAM.value, "service_label": "cash_delivery"}
+    )
+    city = SimpleNamespace(id=17, name="Дананг")
+
+    class _Result:
+        def scalars(self):
+            return SimpleNamespace(all=lambda: [city])
+
+    fake_db = _FakeDbSession()
+    fake_db.execute = AsyncMock(return_value=_Result())
+    edit_mock = AsyncMock()
+
+    async def _fake_get_db():
+        return fake_db
+
+    monkeypatch.setattr(exchange_handler, "_get_db", _fake_get_db)
+    monkeypatch.setattr(exchange_handler, "edit_rich", edit_mock)
+
+    await exchange_handler._show_city_step(callback, state, edit=True)
+
+    assert state.state == exchange_handler.ExchangeState.choosing_city.state
+    edit_mock.assert_awaited_once()
+    text = edit_mock.await_args.args[1]
+    assert "<h2>📍 Выберите город</h2>" in text
+    assert "Шаг 3" not in text
+    assert edit_mock.await_args.kwargs["reply_markup"].inline_keyboard[0][0].text == "Дананг"

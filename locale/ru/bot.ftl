@@ -5,26 +5,47 @@ welcome =
     Помогу быстро создать заявку на обмен без лишних шагов.
     Нажмите «Новый обмен», чтобы начать.
 
-exchange-start-welcome =
-    👋 Привет, { $name }!
-
-    <b>AntEx</b> — это сервис, который помогает <u>быстро обменять деньги</u> и оплатить необходимые услуги без лишних усилий.
-
-    📝 Чтобы оставить заявку, откройте приложение или выберите страну в списке ниже.
-
-    Заявки принимаются круглосуточно.
-
-    ☝️ Мы будем сопровождать вас на каждом этапе.
-manager-working-hours = Менеджеры работают { $hours }.
+exchange-start-greeting = Привет, { $name }!
+exchange-start-category = Обмен валюты и оплата услуг
+exchange-start-title = AntEx
+exchange-start-description = Быстро обмениваем валюту и помогаем оплачивать необходимые услуги.
+exchange-start-instruction-title = Как начать
+exchange-start-instruction = Откройте приложение или выберите страну ниже — подскажем каждый шаг.
+manager-working-hours-title = Режим работы
+manager-requests-anytime = Заявки принимаются круглосуточно.
+manager-label = Менеджеры
+exchange-start-off-hours-title = Обработаем утром, в рабочее время
+exchange-start-off-hours-text = Оформить заявку можно уже сейчас.
 exchange-choose-country = Выберите страну
-exchange-choose-service =
-    <b>💠 Выберите подходящую услугу</b>
-
-    🚕 <u><i>Доставка наличных</i></u> — доставим денежные средства в удобное для вас место.
-    🏧 <u><i>Наличные по QR</i></u> — получите наличные через банкомат.
-    💳 <u><i>Перевод</i></u> — переведём средства на местный банковский счёт.
-    🧰 <u><i>Оплата сервисов</i></u> — поможем оплатить необходимые услуги.
-exchange-choose-city = Выберите город доставки наличных
+exchange-choose-service-category = Выбор услуги
+exchange-choose-service-title = Как вам удобнее получить деньги?
+exchange-choose-service-description = Выберите подходящий способ — далее подскажем детали оформления.
+exchange-choose-service-options-title = Доступные варианты
+exchange-service-cash-delivery-title = Доставка наличных
+exchange-service-cash-delivery-description = Привезём деньги в удобное место.
+exchange-service-cash-atm-title = Наличные по QR
+exchange-service-cash-atm-description = Получите наличные через банкомат.
+exchange-service-bank-account-title = Перевод
+exchange-service-bank-account-description = Переведём на счёт в местном банке.
+exchange-service-pay-services-title = Оплата сервисов
+exchange-service-pay-services-description = Поможем оплатить нужные услуги.
+exchange-choose-city-category = Доставка наличных
+exchange-choose-city-title = Выберите город
+exchange-choose-city-description = Укажите город, куда нужно привезти наличные.
+exchange-choose-city-options-title = Доступные города
+exchange-choose-city-options-hint = Выберите город на кнопке ниже.
+exchange-choose-currency-category = Выбор валюты
+exchange-choose-currency-title = Какую валюту вы отдаёте?
+exchange-choose-currency-description = Выберите валюту — дальше укажете сумму обмена.
+exchange-choose-currency-selection-title = Параметры заявки
+exchange-choose-currency-summary-country = Страна
+exchange-choose-currency-summary-service = Услуга
+exchange-choose-currency-summary-city = Город
+exchange-choose-currency-rates-title = Доступные курсы
+exchange-choose-currency-currency-column = Валюта
+exchange-choose-currency-rate-column = Курс
+exchange-choose-currency-rate-from = от
+exchange-choose-currency-options-hint = Выберите валюту на кнопке ниже 👇
 
 menu-orders = 📋 Мои заявки
 menu-new-site-leads = 🆕 Новые заявки
@@ -44,11 +65,15 @@ exchange-choose-buy-currency = Выберите, что хотите получ�
 exchange-enter-amount = <b>Введите сумму, которую хотите обменять в { $currency }:</b>
 exchange-enter-amount-with-min = <b>Введите сумму, которую хотите обменять в { $currency }:</b>
     ⚠️ Минимальная сумма: <b>{ $minAmount } { $minCurrency }</b>
+exchange-enter-amount-title = Введите сумму обмена
+exchange-enter-amount-prompt = Отправьте одним сообщением сумму в { $currency }, которую хотите обменять.
+exchange-enter-amount-minimum-label = Минимальная сумма
 exchange-amount-invalid = Укажите сумму числом, больше нуля.
 exchange-amount-below-minimum = Сумма должна быть не меньше { $minAmount }. Введите допустимую сумму для данного способа получения.
 exchange-choose-method = Выберите способ получения { $currency }:
 exchange-rate-unavailable = ⚠️ Курс временно недоступен. Попробуйте позже.
 exchange-confirm-summary-top = 📋 Проверьте заявку — шаг { $current }/{ $total }
+exchange-confirm-title = Проверьте заявку
 exchange-confirm-summary-bottom = Если всё верно, нажмите «Подтвердить».
 exchange-off-hours-alert = Менеджер обработает заявку утром после начала рабочего дня.
 exchange-off-hours-confirmation =
@@ -85,10 +110,10 @@ btn-transfer = 🏦 Перевод
 btn-cash = 💵 Наличные
 btn-wallet = 👛 Кошелёк
 btn-card = 💳 Карта
-btn-cancel-order = ❌ Отменить
+btn-cancel-order = ❌ Отменить заявку
 btn-confirm-cancel-order = ❌ Подтвердить отмену
 btn-keep-order = ✅ Оставить
-btn-take-order = ✅ В работу
+btn-take-order = ✅ Взять в работу
 btn-open-chat = 💬 Написать в чат
 btn-write-manager = 💬 Написать менеджеру
 btn-close-order = ✅ Закрыть заявку
@@ -117,18 +142,19 @@ manager-access-denied = Недостаточно прав.
 
 ## Order statuses
 order-created =
-    ✅ Заявка №{ $id } создана.
+    ✅ Заявка #{ $id } создана.
 
     ⏳ Мы получили ваш запрос и уже начали обработку.
 
     Пожалуйста, ожидайте подтверждения. Статус заявки будет обновлён автоматически.
 order-created-offline =
-    ✅ Заявка №{ $id } создана.
+    ✅ Заявка #{ $id } создана.
 
     Заявка принята.
 
     <blockquote>Менеджер обработает заявку утром после начала рабочего дня.</blockquote>
 order-creation-failed = Не удалось создать заявку. Попробуйте ещё раз через минуту.
+order-created-notification-failed = Заявка #{ $id } создана, но подтверждение не удалось отправить. Откройте «Мои заявки», чтобы проверить статус.
 order-creation-limit-reached = У вас уже слишком много активных заявок. Дождитесь обработки текущих или завершите их.
 order-confirmed =
     ✅ Заявка #{ $id } принята в работу.
@@ -136,6 +162,70 @@ order-confirmed =
     👨‍💼 Менеджер уже занимается вашим обменом.
 
     💬 Для связи используйте кнопку «Написать в чат».
+customer-manager-draft = Здравствуйте! Я по заявке #{ $id }. Готов продолжить обмен.
+order-details-caption = Детали заявки
+order-country-thailand = Таиланд
+order-country-vietnam = Вьетнам
+order-country-georgia = Грузия
+order-country-internal = Внутренний обмен
+order-handoff-rich =
+    <footer>Статус заявки</footer>
+    <h2>✅ Заявка #{ $id } принята в работу</h2>
+    <p>Менеджер готов продолжить обмен.</p>
+    <hr/>
+    { $summary }
+    <h2>Что нужно сделать</h2>
+    <ol>
+      <li>💬 Откройте чат. Нажмите «Написать менеджеру».</li>
+      <li>📝 Отправьте сообщение с предзаполненным текстом.</li>
+    </ol>
+    <aside>⚠️ Важно. Напишите менеджеру первым, чтобы открыть диалог. После этого он сможет ответить и согласовать детали обмена.</aside>
+order-handoff-html =
+    <b>✅ Заявка #{ $id } принята в работу</b>
+
+    Менеджер готов продолжить обмен.
+
+    { $summary }
+
+    <b>Что нужно сделать</b>
+    1. 💬 Откройте чат. Нажмите «Написать менеджеру».
+    2. 📝 Отправьте сообщение с предзаполненным текстом.
+
+    ⚠️ Важно. Напишите менеджеру первым, чтобы открыть диалог. После этого он сможет ответить и согласовать детали обмена.
+order-reminder-rich =
+    <footer>Напоминание по заявке</footer>
+    <h2>🔔 Менеджер ожидает ваше сообщение по заявке #{ $id }</h2>
+    <p>Менеджер готов продолжить обмен.</p>
+    <hr/>
+    { $summary }
+    <h2>Что нужно сделать</h2>
+    <ol>
+      <li>💬 Откройте чат. Нажмите «Написать менеджеру».</li>
+      <li>📝 Отправьте сообщение с предзаполненным текстом.</li>
+    </ol>
+    <aside>⚠️ Важно. Напишите менеджеру первым, чтобы открыть диалог. После этого он сможет ответить и согласовать детали обмена.</aside>
+order-reminder-html =
+    <b>🔔 Менеджер ожидает ваше сообщение по заявке #{ $id }</b>
+
+    Менеджер готов продолжить обмен.
+
+    { $summary }
+
+    <b>Что нужно сделать</b>
+    1. 💬 Откройте чат. Нажмите «Написать менеджеру».
+    2. 📝 Отправьте сообщение с предзаполненным текстом.
+
+    ⚠️ Важно. Напишите менеджеру первым, чтобы открыть диалог. После этого он сможет ответить и согласовать детали обмена.
+manager-order-card-footer = Статус заявки
+manager-order-created-title = 🆕 Новая заявка #{ $id }
+manager-order-created-lead = Ожидает решения менеджера.
+manager-order-processing-title = ✅ Заявка #{ $id } принята в работу
+manager-order-processing-lead = Клиенту отправлена просьба начать диалог. Ожидайте сообщения клиента.
+manager-order-processing-failed-lead = Заявка в работе, но сообщение клиенту не доставлено. Отправьте напоминание после проверки настроек связи.
+manager-order-completed-title = ✅ Заявка #{ $id } завершена
+manager-order-completed-lead = Обмен успешно выполнен.
+manager-order-cancelled-title = ❌ Заявка #{ $id } отменена
+manager-order-cancelled-lead = Работа по заявке остановлена.
 order-completed =
     ✅ Заявка #{ $id } завершена.
 
@@ -147,15 +237,25 @@ order-completed =
     🏁 Обмен успешно выполнен
 order-completed-top =
     🎉 Заявка #{ $id } успешно завершена.
+order-completed-footer = Заявка завершена
 order-completed-bottom =
-    Спасибо, что воспользовались нашим сервисом!
+    💚 <b>Спасибо, что воспользовались нашим сервисом!</b>
 
     Мы ценим обратную связь. За видео-отзыв (кружок) предоставляем <b>бонус 5$ к следующему обмену 💰</b>
 
-    ⭐ Будем рады вашему отзыву. Это помогает нам становиться лучше.
+    ⭐ <b>Будем рады вашему отзыву!</b>
+
+    Это помогает нам становиться лучше.
+order-completed-bottom-rich =
+    <p>💚 <b>Спасибо, что воспользовались нашим сервисом!</b><br/>Мы ценим обратную связь.</p>
+    <aside>💰 За видео-отзыв (кружок) предоставляем <b>бонус 5$ к следующему обмену 💰</b></aside>
+    <p>⭐ <b>Будем рады вашему отзыву!</b><br/>Это помогает нам становиться лучше.</p>
 order-cancelled = ❌ Заявка #{ $id } отменена.
 manager-chat-open-text = Здравствуйте! Вы оставляли заявку #{ $id } на обмен { $amount } { $currency }. Готовы продолжить?
 user-chat-open-text = Здравствуйте! По заявке #{ $id } на сумму { $amount } { $currency } подтверждаю готовность к обмену.
+btn-write-manager = 💬 Написать менеджеру
+btn-open-client-chat = 💬 Открыть чат с клиентом
+btn-remind-client = 🔔 Напомнить клиенту
 referral-bonus-credited =
     🎁 Вознаграждение по реферальной программе: +{ $amount } ATXG
     За успешно завершённую заявку #{ $order_id }.

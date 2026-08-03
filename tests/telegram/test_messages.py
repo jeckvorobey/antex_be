@@ -25,8 +25,11 @@ def test_exchange_rate_formats_all_rates_with_two_decimals() -> None:
 
 def test_order_created_includes_order_number() -> None:
     text = messages.order_created(2026050008)
+    normalized = text.replace("\u2068", "").replace("\u2069", "").replace("\u00a0", "")
 
     assert "".join(re.findall(r"\d", text)) == "2026050008"
+    assert "#2026050008" in normalized
+    assert "№" not in text
 
 
 def test_order_created_adds_queue_notice_only_for_offline_managers() -> None:
@@ -69,15 +72,50 @@ def test_exchange_off_hours_alert_is_short() -> None:
     assert text == "Менеджер обработает заявку утром после начала рабочего дня."
 
 
-def test_exchange_start_welcome_uses_current_business_schedule() -> None:
+def test_exchange_start_welcome_uses_template_and_current_business_schedule() -> None:
     text = messages.exchange_start_welcome(
         "Сергей",
         locale="ru",
         business_hours_text="Пн–Пт с 10:00 до 22:00 МСК",
     )
 
+    assert "<h2>💱 AntEx</h2>" in text
+    assert "<footer>Обмен валюты и оплата услуг</footer>" in text
     assert "Заявки принимаются круглосуточно" in text
-    assert "Менеджеры работают Пн–Пт с 10:00 до 22:00 МСК" in _strip_bidi_marks(text)
+    assert "<blockquote>🕘 <b>Режим работы</b>" in text
+    assert "Менеджеры: Пн–Пт с 10:00 до 22:00 МСК." in _strip_bidi_marks(text)
+    assert "Обработаем утром" not in text
+
+
+def test_exchange_start_welcome_adds_offline_notice_only_when_confirmed() -> None:
+    ru_text = messages.exchange_start_welcome(
+        "Сергей",
+        locale="ru",
+        managers_offline=True,
+    )
+    en_text = messages.exchange_start_welcome(
+        "Sergey",
+        locale="en",
+        managers_offline=True,
+    )
+    unknown_text = messages.exchange_start_welcome(
+        "Сергей",
+        locale="ru",
+        managers_offline=False,
+    )
+
+    assert "<blockquote>⚠️ <b>Обработаем утром, в рабочее время</b>" in ru_text
+    assert "Оформить заявку можно уже сейчас." in ru_text
+    assert "We’ll process it in the morning, during working hours" in en_text
+    assert "You can create an order now." in en_text
+    assert "Обработаем утром, в рабочее время" not in unknown_text
+
+
+def test_exchange_start_welcome_escapes_first_name_for_html() -> None:
+    text = messages.exchange_start_welcome("<b>Сергей</b>", locale="ru")
+
+    assert "&lt;b&gt;Сергей&lt;/b&gt;" in text
+    assert "<b>Сергей</b>" not in text
 
 
 def test_referral_bonus_credited_is_short_and_formats_amount_with_two_decimals() -> None:
@@ -130,13 +168,16 @@ def test_exchange_confirm_summary_uses_human_currency_labels() -> None:
         locale="ru",
     )
 
-    assert "🌍 Страна: Таиланд" in text
-    assert "🏙️ Город: Бангкок" in text
-    assert "📈 Курс: 1 RUB = 0.34 THB" in text
-    assert "💸 Отдаёте: 15,000 🇷🇺 RUB" in text
-    assert "💰 Получаете: 5,100 🇹🇭 THB" in text
-    assert "🧾 Способ получения: 📱 По QR-коду" in text
-    assert "Проверьте заявку" in text
+    assert "<footer>Шаг 4/4</footer>" in text
+    assert "<h2>📋 Проверьте заявку</h2>" in text
+    assert "<table bordered striped>" in text
+    assert "Отдаёте</td><td><b>15 000 🇷🇺 RUB" in text
+    assert "Получаете</td><td><b>5 100 🇹🇭 THB" in text
+    assert "Курс</td><td><b>0.34" in text
+    assert "Способ получения</td><td><b>📱 По QR-коду" in text
+    assert "Страна</td><td><b>Таиланд" in text
+    assert "Город</td><td><b>Бангкок" in text
+    assert "Если всё верно, нажмите «Подтвердить»." in text
 
 
 def test_exchange_confirm_summary_omits_city_when_missing() -> None:
@@ -151,8 +192,26 @@ def test_exchange_confirm_summary_omits_city_when_missing() -> None:
         locale="ru",
     )
 
-    assert "🏙️ Город:" not in text
-    assert "🌍 Страна: Грузия" in text
+    assert "Город</td>" not in text
+    assert "Страна</td><td><b>Грузия" in text
+
+
+def test_enter_amount_rich_highlights_minimum_with_quotes() -> None:
+    text = messages.enter_amount_rich(
+        currency="RUB",
+        rate_text="1 RUB от 0.41 THB 🇹🇭",
+        min_amount=5000,
+        current=5,
+        total=5,
+        locale="ru",
+    )
+
+    assert "<footer>Шаг 5/5</footer>" in text
+    assert "<h2>💱 Введите сумму обмена</h2>" in text
+    assert "<p>🇷🇺 1 RUB от 0.41 THB 🇹🇭</p>" in text
+    assert "<blockquote>⚠️ Минимальная сумма: «<b>5000 RUB</b>»</blockquote>" in text
+    assert "Отправьте одним сообщением сумму в 🇷🇺 RUB" in text
+    assert "100 RUB" not in text
 
 
 def test_order_creation_failed_for_limit_is_human_readable() -> None:
@@ -206,20 +265,29 @@ def test_orders_item_respects_english_locale() -> None:
     assert "Payout method: Cash delivery" in text
 
 
-def test_choose_service_prompt_lists_service_options() -> None:
+def test_choose_service_prompt_uses_rich_structure_and_list() -> None:
     text = messages.choose_service_prompt("thailand", locale="ru")
 
-    assert "<b>💠 Выберите подходящую услугу</b>" in text
-    assert "🚕 <u><i>Доставка наличных</i></u>" in text
-    assert "🏧 <u><i>Наличные по QR</i></u>" in text
-    assert "💳 <u><i>Перевод</i></u>" in text
-    assert "🧰 <u><i>Оплата сервисов</i></u>" in text
+    assert "<footer>Выбор услуги</footer>" in text
+    assert "<h2>💎 Как вам удобнее получить деньги?</h2>" in text
+    assert "Шаг 2" not in text
+    assert "<ul>" in text
+    assert "<li><b>🚕 Доставка наличных</b><br/>Привезём деньги в удобное место.</li>" in text
+    assert "<li><b>🏧 Наличные по QR</b><br/>Получите наличные через банкомат.</li>" in text
+    assert "<li><b>💳 Перевод</b><br/>Переведём на счёт в местном банке.</li>" in text
+    assert "<li><b>🧰 Оплата сервисов</b><br/>Поможем оплатить нужные услуги.</li>" in text
 
 
-def test_choose_city_prompt_mentions_cash_delivery() -> None:
+def test_choose_city_prompt_uses_rich_structure() -> None:
     text = messages.choose_city_prompt("cash_delivery", locale="ru")
 
-    assert "Выберите город доставки наличных" in text
+    assert "<footer>Доставка наличных</footer>" in text
+    assert "<h2>📍 Выберите город</h2>" in text
+    assert "<p>Укажите город, куда нужно привезти наличные.</p>" in text
+    assert "<hr/>" in text
+    assert "<h3>Доступные города</h3>" in text
+    assert "<p>Выберите город на кнопке ниже.</p>" in text
+    assert "Шаг 3" not in text
 
 
 def test_exchange_pair_rates_match_miniapp_display_orientation() -> None:
@@ -291,3 +359,61 @@ def test_exchange_pair_rates_format_is_readable_with_currency_emoji() -> None:
     for pair in pairs:
         assert pair.label not in text
         assert pair.rate_text not in text
+
+def test_choose_currency_prompt_uses_rich_currency_cards_for_usdt_and_rub() -> None:
+    pairs = [
+        ExchangePairSnapshot(
+            pair_id="rub-vnd",
+            label="RUB/VND",
+            currency_sell="RUB",
+            currency_buy="VND",
+            country=Country.VIETNAM,
+            base_rate=320.35,
+            client_rate=320.35,
+            calculation_rate=320.35,
+            rate_display="320.35",
+            rate_text="1 RUB = 320.35 VND",
+            amount_sell_example=1,
+            amount_buy_example=320.35,
+            updated_at=datetime(2026, 6, 9, 12, 0, tzinfo=UTC),
+            available_methods=["cash"],
+        ),
+        ExchangePairSnapshot(
+            pair_id="usdt-vnd",
+            label="USDT/VND",
+            currency_sell="USDT",
+            currency_buy="VND",
+            country=Country.VIETNAM,
+            base_rate=25479.90,
+            client_rate=25479.90,
+            calculation_rate=25479.90,
+            rate_display="25479.90",
+            rate_text="1 USDT = 25479.90 VND",
+            amount_sell_example=1,
+            amount_buy_example=25479.90,
+            updated_at=datetime(2026, 6, 9, 12, 0, tzinfo=UTC),
+            available_methods=["cash"],
+        ),
+    ]
+
+    text = messages.choose_currency_prompt(
+        pairs,
+        country="vietnam",
+        service="🚕 Доставка наличных",
+        city="Хошимин",
+        locale="ru",
+    )
+
+    assert "<footer>Выбор валюты</footer>" in text
+    assert "<h2>💱 Какую валюту вы отдаёте?</h2>" in text
+    assert "<h3>Доступные курсы</h3>" in text
+    assert "<table" not in text
+    assert "<ul>" not in text
+    assert "<br/>" not in text
+    assert "<p>🇷🇺 1 RUB от <b>320.35 VND</b> 🇻🇳</p>" in text
+    assert (
+        '<p><tg-emoji emoji-id="6195150966229048345">💰</tg-emoji> '
+        "1 USDT от <b>25479.90 VND</b> 🇻🇳</p>"
+    ) in text
+    assert "Выберите валюту на кнопке ниже 👇" in text
+    assert "Шаг 4" not in text

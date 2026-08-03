@@ -1255,6 +1255,40 @@ async def test_miniapp_order_is_created_with_preliminary_client_quote(
 
 
 @pytest.mark.asyncio
+async def test_miniapp_order_response_refreshes_expired_orm_fields(
+    api_client: tuple[AsyncClient, AsyncSession],
+) -> None:
+    """Возвращает DTO заявки, когда уведомление истекло её ORM-поле."""
+    client, db_session = api_client
+    from app.services import order_flow
+
+    async def expire_order_updated_at(order, *_args, **_kwargs) -> None:
+        """Имитирует истечение поля после внешнего побочного эффекта уведомления."""
+        db_session.expire(order, ["updatedAt"])
+
+    order_flow.notify_order_created.side_effect = expire_order_updated_at
+    _, _, customer = await seed_exchange_data(db_session)
+    token = create_access_token({"sub": str(customer.id), "role": customer.role})
+
+    response = await client.post(
+        "/api/miniapp/orders",
+        headers={"Authorization": f"Bearer {token}"},
+        json={
+            "country": "thailand",
+            "currencySell": "rub",
+            "amountSell": 20000,
+            "currencyBuy": "thb",
+            "amountBuy": 123.45,
+            "rate": 9.99,
+            "methodGet": "qrcode",
+        },
+    )
+
+    assert response.status_code == 201
+    assert response.json()["updatedAt"] is not None
+
+
+@pytest.mark.asyncio
 async def test_miniapp_order_keeps_saved_order_when_manager_notification_fails(
     api_client: tuple[AsyncClient, AsyncSession],
 ) -> None:
@@ -1903,6 +1937,7 @@ async def test_reengagement_order_keeps_referral_bonus_without_marketing_ledger(
     from app.services.order_status import update_order_status
 
     _, _, customer = await seed_exchange_data(db_session)
+    db_session.add(Rate(currency="USDTRUB", price=80.0, margin=5.0, country=None, is_internal=True))
     referrer = User(telegram_id=700030, username="referrer_reengagement")
     platform = MarketingPlatform(slug="referral_ads", name="Referral Ads")
     currency = MarketingCurrency(code="MKT", name="Marketing Test")

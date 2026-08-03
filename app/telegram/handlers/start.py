@@ -27,6 +27,7 @@ from app.telegram.keyboards import (
     manager_new_orders_list,
     manager_order_open_chat,
 )
+from app.telegram.rich_messages import answer_rich
 from app.telegram.services.user_service import check_user
 
 logger = logging.getLogger(__name__)
@@ -85,7 +86,8 @@ async def cmd_start(message: Message, state: FSMContext) -> None:
             await state.clear()
             await state.set_state(ExchangeState.choosing_country)
             availability = ManagerWorkingHoursService().get_availability(config)
-            await message.answer(
+            await answer_rich(
+                message,
                 messages.exchange_start_welcome(
                     message.from_user.first_name,
                     translator=translate,
@@ -99,6 +101,7 @@ async def cmd_start(message: Message, state: FSMContext) -> None:
                         if availability.schedule_enabled
                         else None
                     ),
+                    managers_offline=availability.status == "offline",
                 ),
                 reply_markup=choose_country(translate),
             )

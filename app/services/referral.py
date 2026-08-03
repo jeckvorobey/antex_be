@@ -198,13 +198,14 @@ class ReferralService:
         order_amount: Decimal,
         referred_user_id: int,
         currency_sell: str = "USDT",
-
+        currency_buy: str | None = None,
     ) -> Decimal:
         """Начислить ATXG пригласившему за обмен реферала.
 
         Возвращает начисленную сумму ATXG.
         `order_amount` передаётся в валюте продажи заявки.
         """
+        del currency_buy
         user_repo = UserRepository(db)
         referred_user = await user_repo.get_one(referred_user_id)
         if referred_user is None:
@@ -391,9 +392,7 @@ class ReferralService:
                 status_code=409,
             )
 
-        return (
-            order_amount / Decimal(str(usdtrub.price))
-        ).quantize(ATXG_RATE_QUANTIZER)
+        return (order_amount / Decimal(str(usdtrub.price))).quantize(ATXG_RATE_QUANTIZER)
 
     async def _notify_referral_bonus(
         self,

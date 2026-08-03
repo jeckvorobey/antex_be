@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+from types import SimpleNamespace
 from typing import cast
 
 from aiogram import F, Router
@@ -20,15 +21,16 @@ from app.models.city import City
 from app.repositories.city import CityRepository
 from app.repositories.config import ConfigRepository
 from app.repositories.order import OrderRepository
+from app.repositories.user import UserRepository
 from app.schemas.miniapp import MiniappOrderCreate
 from app.services.exchange import (
-    CANONICAL_SELL_CURRENCIES,
     COUNTRY_CURRENCY,
     ExchangePairSnapshot,
     ExchangeQuoteInput,
     ExchangeService,
 )
 from app.services.manager_working_hours import ManagerWorkingHoursService
+from app.services.notifications import notify_order_created
 from app.services.order_flow import create_order_for_user, get_min_amount
 from app.telegram import messages
 from app.telegram.i18n import get_user_translator
@@ -43,6 +45,8 @@ from app.telegram.keyboards import (
     order_created_actions,
     orders_pagination,
 )
+from app.telegram.order_cards import OrderMessageView
+from app.telegram.rich_messages import answer_rich, edit_rich
 from app.telegram.services.user_service import check_user
 
 logger = logging.getLogger(__name__)
@@ -103,6 +107,56 @@ async def _safe_delete_message(message) -> None:
             raise
 
 
+async def _notify_manager_order_created(db, order, user) -> None:
+    """Notify the single manager about a created order."""
+    manager = await UserRepository(db).get_manager()
+    await notify_order_created(order, user, manager, notify_user=False)
+
+
+async def _safe_notify_manager_order_created(db, order, user) -> None:
+    """Keep manager notification failures from changing the order creation result."""
+    try:
+        await _notify_manager_order_created(db, order, user)
+    except Exception:
+        logger.exception(
+            "Failed to send deferred manager notification: order_id=%s public_number=%s",
+            getattr(order, "id", None),
+            getattr(order, "publicNumber", None),
+        )
+
+
+def _detached_order_snapshot(order):
+    """Snapshot loaded order fields before rolling back the secondary card update."""
+    view = OrderMessageView.from_order(order)
+    return SimpleNamespace(
+        id=getattr(order, "id", None),
+        publicNumber=view.public_number,
+        amountSell=view.amount_sell,
+        currencySell=view.currency_sell,
+        amountBuy=view.amount_buy,
+        currencyBuy=view.currency_buy,
+        rate=view.rate,
+        methodGet=view.method,
+        country=view.country,
+        city=SimpleNamespace(name=view.city) if view.city is not None else None,
+        user=(
+            SimpleNamespace(username=view.customer_username)
+            if view.customer_username is not None
+            else None
+        ),
+    )
+
+
+def _detached_user_snapshot(user):
+    """Snapshot user fields required by a manager notification after rollback."""
+    return SimpleNamespace(
+        id=getattr(user, "id", None),
+        telegram_id=getattr(user, "telegram_id", None),
+        username=getattr(user, "username", None),
+        language_code=getattr(user, "language_code", None),
+    )
+
+
 async def _safe_delete_chat_message(bot, chat_id: int, message_id: int) -> None:
     try:
         await bot.delete_message(chat_id=chat_id, message_id=message_id)
@@ -118,6 +172,29 @@ async def _get_exchange_pairs(country: str | None = None) -> list[ExchangePairSn
             snapshots = await ExchangeService().get_featured_pair_snapshots(db)
     except Exception:
         logger.exception("Ошибка при получении курсов обмена для Telegram: country=%s", country)
+        return []
+
+    if country is None:
+        return snapshots
+
+    try:
+        selected_country = Country(country)
+    except ValueError:
+        return snapshots
+
+    return [snapshot for snapshot in snapshots if snapshot.country == selected_country]
+
+
+async def _get_currency_pairs(country: str | None = None) -> list[ExchangePairSnapshot]:
+    """Загружает прямые пары, доступные для выбора исходной валюты."""
+    try:
+        db = await _get_db()
+        async with db:
+            # Витринные пары могут быть развёрнуты для чтения курса.
+            # Выбор валюты должен использовать прямую сторону будущей заявки.
+            snapshots = await ExchangeService().list_pair_snapshots(db)
+    except Exception:
+        logger.exception("Ошибка при получении пар выбора валюты: country=%s", country)
         return []
 
     if country is None:
@@ -197,6 +274,7 @@ def _build_confirmation_text(*, translate, data: dict[str, object]) -> str:
         to_currency=currency_buy,
         method=method_label,
         city=city_label,
+        rate_value=cast(int | float | None, quote.get("rate")),
         current=TOTAL_STEPS,
         total=TOTAL_STEPS,
         translator=translate,
@@ -208,13 +286,13 @@ async def _show_confirmation(actor, state: FSMContext, *, edit: bool) -> None:
     data = await state.get_data()
     text = _build_confirmation_text(translate=translate, data=data)
     if edit:
-        await _safe_edit_text(
+        await edit_rich(
             actor.message,
             text,
             reply_markup=confirm_exchange(translate),
         )
     else:
-        await actor.answer(text, reply_markup=confirm_exchange(translate))
+        await answer_rich(actor, text, reply_markup=confirm_exchange(translate))
 
 
 async def _show_country_step(actor, state: FSMContext, *, edit: bool) -> None:
@@ -256,9 +334,9 @@ async def _show_start_welcome(actor, state: FSMContext, *, edit: bool) -> None:
         business_hours_text=business_hours_text,
     )
     if edit:
-        await _safe_edit_text(actor.message, text, reply_markup=choose_country(translate))
+        await edit_rich(actor.message, text, reply_markup=choose_country(translate))
     else:
-        await actor.answer(text, reply_markup=choose_country(translate))
+        await answer_rich(actor, text, reply_markup=choose_country(translate))
 
 
 async def _show_country_fallback(
@@ -289,14 +367,12 @@ async def _show_service_step(actor, state: FSMContext, *, edit: bool) -> None:
         await _show_country_step(actor, state, edit=edit)
         return
     await state.set_state(ExchangeState.choosing_service)
-    await _render_step(
-        actor=actor,
-        current=2,
-        body=messages.choose_service_prompt(str(country), translator=translate),
-        reply_markup=choose_service(translate),
-        edit=edit,
-        featured_pairs=[],
-    )
+    text = messages.choose_service_prompt(str(country), translator=translate)
+    reply_markup = choose_service(translate)
+    if edit:
+        await edit_rich(actor.message, text, reply_markup=reply_markup)
+    else:
+        await answer_rich(actor, text, reply_markup=reply_markup)
 
 
 async def _show_city_step(actor, state: FSMContext, *, edit: bool) -> None:
@@ -317,14 +393,12 @@ async def _show_city_step(actor, state: FSMContext, *, edit: bool) -> None:
         await _show_currency_step(actor, state, edit=edit)
         return
     await state.set_state(ExchangeState.choosing_city)
-    await _render_step(
-        actor=actor,
-        current=3,
-        body=messages.choose_city_prompt(str(service_label), translator=translate),
-        reply_markup=choose_city(translate, cities),
-        edit=edit,
-        featured_pairs=[],
-    )
+    text = messages.choose_city_prompt(str(service_label), translator=translate)
+    reply_markup = choose_city(translate, cities)
+    if edit:
+        await edit_rich(actor.message, text, reply_markup=reply_markup)
+    else:
+        await answer_rich(actor, text, reply_markup=reply_markup)
 
 
 async def _show_currency_step(actor, state: FSMContext, *, edit: bool) -> None:
@@ -334,7 +408,7 @@ async def _show_currency_step(actor, state: FSMContext, *, edit: bool) -> None:
     if not country:
         await _show_country_step(actor, state, edit=edit)
         return
-    snapshots = await _get_exchange_pairs(str(country))
+    snapshots = await _get_currency_pairs(str(country))
     supported_pairs = ExchangeService().build_supported_pairs(snapshots)
     if not supported_pairs:
         await _show_country_fallback(
@@ -356,17 +430,37 @@ async def _show_currency_step(actor, state: FSMContext, *, edit: bool) -> None:
     await state.clear()
     await state.set_state(ExchangeState.choosing_currency)
     await state.update_data(**clean_data)
-    canonical_sell_currencies = [
-        currency for currency in ("USDT", "RUB") if currency in CANONICAL_SELL_CURRENCIES
+    # Кнопки и показанные курсы обязаны строиться из одних актуальных пар.
+    # Иначе пользователь может увидеть доступный выбор без курса или наоборот.
+    canonical_order = ("USDT", "RUB")
+    visible_pairs = [
+        pair for currency in canonical_order for pair in snapshots if pair.currency_sell == currency
     ]
-    await _render_step(
-        actor=actor,
-        current=4,
-        body=messages.choose_currency_prompt(translator=translate),
-        reply_markup=choose_currency(translate, canonical_sell_currencies),
-        edit=edit,
-        featured_pairs=snapshots,
+    available_sell_currencies = [
+        currency for currency in canonical_order if any(
+            pair.currency_sell == currency for pair in visible_pairs
+        )
+    ]
+    if not visible_pairs:
+        await _show_country_fallback(
+            actor,
+            state,
+            text=messages.exchange_rate_unavailable(translator=translate),
+            edit=edit,
+        )
+        return
+    text = messages.choose_currency_prompt(
+        visible_pairs,
+        country=str(country),
+        service=str(data.get("service_label") or ""),
+        city=str(data.get("city_name") or "") or None,
+        translator=translate,
     )
+    reply_markup = choose_currency(translate, available_sell_currencies)
+    if edit:
+        await edit_rich(actor.message, text, reply_markup=reply_markup)
+    else:
+        await answer_rich(actor, text, reply_markup=reply_markup)
 
 
 async def _show_orders(actor, *, edit: bool, page: int = 1) -> None:
@@ -479,18 +573,19 @@ async def _show_enter_amount_step(
                 )
             ]
     min_amount = get_min_amount(str(data.get("method", "")), str(data["currency_sell"]))
-    await _render_step(
-        actor=actor,
+    rate_text = featured_pairs[0].rate_text if featured_pairs else None
+    text = messages.enter_amount_rich(
+        currency=str(data["currency_sell"]),
+        rate_text=rate_text,
+        min_amount=min_amount,
         current=5,
-        body=messages.enter_amount_prompt(
-            str(data["currency_sell"]),
-            min_amount=min_amount,
-            translator=translate,
-        ),
-        reply_markup=amount_controls(translate),
-        edit=edit,
-        featured_pairs=featured_pairs,
+        total=TOTAL_STEPS,
+        translator=translate,
     )
+    if edit:
+        await edit_rich(actor.message, text, reply_markup=amount_controls(translate))
+    else:
+        await answer_rich(actor, text, reply_markup=amount_controls(translate))
 
 
 @router.callback_query(F.data == "menu:orders", ExchangeState.choosing_country)
@@ -668,6 +763,7 @@ async def choose_method(callback: CallbackQuery, state: FSMContext) -> None:
 
 @router.callback_query(F.data == "exchange:confirm", ExchangeState.confirming)
 async def confirm_exchange_callback(callback: CallbackQuery, state: FSMContext) -> None:
+    """Создать заявку и сохранить идентификатор её исходной клиентской карточки."""
     translate = get_user_translator(callback.from_user)
     data = await state.get_data()
     quote = data.get("quote")
@@ -734,7 +830,50 @@ async def confirm_exchange_callback(callback: CallbackQuery, state: FSMContext) 
                     methodGet=data["method"],
                 ),
                 notify_user=False,
+                defer_notifications=True,
             )
+            availability = getattr(created_order, "manager_availability", None)
+            manager_notification_order = _detached_order_snapshot(created_order)
+            manager_notification_user = _detached_user_snapshot(user)
+            try:
+                initial_message = await callback.message.answer(
+                    messages.order_created(
+                        created_order.publicNumber,
+                        translator=translate,
+                        managers_offline=getattr(availability, "status", None) == "offline",
+                    ),
+                    reply_markup=order_created_actions(translate),
+                )
+            except Exception:
+                logger.exception(
+                    "Order created but initial customer card failed: order_id=%s public_number=%s",
+                    created_order.id,
+                    created_order.publicNumber,
+                )
+                await _safe_notify_manager_order_created(db, created_order, user)
+                await state.clear()
+                await state.set_state(ExchangeState.choosing_country)
+                await _safe_delete_message(callback.message)
+                await callback.answer(
+                    translate("order-created-notification-failed", id=created_order.publicNumber),
+                    show_alert=True,
+                )
+                return
+            # При принятии заявки бот удалит эту карточку после отправки нового уведомления.
+            created_order.userNotificationMessageId = initial_message.message_id
+            try:
+                await db.commit()
+            except SQLAlchemyError:
+                await db.rollback()
+                created_order = manager_notification_order
+                user = manager_notification_user
+                logger.exception(
+                    "Order created but customer card id was not persisted: order_id=%s "
+                    "public_number=%s",
+                    created_order.id,
+                    created_order.publicNumber,
+                )
+            await _safe_notify_manager_order_created(db, created_order, user)
     except AntExException as exc:
         await callback.answer(
             messages.order_creation_failed(
@@ -752,15 +891,6 @@ async def confirm_exchange_callback(callback: CallbackQuery, state: FSMContext) 
         )
         return
 
-    availability = getattr(created_order, "manager_availability", None)
-    await callback.message.answer(
-        messages.order_created(
-            created_order.publicNumber,
-            translator=translate,
-            managers_offline=getattr(availability, "status", None) == "offline",
-        ),
-        reply_markup=order_created_actions(translate),
-    )
     await state.clear()
     await state.set_state(ExchangeState.choosing_country)
     await _safe_delete_message(callback.message)

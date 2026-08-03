@@ -257,7 +257,52 @@ async def test_start_uses_configured_manager_schedule_in_customer_welcome(monkey
     await start_handler.cmd_start(message, _FakeState())
 
     welcome_text = str(message.answers[0]["text"]).replace("\u2068", "").replace("\u2069", "")
-    assert "Менеджеры работают Пн–Пт с 10:00 до 22:00 МСК" in welcome_text  # noqa: RUF001
+    assert "Менеджеры: Пн–Пт с 10:00 до 22:00 МСК." in welcome_text  # noqa: RUF001
+
+
+async def test_start_shows_offline_notice_only_for_offline_schedule(monkeypatch) -> None:
+    user = TgUser(
+        id=779,
+        is_bot=False,
+        first_name="Tester",
+        last_name="User",
+        username="tester",
+        language_code="ru",
+        is_premium=False,
+    )
+    message = _FakeMessage(user)
+    fake_db = _FakeDbSession()
+
+    class _OfflineWorkingHoursService:
+        def get_availability(self, config):
+            return SimpleNamespace(
+                status="offline",
+                schedule_enabled=True,
+                working_days_utc=[1, 2, 3, 4, 5],
+                start_time_utc=time(7),
+                end_time_utc=time(19),
+            )
+
+        @staticmethod
+        def format_business_hours(*args, **kwargs) -> str:
+            return "Пн–Пт с 10:00 до 22:00 МСК"
+
+    async def _fake_get_db():
+        return fake_db
+
+    async def _fake_check_user(db, tg_user):
+        return (SimpleNamespace(role=3), False)
+
+    monkeypatch.setattr(start_handler, "_get_db", _fake_get_db)
+    monkeypatch.setattr(start_handler, "ConfigRepository", _FakeConfigRepo)
+    monkeypatch.setattr(start_handler, "ManagerWorkingHoursService", _OfflineWorkingHoursService)
+    monkeypatch.setattr(start_handler, "check_user", _fake_check_user)
+
+    await start_handler.cmd_start(message, _FakeState())
+
+    welcome_text = str(message.answers[0]["text"])
+    assert "Обработаем утром, в рабочее время" in welcome_text
+    assert "Оформить заявку можно уже сейчас." in welcome_text
 
 
 async def test_country_and_city_keyboards_have_flags_and_actions() -> None:
@@ -468,15 +513,20 @@ async def test_manager_order_keyboards_use_new_callbacks() -> None:
 
     assert len(open_chat.inline_keyboard) == 1
     assert open_chat.inline_keyboard[0][0].callback_data == "op:cancel:17"
+    assert open_chat.inline_keyboard[0][0].text == "❌ Отменить заявку"
     assert open_chat.inline_keyboard[0][0].style == "danger"
     assert open_chat.inline_keyboard[0][1].callback_data == "op:take:17"
+    assert open_chat.inline_keyboard[0][1].text == "✅ Взять в работу"
     assert open_chat.inline_keyboard[0][1].style == "success"
 
-    assert close_order.inline_keyboard[0][0].callback_data == "op:cancel:17"
-    assert close_order.inline_keyboard[0][0].style == "danger"
-    assert close_order.inline_keyboard[0][1].callback_data == "op:close:17"
-    assert close_order.inline_keyboard[0][1].style == "success"
-    assert close_order.inline_keyboard[1][0].url == "https://t.me/customer"
+    assert close_order.inline_keyboard[0][0].text == "💬 Открыть чат с клиентом"  # noqa: RUF001
+    assert close_order.inline_keyboard[0][0].url == "https://t.me/customer"
+    assert close_order.inline_keyboard[1][0].callback_data == "op:remind:17"
+    assert close_order.inline_keyboard[1][0].text == "🔔 Напомнить клиенту"
+    assert close_order.inline_keyboard[2][0].callback_data == "op:cancel:17"
+    assert close_order.inline_keyboard[2][0].style == "danger"
+    assert close_order.inline_keyboard[2][1].callback_data == "op:close:17"
+    assert close_order.inline_keyboard[2][1].style == "success"
     assert review.inline_keyboard[0][0].url == "https://example.com/review"
     assert review.inline_keyboard[0][0].style == "success"
     assert review.inline_keyboard[1][0].callback_data == "fsm:cancel"
@@ -497,12 +547,10 @@ async def test_chat_buttons_open_direct_chat_with_prepared_text() -> None:
     user_btn = user_order_write_manager(
         translator,
         chat_url="https://t.me/manager",
-        message_text=(
-            "Здравствуйте! По заявке #367383776 на сумму 5,000 RUB подтверждаю готовность к обмену."
-        ),
+        message_text="Здравствуйте! Я по заявке #367383776. Готов продолжить обмен.",
     )
 
-    manager_url = manager_btn.inline_keyboard[1][0].url
+    manager_url = manager_btn.inline_keyboard[0][0].url
     user_url = user_btn.inline_keyboard[0][0].url
     assert manager_url is not None and user_url is not None
 
@@ -510,10 +558,27 @@ async def test_chat_buttons_open_direct_chat_with_prepared_text() -> None:
     manager_qs = parse_qs(urlparse(manager_url).query)
     user_qs = parse_qs(urlparse(user_url).query)
     assert manager_qs["text"][0].startswith("Здравствуйте! Вы оставляли заявку #2006877777")
-    assert (
-        user_qs["text"][0]
-        == "Здравствуйте! По заявке #367383776 на сумму 5,000 RUB подтверждаю готовность к обмену."
+    assert user_qs["text"][0] == "Здравствуйте! Я по заявке #367383776. Готов продолжить обмен."
+
+
+def test_manager_order_keyboards_have_equivalent_english_labels() -> None:
+    translator = get_translator("en")
+
+    created = manager_order_open_chat(translator, order_id=17)
+    processing = manager_order_close(
+        translator,
+        order_id=17,
+        chat_url="https://t.me/customer",
     )
+
+    assert [button.text for button in created.inline_keyboard[0]] == [
+        "❌ Cancel order",
+        "✅ Take order",
+    ]
+    assert [row[0].text for row in processing.inline_keyboard[:2]] == [
+        "💬 Open chat with client",
+        "🔔 Remind client",
+    ]
 
 
 def test_chat_button_keeps_plain_tg_user_link_without_username() -> None:

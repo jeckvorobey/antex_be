@@ -6,11 +6,24 @@ from __future__ import annotations
 from collections.abc import Callable
 from datetime import UTC, datetime
 from decimal import Decimal
+from html import escape
 from typing import Any, cast
 
 from app.enums.order import MethodGet, OrderStatus
 from app.services.exchange import ExchangePairSnapshot
-from app.telegram.i18n import get_translator
+from app.telegram.i18n import get_translator, normalize_locale
+from app.telegram.message_templates import (
+    EXCHANGE_AMOUNT_TEMPLATE,
+    EXCHANGE_CITY_TEMPLATE,
+    EXCHANGE_CONFIRM_TEMPLATE,
+    EXCHANGE_CURRENCY_TEMPLATE,
+    EXCHANGE_SERVICE_TEMPLATE,
+    EXCHANGE_START_TEMPLATE,
+    OFF_HOURS_BLOCK_TEMPLATE,
+    ORDER_COMPLETED_TEMPLATE,
+    WORKING_HOURS_BLOCK_TEMPLATE,
+)
+from app.telegram.order_cards import OrderMessageView, render_order_regular, render_order_rich
 
 Translate = Callable[[str], str]
 _CURRENCY_LABELS = {
@@ -26,6 +39,8 @@ _CURRENCY_RATE_EMOJIS = {
 _CURRENCY_BUTTON_LABELS = {
     "USDT": "₮ USDT",
 }
+_USDT_CUSTOM_EMOJI_ID = "6195150966229048345"
+_USDT_CUSTOM_EMOJI_FALLBACK = "💰"
 _ATXG_AMOUNT_QUANTIZER = Decimal("0.01")
 
 
@@ -54,6 +69,16 @@ def _format_currency_emoji(currency: str) -> str:
         return _CURRENCY_RATE_EMOJIS[currency.upper()]
     label = format_currency_label(currency)
     return label.split(maxsplit=1)[0]
+
+
+def _format_currency_rate_icon(currency: str) -> str:
+    """Возвращает Premium-иконку USDT с корректным emoji fallback для Telegram."""
+    if currency.upper() == "USDT":
+        return (
+            f'<tg-emoji emoji-id="{_USDT_CUSTOM_EMOJI_ID}">'
+            f"{_USDT_CUSTOM_EMOJI_FALLBACK}</tg-emoji>"
+        )
+    return _format_currency_emoji(currency)
 
 
 def welcome(
@@ -87,12 +112,45 @@ def exchange_start_welcome(
     translator: Translate | None = None,
     locale: str | None = None,
     business_hours_text: str | None = None,
+    managers_offline: bool = False,
 ) -> str:
-    translate = _resolve_translator(translator, locale)
-    text = translate("exchange-start-welcome", name=first_name)
-    if business_hours_text is None:
-        return text
-    return f"{text}\n\n{translate('manager-working-hours', hours=business_hours_text)}"
+    """Собирает локализованное HTML-приветствие с режимом работы менеджеров."""
+    translate = cast(Any, _resolve_translator(translator, locale))
+    greeting = _strip_fluent_isolates(
+        translate("exchange-start-greeting", name=escape(first_name))
+    )
+    working_hours_block = ""
+    if business_hours_text is not None:
+        working_hours_block = WORKING_HOURS_BLOCK_TEMPLATE.format(
+            title=_strip_fluent_isolates(translate("manager-working-hours-title")),
+            requests_anytime=_strip_fluent_isolates(translate("manager-requests-anytime")),
+            managers_label=_strip_fluent_isolates(translate("manager-label")),
+            hours=escape(business_hours_text),
+        )
+
+    off_hours_block = ""
+    if managers_offline:
+        off_hours_block = OFF_HOURS_BLOCK_TEMPLATE.format(
+            title=_strip_fluent_isolates(translate("exchange-start-off-hours-title")),
+            text=_strip_fluent_isolates(translate("exchange-start-off-hours-text")),
+        )
+
+    category = _strip_fluent_isolates(translate("exchange-start-category"))
+    title = _strip_fluent_isolates(translate("exchange-start-title"))
+    description = _strip_fluent_isolates(translate("exchange-start-description"))
+    instruction_title = _strip_fluent_isolates(translate("exchange-start-instruction-title"))
+    instruction = _strip_fluent_isolates(translate("exchange-start-instruction"))
+
+    return EXCHANGE_START_TEMPLATE.format(
+        greeting=greeting,
+        category=category,
+        title=title,
+        description=description,
+        instruction_title=instruction_title,
+        instruction=instruction,
+        working_hours_block=working_hours_block,
+        off_hours_block=off_hours_block,
+    )
 
 
 def choose_country_prompt(
@@ -109,7 +167,23 @@ def choose_service_prompt(
     translator: Translate | None = None,
     locale: str | None = None,
 ) -> str:
-    return _resolve_translator(translator, locale)("exchange-choose-service", country=country)
+    """Собирает Rich Message выбора услуги без технического счётчика шагов."""
+    del country
+    translate = cast(Any, _resolve_translator(translator, locale))
+    return EXCHANGE_SERVICE_TEMPLATE.format(
+        category=escape(_strip_fluent_isolates(translate("exchange-choose-service-category"))),
+        title=escape(_strip_fluent_isolates(translate("exchange-choose-service-title"))),
+        description=escape(_strip_fluent_isolates(translate("exchange-choose-service-description"))),
+        options_title=escape(_strip_fluent_isolates(translate("exchange-choose-service-options-title"))),
+        cash_delivery_title=escape(_strip_fluent_isolates(translate("exchange-service-cash-delivery-title"))),
+        cash_delivery_description=escape(_strip_fluent_isolates(translate("exchange-service-cash-delivery-description"))),
+        cash_atm_title=escape(_strip_fluent_isolates(translate("exchange-service-cash-atm-title"))),
+        cash_atm_description=escape(_strip_fluent_isolates(translate("exchange-service-cash-atm-description"))),
+        bank_account_title=escape(_strip_fluent_isolates(translate("exchange-service-bank-account-title"))),
+        bank_account_description=escape(_strip_fluent_isolates(translate("exchange-service-bank-account-description"))),
+        pay_services_title=escape(_strip_fluent_isolates(translate("exchange-service-pay-services-title"))),
+        pay_services_description=escape(_strip_fluent_isolates(translate("exchange-service-pay-services-description"))),
+    )
 
 
 def choose_city_prompt(
@@ -118,7 +192,16 @@ def choose_city_prompt(
     translator: Translate | None = None,
     locale: str | None = None,
 ) -> str:
-    return _resolve_translator(translator, locale)("exchange-choose-city", service=service)
+    """Собирает Rich Message выбора города для доставки наличных."""
+    del service
+    translate = cast(Any, _resolve_translator(translator, locale))
+    return EXCHANGE_CITY_TEMPLATE.format(
+        category=escape(_strip_fluent_isolates(translate("exchange-choose-city-category"))),
+        title=escape(_strip_fluent_isolates(translate("exchange-choose-city-title"))),
+        description=escape(_strip_fluent_isolates(translate("exchange-choose-city-description"))),
+        options_title=escape(_strip_fluent_isolates(translate("exchange-choose-city-options-title"))),
+        options_hint=escape(_strip_fluent_isolates(translate("exchange-choose-city-options-hint"))),
+    )
 
 
 def exchange_step(
@@ -132,11 +215,47 @@ def exchange_step(
 
 
 def choose_currency_prompt(
+    pairs: list[ExchangePairSnapshot],
     *,
+    country: str | None = None,
+    service: str | None = None,
+    city: str | None = None,
     translator: Translate | None = None,
     locale: str | None = None,
 ) -> str:
-    return _resolve_translator(translator, locale)("exchange-choose-currency")
+    """Собирает Rich Message выбора валюты с компактными карточками курсов."""
+    # Контекст заявки сохраняем в сигнатуре для обратной совместимости обработчика.
+    del country, service, city
+    translate = cast(Any, _resolve_translator(translator, locale))
+    if not pairs:
+        return translate("exchange-rate-unavailable")
+
+    rate_items = "\n".join(
+        (
+            "<p>"
+            f"{_format_currency_rate_icon(pair.currency_sell)} "
+            f"1 {escape(pair.currency_sell)} "
+            f"{escape(_strip_fluent_isolates(translate('exchange-choose-currency-rate-from')))} "
+            f"<b>{escape(pair.rate_display)} {escape(pair.currency_buy)}</b> "
+            f"{_format_currency_emoji(pair.currency_buy)}"
+            "</p>"
+        )
+        for pair in pairs
+    )
+    return EXCHANGE_CURRENCY_TEMPLATE.format(
+        category=escape(_strip_fluent_isolates(translate("exchange-choose-currency-category"))),
+        title=escape(_strip_fluent_isolates(translate("exchange-choose-currency-title"))),
+        description=escape(
+            _strip_fluent_isolates(translate("exchange-choose-currency-description"))
+        ),
+        rates_title=escape(
+            _strip_fluent_isolates(translate("exchange-choose-currency-rates-title"))
+        ),
+        rate_items=rate_items,
+        options_hint=escape(
+            _strip_fluent_isolates(translate("exchange-choose-currency-options-hint"))
+        ),
+    )
 
 
 def enter_amount_prompt(
@@ -162,6 +281,46 @@ def enter_amount_prompt(
         )
     )
     return text.replace("\n⚠️", "\n\n⚠️", 1)
+
+
+def enter_amount_rich(
+    *,
+    currency: str,
+    rate_text: str | None,
+    min_amount: int | None,
+    current: int,
+    total: int,
+    translator: Translate | None = None,
+    locale: str | None = None,
+) -> str:
+    """Собирает Rich Message ввода суммы с визуально выделенным минимумом."""
+    translate = cast(Any, _resolve_translator(translator, locale))
+    safe_currency = escape(currency.upper())
+    rate_block = (
+        f"\n<p>{_format_currency_rate_icon(currency)} {escape(rate_text)}</p>"
+        if rate_text
+        else ""
+    )
+    minimum_block = ""
+    if min_amount is not None:
+        minimum_block = (
+            "\n<blockquote>⚠️ "
+            f"{escape(_strip_fluent_isolates(translate('exchange-enter-amount-minimum-label')))}: "
+            f"«<b>{escape(str(min_amount))} {safe_currency}</b>»</blockquote>"
+        )
+    return EXCHANGE_AMOUNT_TEMPLATE.format(
+        step=escape(
+            _strip_fluent_isolates(translate("exchange-step", current=current, total=total))
+        ),
+        title=escape(_strip_fluent_isolates(translate("exchange-enter-amount-title"))),
+        rate_block=rate_block,
+        prompt=escape(
+            _strip_fluent_isolates(
+                translate("exchange-enter-amount-prompt", currency=format_currency_label(currency))
+            )
+        ),
+        minimum_block=minimum_block,
+    )
 
 
 def invalid_amount(*, translator: Translate | None = None, locale: str | None = None) -> str:
@@ -247,31 +406,39 @@ def exchange_confirm_summary(
     to_currency: str,
     method: str,
     city: str | None = None,
+    rate_value: int | float | None = None,
     current: int = 4,
     total: int = 4,
     translator: Translate | None = None,
     locale: str | None = None,
 ) -> str:
     translate = cast(Any, _resolve_translator(translator, locale))
-    summary = exchange_summary_middle(
-        country=country,
-        rate=rate,
-        amount=amount,
-        from_currency=from_currency,
-        result=result,
-        to_currency=to_currency,
+    resolved_rate = rate_value
+    if resolved_rate is None:
+        for token in reversed(rate.replace("=", " ").split()):
+            try:
+                resolved_rate = float(token)
+                break
+            except ValueError:
+                continue
+    view = OrderMessageView(
+        public_number="",
+        amount_sell=amount,
+        currency_sell=from_currency,
+        amount_buy=result,
+        currency_buy=to_currency,
+        rate=resolved_rate,
         method=method,
+        country=country,
         city=city,
-        translator=translate,
     )
-    return "\n".join(
-        [
-            translate("exchange-confirm-summary-top", current=current, total=total),
-            "",
-            summary,
-            "",
-            translate("exchange-confirm-summary-bottom"),
-        ]
+    return EXCHANGE_CONFIRM_TEMPLATE.format(
+        step=escape(
+            _strip_fluent_isolates(translate("exchange-step", current=current, total=total))
+        ),
+        title=escape(_strip_fluent_isolates(translate("exchange-confirm-title"))),
+        order_summary=render_order_rich(view, locale=normalize_locale(locale)),
+        hint=escape(_strip_fluent_isolates(translate("exchange-confirm-summary-bottom"))),
     )
 
 
@@ -392,6 +559,155 @@ def user_chat_open_text(
     )
 
 
+def customer_manager_draft(
+    order_id: int | str,
+    *,
+    translator: Translate | None = None,
+    locale: str | None = None,
+) -> str:
+    """Подготовленный клиенту текст для первого сообщения менеджеру."""
+    return _strip_fluent_isolates(
+        _resolve_translator(translator, locale)("customer-manager-draft", id=order_id)
+    )
+
+
+def order_handoff_rich(
+    view: OrderMessageView,
+    *,
+    translator: Translate | None = None,
+    locale: str | None = None,
+) -> str:
+    """Rich HTML-инструкция клиенту после принятия заявки."""
+    translate = _resolve_translator(translator, locale)
+    current_locale = locale or "ru"
+    return _strip_fluent_isolates(
+        translate(
+            "order-handoff-rich",
+            id=escape(view.public_number),
+            summary=render_order_rich(view, locale=current_locale),
+        )
+    )
+
+
+def order_handoff_html(
+    view: OrderMessageView,
+    *,
+    translator: Translate | None = None,
+    locale: str | None = None,
+) -> str:
+    """Обычный HTML fallback для инструкции клиенту."""
+    translate = _resolve_translator(translator, locale)
+    current_locale = locale or "ru"
+    return _strip_fluent_isolates(
+        translate(
+            "order-handoff-html",
+            id=escape(view.public_number),
+            summary=render_order_regular(view, locale=current_locale),
+        )
+    )
+
+
+def order_reminder_rich(
+    view: OrderMessageView,
+    *,
+    translator: Translate | None = None,
+    locale: str | None = None,
+) -> str:
+    """Rich-напоминание с карточкой заявки и инструкцией для клиента."""
+    translate = _resolve_translator(translator, locale)
+    current_locale = locale or "ru"
+    return _strip_fluent_isolates(
+        translate(
+            "order-reminder-rich",
+            id=escape(view.public_number),
+            summary=render_order_rich(view, locale=current_locale),
+        )
+    )
+
+
+def order_reminder_html(
+    view: OrderMessageView,
+    *,
+    translator: Translate | None = None,
+    locale: str | None = None,
+) -> str:
+    """Обычный HTML fallback напоминания."""
+    translate = _resolve_translator(translator, locale)
+    current_locale = locale or "ru"
+    return _strip_fluent_isolates(
+        translate(
+            "order-reminder-html",
+            id=escape(view.public_number),
+            summary=render_order_regular(view, locale=current_locale),
+        )
+    )
+
+
+def _manager_order_card_copy(
+    view: OrderMessageView,
+    *,
+    status: OrderStatus,
+    customer_notified: bool,
+    locale: str,
+) -> tuple[str, str]:
+    translate = _resolve_translator(locale=locale)
+    status_key = {
+        OrderStatus.CREATED: "created",
+        OrderStatus.PROCESSING: "processing",
+        OrderStatus.COMPLETED: "completed",
+        OrderStatus.CANCELLED: "cancelled",
+    }[OrderStatus(int(status))]
+    title = _strip_fluent_isolates(
+        translate(f"manager-order-{status_key}-title", id=escape(view.public_number))
+    )
+    lead_key = f"manager-order-{status_key}-lead"
+    if status == OrderStatus.PROCESSING and not customer_notified:
+        lead_key = "manager-order-processing-failed-lead"
+    return title, translate(lead_key)
+
+
+def manager_order_card_rich(
+    view: OrderMessageView,
+    *,
+    status: OrderStatus,
+    customer_notified: bool = True,
+    locale: str = "ru",
+) -> str:
+    """Собрать единую Rich-карточку заявки для менеджера."""
+    translate = _resolve_translator(locale=locale)
+    title, lead = _manager_order_card_copy(
+        view,
+        status=status,
+        customer_notified=customer_notified,
+        locale=locale,
+    )
+    summary = render_order_rich(view, locale=locale, include_customer=True)
+    return (
+        f"<footer>{escape(translate('manager-order-card-footer'))}</footer>"
+        f"<h2>{title}</h2>"
+        f"<p>{escape(lead)}</p>"
+        f"<hr/>{summary}"
+    )
+
+
+def manager_order_card_html(
+    view: OrderMessageView,
+    *,
+    status: OrderStatus,
+    customer_notified: bool = True,
+    locale: str = "ru",
+) -> str:
+    """Собрать regular HTML fallback manager-карточки."""
+    title, lead = _manager_order_card_copy(
+        view,
+        status=status,
+        customer_notified=customer_notified,
+        locale=locale,
+    )
+    summary = render_order_regular(view, locale=locale, include_customer=True)
+    return f"<b>{title}</b>\n\n{escape(lead)}\n\n{summary}"
+
+
 def exchange_rate(sell_rate: float, buy_rate: float) -> str:
     return f"{sell_rate:.2f} / {buy_rate:.2f}"
 
@@ -463,6 +779,29 @@ def order_completed_bottom(
     *, translator: Translate | None = None, locale: str | None = None
 ) -> str:
     return _resolve_translator(translator, locale)("order-completed-bottom")
+
+
+def order_completed_rich(
+    view: OrderMessageView,
+    *,
+    translator: Translate | None = None,
+    locale: str | None = None,
+) -> str:
+    """Собрать Rich-карточку завершённой заявки с итогами и отзывом."""
+    translate = _resolve_translator(translator, locale)
+    current_locale = locale or "ru"
+    return ORDER_COMPLETED_TEMPLATE.format(
+        footer=escape(_strip_fluent_isolates(translate("order-completed-footer"))),
+        title=escape(
+            _strip_fluent_isolates(
+                order_completed(view.public_number, translator=translate, locale=current_locale)
+            )
+        ),
+        order_summary=render_order_rich(view, locale=current_locale),
+        bottom=_strip_fluent_isolates(
+            translate("order-completed-bottom-rich")
+        ),
+    )
 
 
 def order_cancelled(
