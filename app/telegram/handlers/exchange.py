@@ -24,7 +24,6 @@ from app.repositories.order import OrderRepository
 from app.repositories.user import UserRepository
 from app.schemas.miniapp import MiniappOrderCreate
 from app.services.exchange import (
-    CANONICAL_SELL_CURRENCIES,
     COUNTRY_CURRENCY,
     ExchangePairSnapshot,
     ExchangeQuoteInput,
@@ -407,14 +406,33 @@ async def _show_currency_step(actor, state: FSMContext, *, edit: bool) -> None:
     await state.clear()
     await state.set_state(ExchangeState.choosing_currency)
     await state.update_data(**clean_data)
-    canonical_sell_currencies = [
-        currency for currency in ("USDT", "RUB") if currency in CANONICAL_SELL_CURRENCIES
-    ]
+    # Кнопки и показанные курсы обязаны строиться из одних актуальных пар.
+    # Иначе пользователь может увидеть доступный выбор без курса или наоборот.
+    canonical_order = ("USDT", "RUB")
     visible_pairs = [
-        pair for pair in snapshots if pair.currency_sell in canonical_sell_currencies
+        pair for currency in canonical_order for pair in snapshots if pair.currency_sell == currency
     ]
-    text = messages.choose_currency_prompt(visible_pairs, translator=translate)
-    reply_markup = choose_currency(translate, canonical_sell_currencies)
+    available_sell_currencies = [
+        currency for currency in canonical_order if any(
+            pair.currency_sell == currency for pair in visible_pairs
+        )
+    ]
+    if not visible_pairs:
+        await _show_country_fallback(
+            actor,
+            state,
+            text=messages.exchange_rate_unavailable(translator=translate),
+            edit=edit,
+        )
+        return
+    text = messages.choose_currency_prompt(
+        visible_pairs,
+        country=str(country),
+        service=str(data.get("service_label") or ""),
+        city=str(data.get("city_name") or "") or None,
+        translator=translate,
+    )
+    reply_markup = choose_currency(translate, available_sell_currencies)
     if edit:
         await edit_rich(actor.message, text, reply_markup=reply_markup)
     else:
