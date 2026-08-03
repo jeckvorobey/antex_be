@@ -39,3 +39,14 @@ EXCHANGE_SERVICE_TEMPLATE = """<footer>{category}</footer>
 <li><b>💳 {bank_account_title}</b><br/>{bank_account_description}</li>
 <li><b>🧰 {pay_services_title}</b><br/>{pay_services_description}</li>
 </ul>"""
+
+
+EXCHANGE_CURRENCY_TEMPLATE = """<footer>{category}</footer>
+<h2>💱 {title}</h2>
+<p>{description}</p>
+<hr/>
+<h3>{rates_title}</h3>
+<table bordered striped>
+<tr><th>{currency_column}</th><th>{rate_column}</th></tr>
+{rate_rows}</table>
+<p>{options_hint}</p>"""
