@@ -6,10 +6,11 @@ welcome =
     Нажмите «Новый обмен», чтобы начать.
 
 exchange-start-greeting = Привет, { $name }!
-exchange-start-title = AntEx — обмен валюты и оплата услуг
+exchange-start-category = Обмен валюты и оплата услуг
+exchange-start-title = AntEx
 exchange-start-description = Быстро обмениваем валюту и помогаем оплачивать необходимые услуги.
-exchange-start-instruction-title = Как оформить заявку
-exchange-start-instruction = Откройте приложение или выберите страну ниже — дальше подскажем каждый шаг.
+exchange-start-instruction-title = Как начать
+exchange-start-instruction = Откройте приложение или выберите страну ниже — подскажем каждый шаг.
 manager-working-hours-title = Режим работы
 manager-requests-anytime = Заявки принимаются круглосуточно.
 manager-label = Менеджеры
