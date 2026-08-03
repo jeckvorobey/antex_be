@@ -36,6 +36,8 @@ _CURRENCY_RATE_EMOJIS = {
 _CURRENCY_BUTTON_LABELS = {
     "USDT": "₮ USDT",
 }
+_USDT_CUSTOM_EMOJI_ID = "6195150966229048345"
+_USDT_CUSTOM_EMOJI_FALLBACK = "💰"
 _ATXG_AMOUNT_QUANTIZER = Decimal("0.01")
 
 
@@ -64,6 +66,16 @@ def _format_currency_emoji(currency: str) -> str:
         return _CURRENCY_RATE_EMOJIS[currency.upper()]
     label = format_currency_label(currency)
     return label.split(maxsplit=1)[0]
+
+
+def _format_currency_rate_icon(currency: str) -> str:
+    """Возвращает Premium-иконку USDT с корректным emoji fallback для Telegram."""
+    if currency.upper() == "USDT":
+        return (
+            f'<tg-emoji emoji-id="{_USDT_CUSTOM_EMOJI_ID}">'
+            f"{_USDT_CUSTOM_EMOJI_FALLBACK}</tg-emoji>"
+        )
+    return _format_currency_emoji(currency)
 
 
 def welcome(
@@ -217,14 +229,13 @@ def choose_currency_prompt(
 
     rate_items = "\n".join(
         (
-            "<li>"
-            f"<b>{_format_currency_emoji(pair.currency_sell)} "
-            f"{escape(pair.currency_sell)}</b><br/>"
+            "<p>"
+            f"{_format_currency_rate_icon(pair.currency_sell)} "
             f"1 {escape(pair.currency_sell)} "
             f"{escape(_strip_fluent_isolates(translate('exchange-choose-currency-rate-from')))} "
             f"<b>{escape(pair.rate_display)} {escape(pair.currency_buy)}</b> "
             f"{_format_currency_emoji(pair.currency_buy)}"
-            "</li>"
+            "</p>"
         )
         for pair in pairs
     )

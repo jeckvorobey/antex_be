@@ -384,7 +384,12 @@ def test_choose_currency_prompt_uses_rich_currency_cards_for_usdt_and_rub() -> N
     assert "<h2>💱 Какую валюту вы отдаёте?</h2>" in text
     assert "<h3>Доступные курсы</h3>" in text
     assert "<table" not in text
-    assert "<ul>" in text
-    assert "<li><b>🇷🇺 RUB</b><br/>1 RUB от <b>320.35 VND</b> 🇻🇳</li>" in text
-    assert "<li><b>₮ USDT</b><br/>1 USDT от <b>25479.90 VND</b> 🇻🇳</li>" in text
+    assert "<ul>" not in text
+    assert "<br/>" not in text
+    assert "<p>🇷🇺 1 RUB от <b>320.35 VND</b> 🇻🇳</p>" in text
+    assert (
+        '<p><tg-emoji emoji-id="6195150966229048345">💰</tg-emoji> '
+        "1 USDT от <b>25479.90 VND</b> 🇻🇳</p>"
+    ) in text
+    assert "Выберите валюту на кнопке ниже 👇" in text
     assert "Шаг 4" not in text

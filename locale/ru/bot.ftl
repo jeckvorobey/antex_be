@@ -45,7 +45,7 @@ exchange-choose-currency-rates-title = Доступные курсы
 exchange-choose-currency-currency-column = Валюта
 exchange-choose-currency-rate-column = Курс
 exchange-choose-currency-rate-from = от
-exchange-choose-currency-options-hint = Выберите валюту на кнопке ниже.
+exchange-choose-currency-options-hint = Выберите валюту на кнопке ниже 👇
 
 menu-orders = 📋 Мои заявки
 menu-new-site-leads = 🆕 Новые заявки

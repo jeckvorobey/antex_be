@@ -388,8 +388,8 @@ async def test_country_sets_buy_currency_and_shows_only_canonical_sell_currencie
     edit_mock.assert_awaited_once()
     text = edit_mock.await_args.args[1]
     assert "<table" not in text
-    assert "<li><b>₮ USDT</b>" in text
-    assert "<li><b>🇷🇺 RUB</b>" in text
+    assert '<p><tg-emoji emoji-id="6195150966229048345">💰</tg-emoji> 1 USDT' in text
+    assert "<p>🇷🇺 1 RUB" in text
     assert "Шаг 4" not in text
     reply_markup = edit_mock.await_args.kwargs["reply_markup"]
     assert [button.callback_data for button in reply_markup.inline_keyboard[0]] == [
