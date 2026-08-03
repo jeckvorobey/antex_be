@@ -1,17 +1,12 @@
-"""HTML-шаблоны сообщений Telegram.
+"""Шаблоны Rich Messages для Telegram."""
 
-Разметка находится отдельно от локализованных текстов, чтобы все языки
-использовали одну проверяемую структуру обычного Telegram HTML.
-"""
-
-EXCHANGE_START_TEMPLATE = """👋 {greeting}
-
-<b>💱 {title}</b>
-
-{description}
-
-📝 <b>{instruction_title}</b>
-{instruction}{working_hours_block}{off_hours_block}"""
+EXCHANGE_START_TEMPLATE = """<p>👋 <b>{greeting}</b></p>
+<footer>{category}</footer>
+<h2>💱 {title}</h2>
+<p>{description}</p>
+<hr/>
+<h3>📝 {instruction_title}</h3>
+<p>{instruction}</p>{working_hours_block}{off_hours_block}"""
 
 WORKING_HOURS_BLOCK_TEMPLATE = """
 
