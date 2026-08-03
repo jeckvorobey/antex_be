@@ -5,17 +5,16 @@ welcome =
     Помогу быстро создать заявку на обмен без лишних шагов.
     Нажмите «Новый обмен», чтобы начать.
 
-exchange-start-welcome =
-    👋 Привет, { $name }!
-
-    <b>AntEx</b> — это сервис, который помогает <u>быстро обменять деньги</u> и оплатить необходимые услуги без лишних усилий.
-
-    📝 Чтобы оставить заявку, откройте приложение или выберите страну в списке ниже.
-
-    Заявки принимаются круглосуточно.
-
-    ☝️ Мы будем сопровождать вас на каждом этапе.
-manager-working-hours = Менеджеры работают { $hours }.
+exchange-start-greeting = Привет, { $name }!
+exchange-start-title = AntEx — обмен валюты и оплата услуг
+exchange-start-description = Быстро обмениваем валюту и помогаем оплачивать необходимые услуги.
+exchange-start-instruction-title = Как оформить заявку
+exchange-start-instruction = Откройте приложение или выберите страну ниже — дальше подскажем каждый шаг.
+manager-working-hours-title = Режим работы
+manager-requests-anytime = Заявки принимаются круглосуточно.
+manager-label = Менеджеры
+exchange-start-off-hours-title = Обработаем утром, в рабочее время
+exchange-start-off-hours-text = Оформить заявку можно уже сейчас.
 exchange-choose-country = Выберите страну
 exchange-choose-service =
     <b>💠 Выберите подходящую услугу</b>
