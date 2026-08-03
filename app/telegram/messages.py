@@ -13,6 +13,7 @@ from app.enums.order import MethodGet, OrderStatus
 from app.services.exchange import ExchangePairSnapshot
 from app.telegram.i18n import get_translator
 from app.telegram.message_templates import (
+    EXCHANGE_SERVICE_TEMPLATE,
     EXCHANGE_START_TEMPLATE,
     OFF_HOURS_BLOCK_TEMPLATE,
     WORKING_HOURS_BLOCK_TEMPLATE,
@@ -149,7 +150,23 @@ def choose_service_prompt(
     translator: Translate | None = None,
     locale: str | None = None,
 ) -> str:
-    return _resolve_translator(translator, locale)("exchange-choose-service", country=country)
+    """Собирает Rich Message выбора услуги без технического счётчика шагов."""
+    del country
+    translate = cast(Any, _resolve_translator(translator, locale))
+    return EXCHANGE_SERVICE_TEMPLATE.format(
+        category=escape(_strip_fluent_isolates(translate("exchange-choose-service-category"))),
+        title=escape(_strip_fluent_isolates(translate("exchange-choose-service-title"))),
+        description=escape(_strip_fluent_isolates(translate("exchange-choose-service-description"))),
+        options_title=escape(_strip_fluent_isolates(translate("exchange-choose-service-options-title"))),
+        cash_delivery_title=escape(_strip_fluent_isolates(translate("exchange-service-cash-delivery-title"))),
+        cash_delivery_description=escape(_strip_fluent_isolates(translate("exchange-service-cash-delivery-description"))),
+        cash_atm_title=escape(_strip_fluent_isolates(translate("exchange-service-cash-atm-title"))),
+        cash_atm_description=escape(_strip_fluent_isolates(translate("exchange-service-cash-atm-description"))),
+        bank_account_title=escape(_strip_fluent_isolates(translate("exchange-service-bank-account-title"))),
+        bank_account_description=escape(_strip_fluent_isolates(translate("exchange-service-bank-account-description"))),
+        pay_services_title=escape(_strip_fluent_isolates(translate("exchange-service-pay-services-title"))),
+        pay_services_description=escape(_strip_fluent_isolates(translate("exchange-service-pay-services-description"))),
+    )
 
 
 def choose_city_prompt(

@@ -76,7 +76,8 @@ def test_exchange_start_welcome_uses_template_and_current_business_schedule() ->
         business_hours_text="Пн–Пт с 10:00 до 22:00 МСК",
     )
 
-    assert "<b>💱 AntEx — обмен валюты и оплата услуг</b>" in text
+    assert "<h2>💱 AntEx</h2>" in text
+    assert "<footer>Обмен валюты и оплата услуг</footer>" in text
     assert "Заявки принимаются круглосуточно" in text
     assert "<blockquote>🕘 <b>Режим работы</b>" in text
     assert "Менеджеры: Пн–Пт с 10:00 до 22:00 МСК." in _strip_bidi_marks(text)
@@ -240,14 +241,17 @@ def test_orders_item_respects_english_locale() -> None:
     assert "Payout method: Cash delivery" in text
 
 
-def test_choose_service_prompt_lists_service_options() -> None:
+def test_choose_service_prompt_uses_rich_structure_and_list() -> None:
     text = messages.choose_service_prompt("thailand", locale="ru")
 
-    assert "<b>💠 Выберите подходящую услугу</b>" in text
-    assert "🚕 <u><i>Доставка наличных</i></u>" in text
-    assert "🏧 <u><i>Наличные по QR</i></u>" in text
-    assert "💳 <u><i>Перевод</i></u>" in text
-    assert "🧰 <u><i>Оплата сервисов</i></u>" in text
+    assert "<footer>Выбор услуги</footer>" in text
+    assert "<h2>💎 Как вам удобнее получить деньги?</h2>" in text
+    assert "Шаг 2" not in text
+    assert "<ul>" in text
+    assert "<li><b>🚕 Доставка наличных</b><br/>Привезём деньги в удобное место.</li>" in text
+    assert "<li><b>🏧 Наличные по QR</b><br/>Получите наличные через банкомат.</li>" in text
+    assert "<li><b>💳 Перевод</b><br/>Переведём на счёт в местном банке.</li>" in text
+    assert "<li><b>🧰 Оплата сервисов</b><br/>Поможем оплатить нужные услуги.</li>" in text
 
 
 def test_choose_city_prompt_mentions_cash_delivery() -> None:

@@ -18,3 +18,16 @@ OFF_HOURS_BLOCK_TEMPLATE = """
 
 <blockquote>⚠️ <b>{title}</b>
 {text}</blockquote>"""
+
+
+EXCHANGE_SERVICE_TEMPLATE = """<footer>{category}</footer>
+<h2>💎 {title}</h2>
+<p>{description}</p>
+<hr/>
+<h3>{options_title}</h3>
+<ul>
+<li><b>🚕 {cash_delivery_title}</b><br/>{cash_delivery_description}</li>
+<li><b>🏧 {cash_atm_title}</b><br/>{cash_atm_description}</li>
+<li><b>💳 {bank_account_title}</b><br/>{bank_account_description}</li>
+<li><b>🧰 {pay_services_title}</b><br/>{pay_services_description}</li>
+</ul>"""

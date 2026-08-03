@@ -47,6 +47,7 @@ from app.telegram.keyboards import (
     orders_pagination,
 )
 from app.telegram.order_cards import OrderMessageView
+from app.telegram.rich_messages import answer_rich, edit_rich
 from app.telegram.services.user_service import check_user
 
 logger = logging.getLogger(__name__)
@@ -310,9 +311,9 @@ async def _show_start_welcome(actor, state: FSMContext, *, edit: bool) -> None:
         business_hours_text=business_hours_text,
     )
     if edit:
-        await _safe_edit_text(actor.message, text, reply_markup=choose_country(translate))
+        await edit_rich(actor.message, text, reply_markup=choose_country(translate))
     else:
-        await actor.answer(text, reply_markup=choose_country(translate))
+        await answer_rich(actor, text, reply_markup=choose_country(translate))
 
 
 async def _show_country_fallback(
@@ -343,14 +344,12 @@ async def _show_service_step(actor, state: FSMContext, *, edit: bool) -> None:
         await _show_country_step(actor, state, edit=edit)
         return
     await state.set_state(ExchangeState.choosing_service)
-    await _render_step(
-        actor=actor,
-        current=2,
-        body=messages.choose_service_prompt(str(country), translator=translate),
-        reply_markup=choose_service(translate),
-        edit=edit,
-        featured_pairs=[],
-    )
+    text = messages.choose_service_prompt(str(country), translator=translate)
+    reply_markup = choose_service(translate)
+    if edit:
+        await edit_rich(actor.message, text, reply_markup=reply_markup)
+    else:
+        await answer_rich(actor, text, reply_markup=reply_markup)
 
 
 async def _show_city_step(actor, state: FSMContext, *, edit: bool) -> None:

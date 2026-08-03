@@ -17,13 +17,18 @@ manager-label = Managers
 exchange-start-off-hours-title = We’ll process it in the morning, during working hours
 exchange-start-off-hours-text = You can create an order now.
 exchange-choose-country = Choose a country
-exchange-choose-service =
-    <b>💠 Choose the service you need</b>
-
-    🚕 <u><i>Cash delivery</i></u> — we’ll deliver cash to a place convenient for you.
-    🏧 <u><i>Cash by QR</i></u> — withdraw cash from an ATM using a QR code.
-    💳 <u><i>Transfer</i></u> — we’ll send funds to a local bank account.
-    🧰 <u><i>Service payments</i></u> — we’ll help pay for the services you need.
+exchange-choose-service-category = Service selection
+exchange-choose-service-title = How would you like to receive the money?
+exchange-choose-service-description = Choose the option that works best for you — we’ll guide you through the details next.
+exchange-choose-service-options-title = Available options
+exchange-service-cash-delivery-title = Cash delivery
+exchange-service-cash-delivery-description = We’ll bring cash to a convenient location.
+exchange-service-cash-atm-title = Cash by QR
+exchange-service-cash-atm-description = Withdraw cash from an ATM using a QR code.
+exchange-service-bank-account-title = Transfer
+exchange-service-bank-account-description = We’ll send the money to a local bank account.
+exchange-service-pay-services-title = Service payments
+exchange-service-pay-services-description = We’ll help pay for the services you need.
 exchange-choose-city = Choose a cash-delivery city
 menu-orders = 📋 My orders
 menu-new-site-leads = 🆕 New requests

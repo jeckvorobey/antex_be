@@ -17,13 +17,18 @@ manager-label = Менеджеры
 exchange-start-off-hours-title = Обработаем утром, в рабочее время
 exchange-start-off-hours-text = Оформить заявку можно уже сейчас.
 exchange-choose-country = Выберите страну
-exchange-choose-service =
-    <b>💠 Выберите подходящую услугу</b>
-
-    🚕 <u><i>Доставка наличных</i></u> — доставим денежные средства в удобное для вас место.
-    🏧 <u><i>Наличные по QR</i></u> — получите наличные через банкомат.
-    💳 <u><i>Перевод</i></u> — переведём средства на местный банковский счёт.
-    🧰 <u><i>Оплата сервисов</i></u> — поможем оплатить необходимые услуги.
+exchange-choose-service-category = Выбор услуги
+exchange-choose-service-title = Как вам удобнее получить деньги?
+exchange-choose-service-description = Выберите подходящий способ — далее подскажем детали оформления.
+exchange-choose-service-options-title = Доступные варианты
+exchange-service-cash-delivery-title = Доставка наличных
+exchange-service-cash-delivery-description = Привезём деньги в удобное место.
+exchange-service-cash-atm-title = Наличные по QR
+exchange-service-cash-atm-description = Получите наличные через банкомат.
+exchange-service-bank-account-title = Перевод
+exchange-service-bank-account-description = Переведём на счёт в местном банке.
+exchange-service-pay-services-title = Оплата сервисов
+exchange-service-pay-services-description = Поможем оплатить нужные услуги.
 exchange-choose-city = Выберите город доставки наличных
 
 menu-orders = 📋 Мои заявки

@@ -33,3 +33,32 @@ async def answer_rich(
             reply_markup=reply_markup,
         )
     )
+
+
+class EditRichMessageText(TelegramMethod[Message | bool]):
+    """Редактирует существующее сообщение, сохраняя Rich-разметку."""
+
+    __returning__ = Message
+    __api_method__ = "editMessageText"
+
+    chat_id: int | str
+    message_id: int
+    rich_message: dict[str, Any]
+    reply_markup: Any | None = None
+
+
+async def edit_rich(
+    message: Message,
+    html: str,
+    *,
+    reply_markup: Any | None = None,
+) -> Message | bool:
+    """Редактирует Rich Message и его inline-клавиатуру без нового сообщения."""
+    return await message.bot(
+        EditRichMessageText(
+            chat_id=message.chat.id,
+            message_id=message.message_id,
+            rich_message={"html": html},
+            reply_markup=reply_markup,
+        )
+    )
