@@ -20,6 +20,14 @@ OFF_HOURS_BLOCK_TEMPLATE = """
 {text}</blockquote>"""
 
 
+EXCHANGE_CITY_TEMPLATE = """<footer>{category}</footer>
+<h2>📍 {title}</h2>
+<p>{description}</p>
+<hr/>
+<h3>{options_title}</h3>
+<p>{options_hint}</p>"""
+
+
 EXCHANGE_SERVICE_TEMPLATE = """<footer>{category}</footer>
 <h2>💎 {title}</h2>
 <p>{description}</p>
