@@ -166,9 +166,7 @@ order-handoff-rich =
       <li>💬 Open the chat and tap “Message the manager”.</li>
       <li>📝 Send the pre-filled message.</li>
     </ol>
-    <blockquote>💬 “Message the manager first to open the conversation. The manager can then reply and confirm the exchange details.”</blockquote>
-    <aside>⚠️ Important. The text will appear in the input field but will not be sent automatically.</aside>
-    <details><summary>📝 Prepared text</summary><p>Message the manager first to open the conversation. The manager can then reply and confirm the exchange details.</p></details>
+    <aside>⚠️ Important. Message the manager first to open the conversation. The manager can then reply and confirm the exchange details.</aside>
 order-handoff-html =
     <b>✅ Order #{ $id } is being processed</b>
 
@@ -180,9 +178,7 @@ order-handoff-html =
     1. 💬 Open the chat and tap “Message the manager”.
     2. 📝 Send the pre-filled message.
 
-    💬 “Message the manager first to open the conversation. The manager can then reply and confirm the exchange details.”
-
-    ⚠️ Important. The text will appear in the input field but will not be sent automatically.
+    ⚠️ Important. Message the manager first to open the conversation. The manager can then reply and confirm the exchange details.
 order-reminder-rich =
     <footer>Order reminder</footer>
     <h2>🔔 The manager is waiting for your message about order #{ $id }</h2>
@@ -194,9 +190,7 @@ order-reminder-rich =
       <li>💬 Open the chat and tap “Message the manager”.</li>
       <li>📝 Send the pre-filled message.</li>
     </ol>
-    <blockquote>💬 “Message the manager first to open the conversation. The manager can then reply and confirm the exchange details.”</blockquote>
-    <aside>⚠️ Important. The text will appear in the input field but will not be sent automatically.</aside>
-    <details><summary>📝 Prepared text</summary><p>Message the manager first to open the conversation. The manager can then reply and confirm the exchange details.</p></details>
+    <aside>⚠️ Important. Message the manager first to open the conversation. The manager can then reply and confirm the exchange details.</aside>
 order-reminder-html =
     <b>🔔 The manager is waiting for your message about order #{ $id }</b>
 
@@ -208,9 +202,7 @@ order-reminder-html =
     1. 💬 Open the chat and tap “Message the manager”.
     2. 📝 Send the pre-filled message.
 
-    💬 “Message the manager first to open the conversation. The manager can then reply and confirm the exchange details.”
-
-    ⚠️ Important. The text will appear in the input field but will not be sent automatically.
+    ⚠️ Important. Message the manager first to open the conversation. The manager can then reply and confirm the exchange details.
 manager-order-card-footer = Order status
 manager-order-created-title = 🆕 New order #{ $id }
 manager-order-created-lead = Waiting for a manager decision.

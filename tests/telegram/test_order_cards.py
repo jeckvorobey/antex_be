@@ -111,12 +111,15 @@ def test_handoff_copy_explains_why_customer_must_write_first(
     assert "<footer>" in rich
     assert "<table bordered striped>" in rich
     assert "<ol>" in rich
-    assert "<blockquote>" in rich
-    assert "<details>" in rich
+    assert "<blockquote>" not in rich
+    assert "<details>" not in rich
     assert "Отправьте сообщение с предзаполненным текстом" in rich or "Send the pre-filled" in rich
     assert required_copy in rich
     assert required_copy in regular
-    assert "не отправится автоматически" in rich or "will not be sent automatically" in rich
+    assert (
+        "⚠️ Важно. Напишите менеджеру первым" in rich
+        or "⚠️ Important. Message the manager first" in rich
+    )
 
 
 def test_reminder_reuses_handoff_details_and_instructions(order_view: OrderMessageView) -> None:
@@ -128,6 +131,9 @@ def test_reminder_reuses_handoff_details_and_instructions(order_view: OrderMessa
     assert "<table bordered striped>" in rich
     assert "Что нужно сделать" in rich
     assert "Отправьте сообщение с предзаполненным текстом" in rich
+    assert "<blockquote>" not in rich
+    assert "<details>" not in rich
+    assert "⚠️ Важно. Напишите менеджеру первым" in rich
     assert "Напишите менеджеру первым, чтобы открыть диалог" in regular
 
 

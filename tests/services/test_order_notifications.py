@@ -293,7 +293,7 @@ async def test_customer_handoff_falls_back_once_to_regular_html(
     assert bot.rich_sent == []
     assert len(bot.sent) == 1
     assert "Напишите менеджеру первым" in bot.sent[0]["text"]
-    assert "поле ввода" in bot.sent[0]["text"]
+    assert "поле ввода" not in bot.sent[0]["text"]
 
 
 @pytest.mark.asyncio
