@@ -13,6 +13,7 @@ from app.enums.order import MethodGet, OrderStatus
 from app.services.exchange import ExchangePairSnapshot
 from app.telegram.i18n import get_translator
 from app.telegram.message_templates import (
+    EXCHANGE_CITY_TEMPLATE,
     EXCHANGE_SERVICE_TEMPLATE,
     EXCHANGE_START_TEMPLATE,
     OFF_HOURS_BLOCK_TEMPLATE,
@@ -175,7 +176,16 @@ def choose_city_prompt(
     translator: Translate | None = None,
     locale: str | None = None,
 ) -> str:
-    return _resolve_translator(translator, locale)("exchange-choose-city", service=service)
+    """Собирает Rich Message выбора города для доставки наличных."""
+    del service
+    translate = cast(Any, _resolve_translator(translator, locale))
+    return EXCHANGE_CITY_TEMPLATE.format(
+        category=escape(_strip_fluent_isolates(translate("exchange-choose-city-category"))),
+        title=escape(_strip_fluent_isolates(translate("exchange-choose-city-title"))),
+        description=escape(_strip_fluent_isolates(translate("exchange-choose-city-description"))),
+        options_title=escape(_strip_fluent_isolates(translate("exchange-choose-city-options-title"))),
+        options_hint=escape(_strip_fluent_isolates(translate("exchange-choose-city-options-hint"))),
+    )
 
 
 def exchange_step(
