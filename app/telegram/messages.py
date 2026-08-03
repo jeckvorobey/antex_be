@@ -237,14 +237,14 @@ def choose_currency_prompt(
         ),
         (
             _strip_fluent_isolates(translate("exchange-choose-currency-summary-service")),
-            service or "",
+            _strip_fluent_isolates(service) if service else "",
         ),
     ]
     if city:
         selection.append(
             (
                 _strip_fluent_isolates(translate("exchange-choose-currency-summary-city")),
-                city,
+                _strip_fluent_isolates(city),
             )
         )
     selection_rows = "\n".join(
@@ -276,6 +276,7 @@ def choose_currency_prompt(
         rate_items=rate_items,
         options_hint=escape(_strip_fluent_isolates(translate("exchange-choose-currency-options-hint"))),
     )
+
 
 def enter_amount_prompt(
     currency: str,
