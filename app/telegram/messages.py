@@ -117,12 +117,17 @@ def exchange_start_welcome(
             text=_strip_fluent_isolates(translate("exchange-start-off-hours-text")),
         )
 
+    title = _strip_fluent_isolates(translate("exchange-start-title"))
+    description = _strip_fluent_isolates(translate("exchange-start-description"))
+    instruction_title = _strip_fluent_isolates(translate("exchange-start-instruction-title"))
+    instruction = _strip_fluent_isolates(translate("exchange-start-instruction"))
+
     return EXCHANGE_START_TEMPLATE.format(
         greeting=greeting,
-        title=_strip_fluent_isolates(translate("exchange-start-title")),
-        description=_strip_fluent_isolates(translate("exchange-start-description")),
-        instruction_title=_strip_fluent_isolates(translate("exchange-start-instruction-title")),
-        instruction=_strip_fluent_isolates(translate("exchange-start-instruction")),
+        title=title,
+        description=description,
+        instruction_title=instruction_title,
+        instruction=instruction,
         working_hours_block=working_hours_block,
         off_hours_block=off_hours_block,
     )
