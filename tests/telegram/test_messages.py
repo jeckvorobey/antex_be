@@ -335,3 +335,50 @@ def test_exchange_pair_rates_format_is_readable_with_currency_emoji() -> None:
     for pair in pairs:
         assert pair.label not in text
         assert pair.rate_text not in text
+
+def test_choose_currency_prompt_uses_rich_table_and_usdt_symbol() -> None:
+    pairs = [
+        ExchangePairSnapshot(
+            pair_id="rub-vnd",
+            label="RUB/VND",
+            currency_sell="RUB",
+            currency_buy="VND",
+            country=Country.VIETNAM,
+            base_rate=320.35,
+            client_rate=320.35,
+            calculation_rate=320.35,
+            rate_display="320.35",
+            rate_text="1 RUB = 320.35 VND",
+            amount_sell_example=1,
+            amount_buy_example=320.35,
+            updated_at=datetime(2026, 6, 9, 12, 0, tzinfo=UTC),
+            available_methods=["cash"],
+        ),
+        ExchangePairSnapshot(
+            pair_id="usdt-vnd",
+            label="USDT/VND",
+            currency_sell="USDT",
+            currency_buy="VND",
+            country=Country.VIETNAM,
+            base_rate=25479.90,
+            client_rate=25479.90,
+            calculation_rate=25479.90,
+            rate_display="25479.90",
+            rate_text="1 USDT = 25479.90 VND",
+            amount_sell_example=1,
+            amount_buy_example=25479.90,
+            updated_at=datetime(2026, 6, 9, 12, 0, tzinfo=UTC),
+            available_methods=["cash"],
+        ),
+    ]
+
+    text = messages.choose_currency_prompt(pairs, locale="ru")
+
+    assert "<footer>Выбор валюты</footer>" in text
+    assert "<h2>💱 Какую валюту обменять?</h2>" in text
+    assert "<table bordered striped>" in text
+    assert "<th>Валюта</th><th>Курс</th>" in text
+    assert "<td>🇷🇺 <b>RUB</b></td>" in text
+    assert "<td>₮ <b>USDT</b></td>" in text
+    assert "<b>25479.90 VND</b> 🇻🇳" in text
+    assert "Шаг 4" not in text
