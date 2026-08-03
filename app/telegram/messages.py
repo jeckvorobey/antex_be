@@ -199,23 +199,6 @@ def exchange_step(
     return _resolve_translator(translator, locale)("exchange-step", current=current, total=total)
 
 
-def _country_label(country: str | None, translate: Translate) -> str:
-    """Возвращает локализованное название страны из состояния сценария."""
-    if country is None:
-        return ""
-    translation_key = {
-        "thailand": "order-country-thailand",
-        "vietnam": "order-country-vietnam",
-        "georgia": "order-country-georgia",
-        "internal": "order-country-internal",
-    }.get(country.lower())
-    return (
-        _strip_fluent_isolates(translate(translation_key))
-        if translation_key is not None
-        else country
-    )
-
-
 def choose_currency_prompt(
     pairs: list[ExchangePairSnapshot],
     *,
@@ -225,56 +208,45 @@ def choose_currency_prompt(
     translator: Translate | None = None,
     locale: str | None = None,
 ) -> str:
-    """Собирает Rich Message выбора валюты с контекстом заявки и курсами."""
+    """Собирает Rich Message выбора валюты с таблицей актуальных курсов."""
+    # Контекст заявки сохраняем в сигнатуре для обратной совместимости обработчика.
+    del country, service, city
     translate = cast(Any, _resolve_translator(translator, locale))
     if not pairs:
         return translate("exchange-rate-unavailable")
 
-    selection = [
+    rate_rows = "\n".join(
         (
-            _strip_fluent_isolates(translate("exchange-choose-currency-summary-country")),
-            _country_label(country, translate),
-        ),
-        (
-            _strip_fluent_isolates(translate("exchange-choose-currency-summary-service")),
-            _strip_fluent_isolates(service) if service else "",
-        ),
-    ]
-    if city:
-        selection.append(
-            (
-                _strip_fluent_isolates(translate("exchange-choose-currency-summary-city")),
-                _strip_fluent_isolates(city),
-            )
-        )
-    selection_rows = "\n".join(
-        f"<tr><th>{escape(label)}</th><td>{escape(value)}</td></tr>"
-        for label, value in selection
-        if value
-    )
-    rate_items = "\n".join(
-        (
-            "<li>"
-            f"<b>{_format_currency_emoji(pair.currency_sell)} {escape(pair.currency_sell)} "
-            f"→ {_format_currency_emoji(pair.currency_buy)} {escape(pair.currency_buy)}</b><br/>"
-            f"1 {escape(pair.currency_sell)} "
+            "<tr>"
+            f"<td>{_format_currency_emoji(pair.currency_sell)} "
+            f"<b>{escape(pair.currency_sell)}</b></td>"
+            f"<td>1 {escape(pair.currency_sell)} "
             f"{escape(_strip_fluent_isolates(translate('exchange-choose-currency-rate-from')))} "
-            f"<b>{escape(pair.rate_display)} {escape(pair.currency_buy)}</b>"
-            "</li>"
+            f"<b>{escape(pair.rate_display)} {escape(pair.currency_buy)}</b> "
+            f"{_format_currency_emoji(pair.currency_buy)}</td>"
+            "</tr>"
         )
         for pair in pairs
     )
     return EXCHANGE_CURRENCY_TEMPLATE.format(
         category=escape(_strip_fluent_isolates(translate("exchange-choose-currency-category"))),
         title=escape(_strip_fluent_isolates(translate("exchange-choose-currency-title"))),
-        description=escape(_strip_fluent_isolates(translate("exchange-choose-currency-description"))),
-        selection_title=escape(
-            _strip_fluent_isolates(translate("exchange-choose-currency-selection-title"))
+        description=escape(
+            _strip_fluent_isolates(translate("exchange-choose-currency-description"))
         ),
-        selection_rows=selection_rows,
-        rates_title=escape(_strip_fluent_isolates(translate("exchange-choose-currency-rates-title"))),
-        rate_items=rate_items,
-        options_hint=escape(_strip_fluent_isolates(translate("exchange-choose-currency-options-hint"))),
+        rates_title=escape(
+            _strip_fluent_isolates(translate("exchange-choose-currency-rates-title"))
+        ),
+        currency_column=escape(
+            _strip_fluent_isolates(translate("exchange-choose-currency-currency-column"))
+        ),
+        rate_column=escape(
+            _strip_fluent_isolates(translate("exchange-choose-currency-rate-column"))
+        ),
+        rate_rows=rate_rows,
+        options_hint=escape(
+            _strip_fluent_isolates(translate("exchange-choose-currency-options-hint"))
+        ),
     )
 
 

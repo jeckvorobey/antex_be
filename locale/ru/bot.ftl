@@ -42,6 +42,8 @@ exchange-choose-currency-summary-country = Страна
 exchange-choose-currency-summary-service = Услуга
 exchange-choose-currency-summary-city = Город
 exchange-choose-currency-rates-title = Доступные курсы
+exchange-choose-currency-currency-column = Валюта
+exchange-choose-currency-rate-column = Курс
 exchange-choose-currency-rate-from = от
 exchange-choose-currency-options-hint = Выберите валюту на кнопке ниже.
 
