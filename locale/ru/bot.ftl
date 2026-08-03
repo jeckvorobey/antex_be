@@ -29,7 +29,11 @@ exchange-service-bank-account-title = Перевод
 exchange-service-bank-account-description = Переведём на счёт в местном банке.
 exchange-service-pay-services-title = Оплата сервисов
 exchange-service-pay-services-description = Поможем оплатить нужные услуги.
-exchange-choose-city = Выберите город доставки наличных
+exchange-choose-city-category = Доставка наличных
+exchange-choose-city-title = Выберите город
+exchange-choose-city-description = Укажите город, куда нужно привезти наличные.
+exchange-choose-city-options-title = Доступные города
+exchange-choose-city-options-hint = Выберите город на кнопке ниже.
 
 menu-orders = 📋 Мои заявки
 menu-new-site-leads = 🆕 Новые заявки
