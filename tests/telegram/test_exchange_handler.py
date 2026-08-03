@@ -378,7 +378,7 @@ async def test_country_sets_buy_currency_and_shows_only_canonical_sell_currencie
         return pairs
 
     edit_mock = AsyncMock()
-    monkeypatch.setattr(exchange_handler, "_get_exchange_pairs", _fake_get_exchange_pairs)
+    monkeypatch.setattr(exchange_handler, "_get_currency_pairs", _fake_get_exchange_pairs)
     monkeypatch.setattr(exchange_handler, "edit_rich", edit_mock)
 
     await exchange_handler._show_currency_step(callback, state, edit=True)
@@ -387,13 +387,36 @@ async def test_country_sets_buy_currency_and_shows_only_canonical_sell_currencie
     assert state._data["currency_buy"] == "THB"
     edit_mock.assert_awaited_once()
     text = edit_mock.await_args.args[1]
-    assert "<table bordered striped>" in text
+    assert "<table" not in text
+    assert "<li><b>₮ USDT</b>" in text
+    assert "<li><b>🇷🇺 RUB</b>" in text
     assert "Шаг 4" not in text
     reply_markup = edit_mock.await_args.kwargs["reply_markup"]
     assert [button.callback_data for button in reply_markup.inline_keyboard[0]] == [
         "exchange:currency:USDT",
         "exchange:currency:RUB",
     ]
+
+
+async def test_currency_pair_loader_keeps_rub_in_exchange_orientation(monkeypatch) -> None:
+    """Шаг выбора валюты получает RUB→THB вместо витринной обратной пары THB→RUB."""
+    db = _FakeDbSession()
+    pairs = [
+        _pair_snapshot("rub-thb", "RUB", "THB", "1 RUB = 0.41 THB"),
+        _pair_snapshot("usdt-thb", "USDT", "THB", "1 USDT = 30.05 THB"),
+    ]
+    get_pairs = AsyncMock(return_value=pairs)
+
+    async def _fake_get_db():
+        return db
+
+    monkeypatch.setattr(exchange_handler, "_get_db", _fake_get_db)
+    monkeypatch.setattr(exchange_handler.ExchangeService, "list_pair_snapshots", get_pairs)
+
+    result = await exchange_handler._get_currency_pairs(Country.THAILAND.value)
+
+    assert result == pairs
+    get_pairs.assert_awaited_once_with(db)
 
 
 async def test_choose_exchange_currency_moves_directly_to_amount(monkeypatch) -> None:
@@ -651,7 +674,7 @@ async def test_fsm_back_from_amount_returns_to_sell_currency_step(monkeypatch) -
         assert country == Country.THAILAND.value
         return pairs
 
-    monkeypatch.setattr(exchange_handler, "_get_exchange_pairs", _fake_get_exchange_pairs)
+    monkeypatch.setattr(exchange_handler, "_get_currency_pairs", _fake_get_exchange_pairs)
 
     await exchange_handler.fsm_back(callback, state)
 

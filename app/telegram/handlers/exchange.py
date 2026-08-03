@@ -185,6 +185,29 @@ async def _get_exchange_pairs(country: str | None = None) -> list[ExchangePairSn
     return [snapshot for snapshot in snapshots if snapshot.country == selected_country]
 
 
+async def _get_currency_pairs(country: str | None = None) -> list[ExchangePairSnapshot]:
+    """Загружает прямые пары, доступные для выбора исходной валюты."""
+    try:
+        db = await _get_db()
+        async with db:
+            # Витринные пары могут быть развёрнуты для чтения курса.
+            # Выбор валюты должен использовать прямую сторону будущей заявки.
+            snapshots = await ExchangeService().list_pair_snapshots(db)
+    except Exception:
+        logger.exception("Ошибка при получении пар выбора валюты: country=%s", country)
+        return []
+
+    if country is None:
+        return snapshots
+
+    try:
+        selected_country = Country(country)
+    except ValueError:
+        return snapshots
+
+    return [snapshot for snapshot in snapshots if snapshot.country == selected_country]
+
+
 async def _render_step(
     *,
     actor,
@@ -384,7 +407,7 @@ async def _show_currency_step(actor, state: FSMContext, *, edit: bool) -> None:
     if not country:
         await _show_country_step(actor, state, edit=edit)
         return
-    snapshots = await _get_exchange_pairs(str(country))
+    snapshots = await _get_currency_pairs(str(country))
     supported_pairs = ExchangeService().build_supported_pairs(snapshots)
     if not supported_pairs:
         await _show_country_fallback(

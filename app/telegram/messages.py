@@ -208,23 +208,23 @@ def choose_currency_prompt(
     translator: Translate | None = None,
     locale: str | None = None,
 ) -> str:
-    """Собирает Rich Message выбора валюты с таблицей актуальных курсов."""
+    """Собирает Rich Message выбора валюты с компактными карточками курсов."""
     # Контекст заявки сохраняем в сигнатуре для обратной совместимости обработчика.
     del country, service, city
     translate = cast(Any, _resolve_translator(translator, locale))
     if not pairs:
         return translate("exchange-rate-unavailable")
 
-    rate_rows = "\n".join(
+    rate_items = "\n".join(
         (
-            "<tr>"
-            f"<td>{_format_currency_emoji(pair.currency_sell)} "
-            f"<b>{escape(pair.currency_sell)}</b></td>"
-            f"<td>1 {escape(pair.currency_sell)} "
+            "<li>"
+            f"<b>{_format_currency_emoji(pair.currency_sell)} "
+            f"{escape(pair.currency_sell)}</b><br/>"
+            f"1 {escape(pair.currency_sell)} "
             f"{escape(_strip_fluent_isolates(translate('exchange-choose-currency-rate-from')))} "
             f"<b>{escape(pair.rate_display)} {escape(pair.currency_buy)}</b> "
-            f"{_format_currency_emoji(pair.currency_buy)}</td>"
-            "</tr>"
+            f"{_format_currency_emoji(pair.currency_buy)}"
+            "</li>"
         )
         for pair in pairs
     )
@@ -237,13 +237,7 @@ def choose_currency_prompt(
         rates_title=escape(
             _strip_fluent_isolates(translate("exchange-choose-currency-rates-title"))
         ),
-        currency_column=escape(
-            _strip_fluent_isolates(translate("exchange-choose-currency-currency-column"))
-        ),
-        rate_column=escape(
-            _strip_fluent_isolates(translate("exchange-choose-currency-rate-column"))
-        ),
-        rate_rows=rate_rows,
+        rate_items=rate_items,
         options_hint=escape(
             _strip_fluent_isolates(translate("exchange-choose-currency-options-hint"))
         ),

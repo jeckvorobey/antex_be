@@ -336,7 +336,7 @@ def test_exchange_pair_rates_format_is_readable_with_currency_emoji() -> None:
         assert pair.label not in text
         assert pair.rate_text not in text
 
-def test_choose_currency_prompt_uses_rich_table_and_usdt_symbol() -> None:
+def test_choose_currency_prompt_uses_rich_currency_cards_for_usdt_and_rub() -> None:
     pairs = [
         ExchangePairSnapshot(
             pair_id="rub-vnd",
@@ -383,9 +383,8 @@ def test_choose_currency_prompt_uses_rich_table_and_usdt_symbol() -> None:
     assert "<footer>Выбор валюты</footer>" in text
     assert "<h2>💱 Какую валюту вы отдаёте?</h2>" in text
     assert "<h3>Доступные курсы</h3>" in text
-    assert "<table bordered striped>" in text
-    assert "<th>Валюта</th><th>Курс</th>" in text
-    assert "<td>🇷🇺 <b>RUB</b></td>" in text
-    assert "<td>₮ <b>USDT</b></td>" in text
-    assert "<b>25479.90 VND</b> 🇻🇳" in text
+    assert "<table" not in text
+    assert "<ul>" in text
+    assert "<li><b>🇷🇺 RUB</b><br/>1 RUB от <b>320.35 VND</b> 🇻🇳</li>" in text
+    assert "<li><b>₮ USDT</b><br/>1 USDT от <b>25479.90 VND</b> 🇻🇳</li>" in text
     assert "Шаг 4" not in text
