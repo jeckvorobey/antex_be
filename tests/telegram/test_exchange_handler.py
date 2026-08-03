@@ -377,13 +377,19 @@ async def test_country_sets_buy_currency_and_shows_only_canonical_sell_currencie
         assert country == Country.THAILAND.value
         return pairs
 
+    edit_mock = AsyncMock()
     monkeypatch.setattr(exchange_handler, "_get_exchange_pairs", _fake_get_exchange_pairs)
+    monkeypatch.setattr(exchange_handler, "edit_rich", edit_mock)
 
     await exchange_handler._show_currency_step(callback, state, edit=True)
 
     assert state.state == exchange_handler.ExchangeState.choosing_currency.state
     assert state._data["currency_buy"] == "THB"
-    reply_markup = callback.message.edits[0]["reply_markup"]
+    edit_mock.assert_awaited_once()
+    text = edit_mock.await_args.args[1]
+    assert "<table bordered striped>" in text
+    assert "Шаг 4" not in text
+    reply_markup = edit_mock.await_args.kwargs["reply_markup"]
     assert [button.callback_data for button in reply_markup.inline_keyboard[0]] == [
         "exchange:currency:USDT",
         "exchange:currency:RUB",
