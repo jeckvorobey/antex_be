@@ -623,12 +623,18 @@ async def test_notify_order_status_changed_adds_summary_for_completed_order(
     assert "Отдаёте</td><td><b>1 500 ₮ USDT" in rich
     assert "Получаете</td><td><b>47 250 🇹🇭 THB" in rich
     assert "Способ получения</td><td><b>Доставка наличных" in rich
-    assert "Спасибо, что воспользовались нашим сервисом!" in rich
+    assert (
+        "<p>💚 <b>Спасибо, что воспользовались нашим сервисом!</b><br/>"
+        "Мы ценим обратную связь.</p>"
+    ) in rich
     assert (
         "<aside>💰 За видео-отзыв (кружок) предоставляем "
         "<b>бонус 5$ к следующему обмену 💰</b></aside>"
     ) in rich
-    assert "⭐ Будем рады вашему отзыву. Это помогает нам становиться лучше." in rich
+    assert (
+        "<p>⭐ <b>Будем рады вашему отзыву!</b><br/>"
+        "Это помогает нам становиться лучше.</p>"
+    ) in rich
     reply_markup = cast(Any, bot.rich_sent[0]["reply_markup"])
     assert reply_markup.inline_keyboard[0][0].text == "⭐ Оставить отзыв"
     assert reply_markup.inline_keyboard[1][0].text == "🏠 Главное меню"
