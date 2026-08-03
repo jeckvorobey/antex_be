@@ -370,14 +370,12 @@ async def _show_city_step(actor, state: FSMContext, *, edit: bool) -> None:
         await _show_currency_step(actor, state, edit=edit)
         return
     await state.set_state(ExchangeState.choosing_city)
-    await _render_step(
-        actor=actor,
-        current=3,
-        body=messages.choose_city_prompt(str(service_label), translator=translate),
-        reply_markup=choose_city(translate, cities),
-        edit=edit,
-        featured_pairs=[],
-    )
+    text = messages.choose_city_prompt(str(service_label), translator=translate)
+    reply_markup = choose_city(translate, cities)
+    if edit:
+        await edit_rich(actor.message, text, reply_markup=reply_markup)
+    else:
+        await answer_rich(actor, text, reply_markup=reply_markup)
 
 
 async def _show_currency_step(actor, state: FSMContext, *, edit: bool) -> None:
