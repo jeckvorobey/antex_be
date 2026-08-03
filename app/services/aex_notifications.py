@@ -1,4 +1,3 @@
-# ruff: noqa: RUF002
 """Telegram-уведомления по операциям ATXG (credit/debit)."""
 
 from __future__ import annotations
@@ -9,10 +8,6 @@ from decimal import Decimal
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.repositories.user import UserRepository
-from app.telegram.i18n import get_user_translator
-from app.telegram.presentation.components import build_message
-from app.telegram.presentation.delivery import DeliveryKind, deliver
-from app.telegram.presentation.models import TelegramMessageSpec
 
 logger = logging.getLogger(__name__)
 
@@ -48,22 +43,17 @@ async def notify_aex_operation(
         logger.warning("ATXG notification skipped: bot is not initialized")
         return
 
-    spec = build_aex_notification_message(
+    text = _build_aex_notification_text(
         operation_type=operation_type,
         amount=amount,
         description=description,
-        translator=get_user_translator(user),
     )
 
     try:
-        outcome = await deliver(
-            telegram_bot.bot,
+        await telegram_bot.bot.send_message(
             chat_id=user.telegram_id,
-            spec=spec,
-            kind=DeliveryKind.SEND,
+            text=text,
         )
-        if not outcome.delivered:
-            raise outcome.error or RuntimeError("ATXG notification was not delivered")
     except Exception:
         logger.exception(
             "Failed to send ATXG notification: user_id=%s operation=%s",
@@ -96,27 +86,3 @@ def _build_aex_notification_text(
         lines.append(f"Описание: {description}")
 
     return "\n".join(lines)
-
-
-def build_aex_notification_message(
-    *,
-    operation_type: str,
-    amount: Decimal,
-    description: str | None,
-    translator,
-) -> TelegramMessageSpec:
-    """Собирает локализованное финансовое уведомление с безопасными динамическими полями."""
-    is_credit = operation_type == "credit"
-    prefix = "+" if is_credit else "-"
-    title_key = "atxg-credit-title" if is_credit else "atxg-debit-title"
-    lead_key = "atxg-credit-lead" if is_credit else "atxg-debit-lead"
-    facts = [(translator("atxg-amount-label"), f"{prefix}{amount:.2f} ATXG")]
-    if description:
-        facts.append((translator("atxg-description-label"), description))
-    return build_message(
-        family="financial",
-        eyebrow=translator("atxg-eyebrow"),
-        title=translator(title_key),
-        lead=translator(lead_key),
-        facts=facts,
-    )

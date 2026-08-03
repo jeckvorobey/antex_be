@@ -38,15 +38,12 @@ def test_order_created_adds_queue_notice_only_for_offline_managers() -> None:
     )
     usual_text = messages.order_created(2026050008, managers_offline=False, locale="ru")
 
-    assert "<blockquote>Менеджер начнёт обработку в ближайший рабочий интервал" in offline_text
-    assert (
-        "<blockquote>A manager will begin processing during the next working interval"
-        in offline_english_text
-    )
+    assert "<blockquote>Менеджер обработает заявку утром" in offline_text
+    assert "<blockquote>A manager will process the order in the morning" in offline_english_text
     assert "Менеджер обработает заявку утром" not in usual_text
     assert "после начала рабочего дня в порядке очереди" not in offline_text
     assert "Пожалуйста, ожидайте подтверждения" not in offline_text
-    assert "Ожидайте подтверждения менеджера" in usual_text
+    assert "Пожалуйста, ожидайте подтверждения" in usual_text
 
 
 def test_exchange_off_hours_confirmation_is_localized() -> None:
@@ -60,7 +57,7 @@ def test_exchange_off_hours_confirmation_is_localized() -> None:
     )
 
     assert "Менеджеры сейчас не работают" in text
-    assert "ближайший рабочий интервал" in text
+    assert "Заявка будет обработана утром" in text
     assert "Пн–Пт с 10:00 до 19:00 МСК" in text
     assert "Managers are not working right now" in en_text
     assert "Mon–Fri from 10:00 to 19:00 MSK" in en_text
@@ -69,7 +66,7 @@ def test_exchange_off_hours_confirmation_is_localized() -> None:
 def test_exchange_off_hours_alert_is_short() -> None:
     text = messages.exchange_off_hours_alert(locale="ru")
 
-    assert text == "Заявка попадёт в очередь до ближайшего рабочего интервала."
+    assert text == "Менеджер обработает заявку утром после начала рабочего дня."
 
 
 def test_exchange_start_welcome_uses_current_business_schedule() -> None:
@@ -139,7 +136,7 @@ def test_exchange_confirm_summary_uses_human_currency_labels() -> None:
     assert "💸 Отдаёте: 15,000 🇷🇺 RUB" in text
     assert "💰 Получаете: 5,100 🇹🇭 THB" in text
     assert "🧾 Способ получения: 📱 По QR-коду" in text
-    assert "Проверьте параметры заявки" in text
+    assert "Проверьте заявку" in text
 
 
 def test_exchange_confirm_summary_omits_city_when_missing() -> None:

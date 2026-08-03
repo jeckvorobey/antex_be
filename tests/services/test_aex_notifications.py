@@ -71,7 +71,6 @@ class TestNotifyAexOperation:
             mock_repo = AsyncMock()
             mock_repo.get_one.return_value = mock_user
             mock_repo_cls.return_value = mock_repo
-            mock_bot.send_rich_message = AsyncMock()
 
             await notify_aex_operation(
                 mock_db,
@@ -81,10 +80,10 @@ class TestNotifyAexOperation:
                 description="Тест",
             )
 
-            mock_bot.send_rich_message.assert_awaited_once()
-            call_kwargs = mock_bot.send_rich_message.call_args
+            mock_bot.send_message.assert_called_once()
+            call_kwargs = mock_bot.send_message.call_args
             assert call_kwargs.kwargs["chat_id"] == 123456789
-            assert "ATXG начислены" in call_kwargs.kwargs["rich_message"].html
+            assert "Начисление ATXG" in call_kwargs.kwargs["text"]
 
     async def test_sends_debit_notification(self, mock_db: AsyncMock, mock_user: MagicMock) -> None:
         with (
@@ -94,7 +93,6 @@ class TestNotifyAexOperation:
             mock_repo = AsyncMock()
             mock_repo.get_one.return_value = mock_user
             mock_repo_cls.return_value = mock_repo
-            mock_bot.send_rich_message = AsyncMock()
 
             await notify_aex_operation(
                 mock_db,
@@ -104,9 +102,9 @@ class TestNotifyAexOperation:
                 description="Списание",
             )
 
-            mock_bot.send_rich_message.assert_awaited_once()
-            call_kwargs = mock_bot.send_rich_message.call_args
-            assert "ATXG списаны" in call_kwargs.kwargs["rich_message"].html
+            mock_bot.send_message.assert_called_once()
+            call_kwargs = mock_bot.send_message.call_args
+            assert "Списание ATXG" in call_kwargs.kwargs["text"]
 
     async def test_skips_when_user_not_found(self, mock_db: AsyncMock) -> None:
         with patch("app.services.aex_notifications.UserRepository") as mock_repo_cls:

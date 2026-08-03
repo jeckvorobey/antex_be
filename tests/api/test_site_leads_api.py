@@ -18,20 +18,12 @@ from app.models.user import User
 class _FakeBot:
     def __init__(self) -> None:
         self.sent: list[dict[str, object]] = []
-        self.rich_sent: list[dict[str, object]] = []
         self.send_error: Exception | None = None
 
     async def send_message(self, chat_id: int, text: str, reply_markup=None):
         if self.send_error is not None:
             raise self.send_error
         self.sent.append({"chat_id": chat_id, "text": text, "reply_markup": reply_markup})
-
-    async def send_rich_message(self, chat_id: int, rich_message, reply_markup=None):
-        if self.send_error is not None:
-            raise self.send_error
-        self.rich_sent.append(
-            {"chat_id": chat_id, "html": rich_message.html, "reply_markup": reply_markup}
-        )
 
 
 @pytest.fixture
@@ -163,18 +155,19 @@ async def test_public_site_lead_post_notifies_manager_after_save(
     )
 
     assert response.status_code == 201
-    assert bot.sent == []
-    assert bot.rich_sent == [
+    assert bot.sent == [
         {
             "chat_id": 700001,
-            "html": (
-                "<footer>Заявка с сайта</footer><h2>Новый лид #1</h2>"
-                "<p>Свяжитесь с клиентом по указанному контакту.</p><hr/><table bordered striped>"
-                "<tr><td>Мессенджер</td><td><b>Telegram</b></td></tr>"
-                "<tr><td>Контакт</td><td><b>@client</b></td></tr>"
-                "<tr><td>Тема</td><td><b>Обмен</b></td></tr>"
-                "<tr><td>Сообщение</td><td><b>Нужен обмен RUB на USDT</b></td></tr>"
-                "<tr><td>Источник</td><td><b>tets.antex.pro</b></td></tr></table>"
+            "text": "\n".join(
+                [
+                    "🆕 Заявка с сайта #1",
+                    "",
+                    "💬 Мессенджер: Telegram",
+                    "👤 Контакт: @client",
+                    "📌 Тема: Обмен",
+                    "📝 Сообщение: Нужен обмен RUB на USDT",
+                    "🌐 Источник: tets.antex.pro",
+                ]
             ),
             "reply_markup": None,
         }

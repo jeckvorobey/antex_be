@@ -4,7 +4,6 @@
 from __future__ import annotations
 
 from collections.abc import Callable
-from dataclasses import replace
 from datetime import UTC, datetime
 from decimal import Decimal
 from html import escape
@@ -14,8 +13,6 @@ from app.enums.order import MethodGet, OrderStatus
 from app.services.exchange import ExchangePairSnapshot
 from app.telegram.i18n import get_translator
 from app.telegram.order_cards import OrderMessageView, render_order_regular, render_order_rich
-from app.telegram.presentation.components import build_message, strip_telegram_html
-from app.telegram.presentation.models import TelegramMessageSpec
 
 Translate = Callable[[str], str]
 _CURRENCY_LABELS = {
@@ -67,7 +64,7 @@ def welcome(
     translator: Translate | None = None,
     locale: str | None = None,
 ) -> str:
-    return _resolve_translator(translator, locale)("welcome", name=escape(first_name))
+    return _resolve_translator(translator, locale)("welcome", name=first_name)
 
 
 def bot_disabled(*, translator: Translate | None = None, locale: str | None = None) -> str:
@@ -82,11 +79,6 @@ def bot_turned_off(*, translator: Translate | None = None, locale: str | None = 
     return _resolve_translator(translator, locale)("bot-turned-off")
 
 
-def manager_alert(key: str) -> str:
-    """Возвращает унифицированный RU-only callback alert менеджера."""
-    return _resolve_translator(locale="ru")(f"manager-alert-{key}")
-
-
 def home_title(*, translator: Translate | None = None, locale: str | None = None) -> str:
     return _resolve_translator(translator, locale)("home-title")
 
@@ -99,66 +91,10 @@ def exchange_start_welcome(
     business_hours_text: str | None = None,
 ) -> str:
     translate = _resolve_translator(translator, locale)
-    text = translate("exchange-start-welcome", name=escape(first_name))
+    text = translate("exchange-start-welcome", name=first_name)
     if business_hours_text is None:
         return text
     return f"{text}\n\n{translate('manager-working-hours', hours=business_hours_text)}"
-
-
-def customer_start_message(
-    first_name: str,
-    *,
-    business_hours_text: str | None,
-    translator: Translate | None = None,
-    locale: str | None = None,
-) -> TelegramMessageSpec:
-    """Создаёт Rich-first hero с выбором Telegram flow или Mini App."""
-    translate = _resolve_translator(translator, locale)
-    lead = translate("start-customer-lead")
-    if business_hours_text:
-        lead = f"{lead} {translate('start-customer-hours', hours=business_hours_text)}"
-    return build_message(
-        family="hero",
-        eyebrow=translate("start-customer-eyebrow"),
-        title=translate("start-customer-title", name=escape(first_name)),
-        lead=lead,
-        action=translate("start-customer-action"),
-    )
-
-
-def manager_start_message(
-    first_name: str,
-    *,
-    translator: Translate | None = None,
-) -> TelegramMessageSpec:
-    """Создаёт русскоязычную рабочую карточку manager home."""
-    translate = _resolve_translator(translator, "ru")
-    return build_message(
-        family="manager",
-        eyebrow=translate("start-manager-eyebrow"),
-        title=translate("start-manager-title", name=escape(first_name)),
-        lead=translate("start-manager-lead"),
-        action=translate("start-manager-action"),
-    )
-
-
-def status_message(
-    text: str,
-    *,
-    family: str = "status",
-) -> TelegramMessageSpec:
-    """Оборачивает совместимый regular HTML status в компактное Rich представление."""
-    plain_text = strip_telegram_html(text)
-    title = plain_text.splitlines()[0] if plain_text else "Статус заявки"
-    return replace(
-        build_message(
-            family=family,
-            eyebrow="AntEx",
-            title=title,
-            lead=plain_text,
-        ),
-        fallback_html=text,
-    )
 
 
 def choose_country_prompt(
@@ -175,10 +111,7 @@ def choose_service_prompt(
     translator: Translate | None = None,
     locale: str | None = None,
 ) -> str:
-    return _resolve_translator(translator, locale)(
-        "exchange-choose-service",
-        country=escape(country),
-    )
+    return _resolve_translator(translator, locale)("exchange-choose-service", country=country)
 
 
 def choose_city_prompt(
@@ -187,7 +120,7 @@ def choose_city_prompt(
     translator: Translate | None = None,
     locale: str | None = None,
 ) -> str:
-    return _resolve_translator(translator, locale)("exchange-choose-city", service=escape(service))
+    return _resolve_translator(translator, locale)("exchange-choose-city", service=service)
 
 
 def exchange_step(
@@ -197,17 +130,7 @@ def exchange_step(
     translator: Translate | None = None,
     locale: str | None = None,
 ) -> str:
-    del total
-    stage_keys = {
-        1: "exchange-stage-country",
-        2: "exchange-stage-service",
-        3: "exchange-stage-city",
-        4: "exchange-stage-currency",
-        5: "exchange-stage-amount",
-    }
-    return _resolve_translator(translator, locale)(
-        stage_keys.get(current, "exchange-stage-summary")
-    )
+    return _resolve_translator(translator, locale)("exchange-step", current=current, total=total)
 
 
 def choose_currency_prompt(
@@ -304,15 +227,15 @@ def exchange_summary_middle(
     locale: str | None = None,
 ) -> str:
     translate = cast(Any, _resolve_translator(translator, locale))
-    lines = [f"🌍 {translate('exchange-summary-country')}: {escape(country)}"]
+    lines = [f"🌍 {translate('exchange-summary-country')}: {country}"]
     if city:
-        lines.append(f"🏙️ {translate('exchange-summary-city')}: {escape(city)}")
-    lines.append(f"📈 {translate('exchange-summary-rate')}: {escape(rate)}")
+        lines.append(f"🏙️ {translate('exchange-summary-city')}: {city}")
+    lines.append(f"📈 {translate('exchange-summary-rate')}: {rate}")
     sell_label = format_currency_label(from_currency)
     buy_label = format_currency_label(to_currency)
     lines.append(f"💸 {translate('exchange-summary-sell')}: {_format_number(amount)} {sell_label}")
     lines.append(f"💰 {translate('exchange-summary-buy')}: {_format_number(result)} {buy_label}")
-    lines.append(f"🧾 {translate('exchange-summary-method')}: {escape(method)}")
+    lines.append(f"🧾 {translate('exchange-summary-method')}: {method}")
     return "\n".join(lines)
 
 
@@ -402,7 +325,7 @@ def manager_order_summary(
         city=city,
         translator=translate,
     )
-    return "\n".join([summary, "", f"👤 {translate('manager-summary-user')}: {escape(username)}"])
+    return "\n".join([summary, "", f"👤 {translate('manager-summary-user')}: {username}"])
 
 
 def manager_chat_open_text(
@@ -451,29 +374,6 @@ def referral_bonus_reversed(
         "referral-bonus-reversed",
         amount=_format_aex_amount(amount),
         order_id=order_id,
-    )
-
-
-def referral_bonus_message(
-    *,
-    amount: Decimal | int | float | str,
-    order_id: int | str,
-    reversed: bool,
-    translator: Translate | None = None,
-    locale: str | None = None,
-) -> TelegramMessageSpec:
-    """Создаёт Rich-first уведомление о реферальном движении ATXG."""
-    translate = _resolve_translator(translator, locale)
-    prefix = "-" if reversed else "+"
-    return build_message(
-        family="financial",
-        eyebrow=translate("referral-eyebrow"),
-        title=translate("referral-reversed-title" if reversed else "referral-credited-title"),
-        lead=translate("referral-reversed-lead" if reversed else "referral-credited-lead"),
-        facts=(
-            (translate("referral-amount-label"), f"{prefix}{_format_aex_amount(amount)} ATXG"),
-            (translate("referral-order-label"), f"#{order_id}"),
-        ),
     )
 
 
@@ -658,7 +558,7 @@ def exchange_pair_rates(
     def _format_pair(pair: ExchangePairSnapshot) -> str:
         return (
             f"{_format_currency_emoji(pair.currency_sell)} 1 {pair.currency_sell} "
-            f"{translate('exchange-rate-from')} {pair.rate_display} {pair.currency_buy} "
+            f"от {pair.rate_display} {pair.currency_buy} "
             f"{_format_currency_emoji(pair.currency_buy)}"
         )
 
@@ -674,8 +574,8 @@ def order_created(
 ) -> str:
     translate = _resolve_translator(translator, locale)
     if managers_offline:
-        return translate("order-created-offline", id=escape(str(order_id)))
-    return translate("order-created", id=escape(str(order_id)))
+        return translate("order-created-offline", id=order_id)
+    return translate("order-created", id=order_id)
 
 
 def order_creation_failed(
