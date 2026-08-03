@@ -64,11 +64,15 @@ exchange-choose-buy-currency = Choose what you want to receive for { $currency }
 exchange-enter-amount = <b>Enter the amount you want to exchange in { $currency }:</b>
 exchange-enter-amount-with-min = <b>Enter the amount you want to exchange in { $currency }:</b>
     ⚠️ Minimum amount: <b>{ $minAmount } { $minCurrency }</b>
+exchange-enter-amount-title = Enter the exchange amount
+exchange-enter-amount-prompt = Enter the amount in { $currency }.
+exchange-enter-amount-minimum-label = Minimum amount
 exchange-amount-invalid = Enter an amount greater than zero.
 exchange-amount-below-minimum = The amount must be at least { $minAmount }. Enter a valid amount for this receive method.
 exchange-choose-method = How would you like to receive { $currency }?
 exchange-rate-unavailable = ⚠️ Exchange rate is temporarily unavailable. Please try again later.
 exchange-confirm-summary-top = 📋 Review your order — step { $current }/{ $total }
+exchange-confirm-title = Review your order
 exchange-confirm-summary-bottom = If everything is correct, press “Confirm”.
 exchange-off-hours-alert = A manager will process the order in the morning after the working day begins.
 exchange-off-hours-confirmation =

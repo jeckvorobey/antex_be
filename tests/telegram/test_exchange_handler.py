@@ -287,6 +287,8 @@ async def test_enter_amount_moves_directly_to_confirmation(monkeypatch) -> None:
 
     monkeypatch.setattr(exchange_handler, "_get_db", _fake_get_db)
     monkeypatch.setattr(exchange_handler.ExchangeService, "get_quote", _fake_get_quote)
+    answer_rich_mock = AsyncMock()
+    monkeypatch.setattr(exchange_handler, "answer_rich", answer_rich_mock)
 
     await exchange_handler.enter_amount(message, state)
 
@@ -294,8 +296,8 @@ async def test_enter_amount_moves_directly_to_confirmation(monkeypatch) -> None:
     assert state._data["amount_sell"] == 15000
     assert state._data["method"] == "qrcode"
     assert state._data["quote"]["amountBuy"] == 5100.0
-    assert len(message.answers) == 1
-    assert "Проверьте заявку" in message.answers[0]["text"]
+    answer_rich_mock.assert_awaited_once()
+    assert "<table bordered striped>" in answer_rich_mock.await_args.args[1]
     assert message.deletes == [{"message_id": message.message_id}]
     assert message.bot.deleted == [{"chat_id": message.chat.id, "message_id": 999}]
 
@@ -342,6 +344,8 @@ async def test_enter_amount_preserves_selected_cash_method(monkeypatch) -> None:
 
     monkeypatch.setattr(exchange_handler, "_get_db", _fake_get_db)
     monkeypatch.setattr(exchange_handler.ExchangeService, "get_quote", _fake_get_quote)
+    answer_rich_mock = AsyncMock()
+    monkeypatch.setattr(exchange_handler, "answer_rich", answer_rich_mock)
 
     await exchange_handler.enter_amount(message, state)
 
@@ -349,9 +353,9 @@ async def test_enter_amount_preserves_selected_cash_method(monkeypatch) -> None:
     assert state._data["method"] == "cash"
     assert state._data["city_id"] == 11
     assert state._data["quote"]["amountBuy"] == 5100.0
-    assert len(message.answers) == 1
-    assert "Проверьте заявку" in message.answers[0]["text"]
-    assert "Фукуок" in message.answers[0]["text"]
+    answer_rich_mock.assert_awaited_once()
+    assert "<table bordered striped>" in answer_rich_mock.await_args.args[1]
+    assert "Фукуок" in answer_rich_mock.await_args.args[1]
 
 
 async def test_country_sets_buy_currency_and_shows_only_canonical_sell_currencies(
@@ -437,12 +441,14 @@ async def test_choose_exchange_currency_moves_directly_to_amount(monkeypatch) ->
         return [_pair_snapshot("rub-thb", "RUB", "THB", "1 RUB = 0.34 THB")]
 
     monkeypatch.setattr(exchange_handler, "_get_exchange_pairs", _fake_get_exchange_pairs)
+    edit_rich_mock = AsyncMock()
+    monkeypatch.setattr(exchange_handler, "edit_rich", edit_rich_mock)
 
     await exchange_handler.choose_exchange_currency(callback, state)
 
     assert state.state == exchange_handler.ExchangeState.entering_amount.state
     assert state._data["currency_sell"] == "RUB"
-    assert "Введите сумму" in callback.message.edits[0]["text"]
+    assert "Введите сумму" in edit_rich_mock.await_args.args[1]
     assert callback.answers[-1] == {"text": None, "show_alert": False}
 
 
@@ -470,12 +476,14 @@ async def test_choose_exchange_currency_amount_prompt_contains_minimum(monkeypat
         return [_pair_snapshot("rub-thb", "RUB", "THB", "1 RUB = 0.34 THB")]
 
     monkeypatch.setattr(exchange_handler, "_get_exchange_pairs", _fake_get_exchange_pairs)
+    edit_rich_mock = AsyncMock()
+    monkeypatch.setattr(exchange_handler, "edit_rich", edit_rich_mock)
 
     await exchange_handler.choose_exchange_currency(callback, state)
 
-    text = str(callback.message.edits[0]["text"])
+    text = str(edit_rich_mock.await_args.args[1])
     assert "Введите сумму" in text
-    assert "\n\n⚠️ Минимальная сумма: <b>15000 RUB</b>" in text
+    assert "<blockquote>⚠️ Минимальная сумма: «<b>15000 RUB</b>»</blockquote>" in text
 
 
 async def test_choose_exchange_currency_falls_back_to_direct_pair_rate_for_reversed_display_pairs(

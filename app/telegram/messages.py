@@ -11,9 +11,11 @@ from typing import Any, cast
 
 from app.enums.order import MethodGet, OrderStatus
 from app.services.exchange import ExchangePairSnapshot
-from app.telegram.i18n import get_translator
+from app.telegram.i18n import get_translator, normalize_locale
 from app.telegram.message_templates import (
+    EXCHANGE_AMOUNT_TEMPLATE,
     EXCHANGE_CITY_TEMPLATE,
+    EXCHANGE_CONFIRM_TEMPLATE,
     EXCHANGE_CURRENCY_TEMPLATE,
     EXCHANGE_SERVICE_TEMPLATE,
     EXCHANGE_START_TEMPLATE,
@@ -280,6 +282,46 @@ def enter_amount_prompt(
     return text.replace("\n⚠️", "\n\n⚠️", 1)
 
 
+def enter_amount_rich(
+    *,
+    currency: str,
+    rate_text: str | None,
+    min_amount: int | None,
+    current: int,
+    total: int,
+    translator: Translate | None = None,
+    locale: str | None = None,
+) -> str:
+    """Собирает Rich Message ввода суммы с визуально выделенным минимумом."""
+    translate = cast(Any, _resolve_translator(translator, locale))
+    safe_currency = escape(currency.upper())
+    rate_block = (
+        f"\n<p>{_format_currency_rate_icon(currency)} {escape(rate_text)}</p>"
+        if rate_text
+        else ""
+    )
+    minimum_block = ""
+    if min_amount is not None:
+        minimum_block = (
+            "\n<blockquote>⚠️ "
+            f"{escape(_strip_fluent_isolates(translate('exchange-enter-amount-minimum-label')))}: "
+            f"«<b>{escape(str(min_amount))} {safe_currency}</b>»</blockquote>"
+        )
+    return EXCHANGE_AMOUNT_TEMPLATE.format(
+        step=escape(
+            _strip_fluent_isolates(translate("exchange-step", current=current, total=total))
+        ),
+        title=escape(_strip_fluent_isolates(translate("exchange-enter-amount-title"))),
+        rate_block=rate_block,
+        prompt=escape(
+            _strip_fluent_isolates(
+                translate("exchange-enter-amount-prompt", currency=format_currency_label(currency))
+            )
+        ),
+        minimum_block=minimum_block,
+    )
+
+
 def invalid_amount(*, translator: Translate | None = None, locale: str | None = None) -> str:
     return _resolve_translator(translator, locale)("exchange-amount-invalid")
 
@@ -363,31 +405,39 @@ def exchange_confirm_summary(
     to_currency: str,
     method: str,
     city: str | None = None,
+    rate_value: int | float | None = None,
     current: int = 4,
     total: int = 4,
     translator: Translate | None = None,
     locale: str | None = None,
 ) -> str:
     translate = cast(Any, _resolve_translator(translator, locale))
-    summary = exchange_summary_middle(
-        country=country,
-        rate=rate,
-        amount=amount,
-        from_currency=from_currency,
-        result=result,
-        to_currency=to_currency,
+    resolved_rate = rate_value
+    if resolved_rate is None:
+        for token in reversed(rate.replace("=", " ").split()):
+            try:
+                resolved_rate = float(token)
+                break
+            except ValueError:
+                continue
+    view = OrderMessageView(
+        public_number="",
+        amount_sell=amount,
+        currency_sell=from_currency,
+        amount_buy=result,
+        currency_buy=to_currency,
+        rate=resolved_rate,
         method=method,
+        country=country,
         city=city,
-        translator=translate,
     )
-    return "\n".join(
-        [
-            translate("exchange-confirm-summary-top", current=current, total=total),
-            "",
-            summary,
-            "",
-            translate("exchange-confirm-summary-bottom"),
-        ]
+    return EXCHANGE_CONFIRM_TEMPLATE.format(
+        step=escape(
+            _strip_fluent_isolates(translate("exchange-step", current=current, total=total))
+        ),
+        title=escape(_strip_fluent_isolates(translate("exchange-confirm-title"))),
+        order_summary=render_order_rich(view, locale=normalize_locale(locale)),
+        hint=escape(_strip_fluent_isolates(translate("exchange-confirm-summary-bottom"))),
     )
 
 

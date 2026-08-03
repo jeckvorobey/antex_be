@@ -48,3 +48,14 @@ EXCHANGE_CURRENCY_TEMPLATE = """<footer>{category}</footer>
 <h3>{rates_title}</h3>
 {rate_items}
 <p>{options_hint}</p>"""
+
+
+EXCHANGE_AMOUNT_TEMPLATE = """<footer>{step}</footer>
+<h2>💱 {title}</h2>{rate_block}
+<p>{prompt}</p>{minimum_block}"""
+
+
+EXCHANGE_CONFIRM_TEMPLATE = """<footer>{step}</footer>
+<h2>📋 {title}</h2>
+{order_summary}
+<p>{hint}</p>"""

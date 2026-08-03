@@ -165,13 +165,16 @@ def test_exchange_confirm_summary_uses_human_currency_labels() -> None:
         locale="ru",
     )
 
-    assert "🌍 Страна: Таиланд" in text
-    assert "🏙️ Город: Бангкок" in text
-    assert "📈 Курс: 1 RUB = 0.34 THB" in text
-    assert "💸 Отдаёте: 15,000 🇷🇺 RUB" in text
-    assert "💰 Получаете: 5,100 🇹🇭 THB" in text
-    assert "🧾 Способ получения: 📱 По QR-коду" in text
-    assert "Проверьте заявку" in text
+    assert "<footer>Шаг 4/4</footer>" in text
+    assert "<h2>📋 Проверьте заявку</h2>" in text
+    assert "<table bordered striped>" in text
+    assert "Отдаёте</td><td><b>15 000 🇷🇺 RUB" in text
+    assert "Получаете</td><td><b>5 100 🇹🇭 THB" in text
+    assert "Курс</td><td><b>0.34" in text
+    assert "Способ получения</td><td><b>📱 По QR-коду" in text
+    assert "Страна</td><td><b>Таиланд" in text
+    assert "Город</td><td><b>Бангкок" in text
+    assert "Если всё верно, нажмите «Подтвердить»." in text
 
 
 def test_exchange_confirm_summary_omits_city_when_missing() -> None:
@@ -186,8 +189,24 @@ def test_exchange_confirm_summary_omits_city_when_missing() -> None:
         locale="ru",
     )
 
-    assert "🏙️ Город:" not in text
-    assert "🌍 Страна: Грузия" in text
+    assert "Город</td>" not in text
+    assert "Страна</td><td><b>Грузия" in text
+
+
+def test_enter_amount_rich_highlights_minimum_with_quotes() -> None:
+    text = messages.enter_amount_rich(
+        currency="RUB",
+        rate_text="1 RUB от 0.41 THB 🇹🇭",
+        min_amount=5000,
+        current=5,
+        total=5,
+        locale="ru",
+    )
+
+    assert "<footer>Шаг 5/5</footer>" in text
+    assert "<h2>💱 Введите сумму обмена</h2>" in text
+    assert "<p>🇷🇺 1 RUB от 0.41 THB 🇹🇭</p>" in text
+    assert "<blockquote>⚠️ Минимальная сумма: «<b>5000 RUB</b>»</blockquote>" in text
 
 
 def test_order_creation_failed_for_limit_is_human_readable() -> None:

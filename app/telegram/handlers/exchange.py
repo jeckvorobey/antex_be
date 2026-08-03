@@ -274,6 +274,7 @@ def _build_confirmation_text(*, translate, data: dict[str, object]) -> str:
         to_currency=currency_buy,
         method=method_label,
         city=city_label,
+        rate_value=cast(int | float | None, quote.get("rate")),
         current=TOTAL_STEPS,
         total=TOTAL_STEPS,
         translator=translate,
@@ -285,13 +286,13 @@ async def _show_confirmation(actor, state: FSMContext, *, edit: bool) -> None:
     data = await state.get_data()
     text = _build_confirmation_text(translate=translate, data=data)
     if edit:
-        await _safe_edit_text(
+        await edit_rich(
             actor.message,
             text,
             reply_markup=confirm_exchange(translate),
         )
     else:
-        await actor.answer(text, reply_markup=confirm_exchange(translate))
+        await answer_rich(actor, text, reply_markup=confirm_exchange(translate))
 
 
 async def _show_country_step(actor, state: FSMContext, *, edit: bool) -> None:
@@ -572,18 +573,19 @@ async def _show_enter_amount_step(
                 )
             ]
     min_amount = get_min_amount(str(data.get("method", "")), str(data["currency_sell"]))
-    await _render_step(
-        actor=actor,
+    rate_text = featured_pairs[0].rate_text if featured_pairs else None
+    text = messages.enter_amount_rich(
+        currency=str(data["currency_sell"]),
+        rate_text=rate_text,
+        min_amount=min_amount,
         current=5,
-        body=messages.enter_amount_prompt(
-            str(data["currency_sell"]),
-            min_amount=min_amount,
-            translator=translate,
-        ),
-        reply_markup=amount_controls(translate),
-        edit=edit,
-        featured_pairs=featured_pairs,
+        total=TOTAL_STEPS,
+        translator=translate,
     )
+    if edit:
+        await edit_rich(actor.message, text, reply_markup=amount_controls(translate))
+    else:
+        await answer_rich(actor, text, reply_markup=amount_controls(translate))
 
 
 @router.callback_query(F.data == "menu:orders", ExchangeState.choosing_country)
