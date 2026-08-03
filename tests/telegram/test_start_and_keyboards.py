@@ -257,7 +257,52 @@ async def test_start_uses_configured_manager_schedule_in_customer_welcome(monkey
     await start_handler.cmd_start(message, _FakeState())
 
     welcome_text = str(message.answers[0]["text"]).replace("\u2068", "").replace("\u2069", "")
-    assert "Менеджеры работают Пн–Пт с 10:00 до 22:00 МСК" in welcome_text  # noqa: RUF001
+    assert "Менеджеры: Пн–Пт с 10:00 до 22:00 МСК." in welcome_text  # noqa: RUF001
+
+
+async def test_start_shows_offline_notice_only_for_offline_schedule(monkeypatch) -> None:
+    user = TgUser(
+        id=779,
+        is_bot=False,
+        first_name="Tester",
+        last_name="User",
+        username="tester",
+        language_code="ru",
+        is_premium=False,
+    )
+    message = _FakeMessage(user)
+    fake_db = _FakeDbSession()
+
+    class _OfflineWorkingHoursService:
+        def get_availability(self, config):
+            return SimpleNamespace(
+                status="offline",
+                schedule_enabled=True,
+                working_days_utc=[1, 2, 3, 4, 5],
+                start_time_utc=time(7),
+                end_time_utc=time(19),
+            )
+
+        @staticmethod
+        def format_business_hours(*args, **kwargs) -> str:
+            return "Пн–Пт с 10:00 до 22:00 МСК"
+
+    async def _fake_get_db():
+        return fake_db
+
+    async def _fake_check_user(db, tg_user):
+        return (SimpleNamespace(role=3), False)
+
+    monkeypatch.setattr(start_handler, "_get_db", _fake_get_db)
+    monkeypatch.setattr(start_handler, "ConfigRepository", _FakeConfigRepo)
+    monkeypatch.setattr(start_handler, "ManagerWorkingHoursService", _OfflineWorkingHoursService)
+    monkeypatch.setattr(start_handler, "check_user", _fake_check_user)
+
+    await start_handler.cmd_start(message, _FakeState())
+
+    welcome_text = str(message.answers[0]["text"])
+    assert "Обработаем утром, в рабочее время" in welcome_text
+    assert "Оформить заявку можно уже сейчас." in welcome_text
 
 
 async def test_country_and_city_keyboards_have_flags_and_actions() -> None:
