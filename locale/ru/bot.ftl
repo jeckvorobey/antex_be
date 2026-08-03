@@ -4,15 +4,6 @@ welcome =
 
     Помогу быстро создать заявку на обмен без лишних шагов.
     Нажмите «Новый обмен», чтобы начать.
-start-customer-eyebrow = AntEx · Обмен валюты
-start-customer-title = Здравствуйте, { $name }
-start-customer-lead = Создайте заявку в привычном Telegram или откройте приложение с расширенным интерфейсом.
-start-customer-hours = Заявки принимаем круглосуточно. Менеджеры работают { $hours }.
-start-customer-action = Выберите удобный способ создания заявки.
-start-manager-eyebrow = AntEx · Рабочее место
-start-manager-title = Здравствуйте, { $name }
-start-manager-lead = Здесь собраны новые заявки и быстрый переход в приложение.
-start-manager-action = Откройте новые заявки, чтобы начать работу.
 
 exchange-start-welcome =
     👋 Привет, { $name }!
@@ -47,13 +38,7 @@ bot-turned-on = ✅ Бот включён.
 bot-turned-off = 🔴 Бот выключен.
 
 ## FSM — exchange flow
-exchange-step = Новая заявка
-exchange-stage-country = Новая заявка · Страна
-exchange-stage-service = Новая заявка · Способ получения
-exchange-stage-city = Новая заявка · Город
-exchange-stage-currency = Новая заявка · Валюта
-exchange-stage-amount = Новая заявка · Сумма
-exchange-stage-summary = Новая заявка · Проверка
+exchange-step = Шаг { $current }/{ $total }
 exchange-choose-currency = Выберите валюту, которую хотите обменять.
 exchange-choose-buy-currency = Выберите, что хотите получить за { $currency }:
 exchange-enter-amount = <b>Введите сумму, которую хотите обменять в { $currency }:</b>
@@ -63,14 +48,13 @@ exchange-amount-invalid = Укажите сумму числом, больше �
 exchange-amount-below-minimum = Сумма должна быть не меньше { $minAmount }. Введите допустимую сумму для данного способа получения.
 exchange-choose-method = Выберите способ получения { $currency }:
 exchange-rate-unavailable = ⚠️ Курс временно недоступен. Попробуйте позже.
-exchange-confirm-summary-top = 📋 Проверьте параметры заявки
-exchange-confirm-title = Проверьте параметры заявки
-exchange-confirm-summary-bottom = Если всё верно, подтвердите создание заявки.
-exchange-off-hours-alert = Заявка попадёт в очередь до ближайшего рабочего интервала.
+exchange-confirm-summary-top = 📋 Проверьте заявку — шаг { $current }/{ $total }
+exchange-confirm-summary-bottom = Если всё верно, нажмите «Подтвердить».
+exchange-off-hours-alert = Менеджер обработает заявку утром после начала рабочего дня.
 exchange-off-hours-confirmation =
     ⚠️ Менеджеры сейчас не работают.
 
-    Заявка будет передана менеджеру в ближайший рабочий интервал. Создать её можно сейчас — режим работы не влияет на оформление.
+    Заявка будет обработана утром после начала рабочего дня. Создать её можно сейчас — режим работы не влияет на оформление.
 
     График: { $hours }.
 
@@ -81,20 +65,10 @@ exchange-summary-rate = Курс
 exchange-summary-sell = Отдаёте
 exchange-summary-buy = Получаете
 exchange-summary-method = Способ получения
-exchange-rate-from = от
 manager-summary-user = Пользователь
-atxg-eyebrow = Кошелёк AntEx
-atxg-credit-title = ATXG начислены
-atxg-debit-title = ATXG списаны
-atxg-credit-lead = Средства уже доступны в вашем кошельке.
-atxg-debit-lead = Операция отражена в вашем кошельке.
-atxg-amount-label = Сумма
-atxg-description-label = Основание
 
 ## Buttons
 btn-confirm = ✅ Подтвердить
-btn-start-telegram = 💬 Создать в Telegram
-btn-start-miniapp = 📲 Открыть Mini App
 btn-yes = ✅ Да
 btn-cancel = ❌ Отменить
 btn-cancel-short = ❌ Отмена
@@ -119,9 +93,6 @@ btn-open-chat = 💬 Написать в чат
 btn-write-manager = 💬 Написать менеджеру
 btn-close-order = ✅ Закрыть заявку
 btn-leave-review = ⭐ Оставить отзыв
-country-thailand = 🇹🇭 Таиланд
-country-vietnam = 🇻🇳 Вьетнам
-country-georgia = 🇬🇪 Грузия
 menu-open-site = 🚀 Открыть приложение
 
 ## Orders
@@ -143,31 +114,20 @@ orders-item-method-pay-services = Оплата сервисов
 manager-new-orders-header = 🆕 Новые заявки на обмен:
 manager-new-orders-empty = 📭 Новых заявок на обмен нет.
 manager-access-denied = Недостаточно прав.
-manager-alert-access-denied = Нет прав
-manager-alert-order-not-found = Заявка не найдена
-manager-alert-status-changed = Заявка уже изменила статус
-manager-alert-client-link-missing = У пользователя нет Telegram-ссылки
-manager-alert-card-update-failed = Не удалось обновить карточку заявки
-manager-alert-handoff-failed = Заявка принята, но клиенту не удалось отправить инструкцию. Проверьте username менеджера и повторите напоминание.
-manager-alert-reminder-processing-only = Напоминание доступно только для заявки в работе
-manager-alert-reminder-failed = Не удалось отправить напоминание. Попробуйте ещё раз.
-manager-alert-reminder-sent = 🔔 Напоминание отправлено клиенту
-manager-alert-cancelled = Заявка отменена
-manager-alert-chat-stale = Кнопка чата устарела
 
 ## Order statuses
 order-created =
     ✅ Заявка №{ $id } создана.
 
-    ⏳ Мы получили ваш запрос и передали его в очередь.
+    ⏳ Мы получили ваш запрос и уже начали обработку.
 
-    Ожидайте подтверждения менеджера. Статус заявки обновится автоматически.
+    Пожалуйста, ожидайте подтверждения. Статус заявки будет обновлён автоматически.
 order-created-offline =
     ✅ Заявка №{ $id } создана.
 
     Заявка принята.
 
-    <blockquote>Менеджер начнёт обработку в ближайший рабочий интервал.</blockquote>
+    <blockquote>Менеджер обработает заявку утром после начала рабочего дня.</blockquote>
 order-creation-failed = Не удалось создать заявку. Попробуйте ещё раз через минуту.
 order-created-notification-failed = Заявка #{ $id } создана, но подтверждение не удалось отправить. Откройте «Мои заявки», чтобы проверить статус.
 order-creation-limit-reached = У вас уже слишком много активных заявок. Дождитесь обработки текущих или завершите их.
@@ -233,14 +193,15 @@ order-completed =
 order-completed-top =
     🎉 Заявка #{ $id } успешно завершена.
 order-completed-bottom =
-    Спасибо, что выбрали AntEx!
+    Спасибо, что воспользовались нашим сервисом!
 
-    За видеоотзыв в формате Telegram-кружка начислим <b>бонус $5 к следующему обмену</b>.
+    Мы ценим обратную связь. За видео-отзыв (кружок) предоставляем <b>бонус 5$ к следующему обмену 💰</b>
 
-    ⭐ Будем рады отзыву — он помогает делать сервис лучше.
+    ⭐ Будем рады вашему отзыву. Это помогает нам становиться лучше.
 order-cancelled = ❌ Заявка #{ $id } отменена.
 manager-chat-open-text = Здравствуйте! Вы оставляли заявку #{ $id } на обмен { $amount } { $currency }. Готовы продолжить?
 user-chat-open-text = Здравствуйте! По заявке #{ $id } на сумму { $amount } { $currency } подтверждаю готовность к обмену.
+btn-write-manager = 💬 Написать менеджеру
 btn-open-client-chat = 💬 Открыть чат с клиентом
 btn-remind-client = 🔔 Напомнить клиенту
 referral-bonus-credited =
@@ -249,13 +210,6 @@ referral-bonus-credited =
 referral-bonus-reversed =
     💸 Вознаграждение по реферальной программе списано: -{ $amount } ATXG
     Заявка #{ $order_id } отменена.
-referral-eyebrow = Реферальная программа
-referral-credited-title = ATXG начислены
-referral-reversed-title = ATXG списаны
-referral-credited-lead = Вознаграждение за завершённую заявку уже доступно в кошельке.
-referral-reversed-lead = Вознаграждение отменено вместе с заявкой.
-referral-amount-label = Сумма
-referral-order-label = Заявка
 miniapp-aex-referral-reward = Реферальное начисление
 miniapp-aex-referral-reward-with-order = Реферальное начисление по заявке { $order_number }
 miniapp-aex-withdraw-hold = Зарезервировано

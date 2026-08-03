@@ -178,7 +178,7 @@ async def test_manager_home_keyboard_has_new_requests_and_site(monkeypatch) -> N
     assert kb.inline_keyboard[1][0].web_app.url == "https://example.com/miniapp"
 
 
-async def test_start_shows_channel_choice_for_customer(monkeypatch) -> None:
+async def test_start_shows_country_selection_for_customer(monkeypatch) -> None:
     user = TgUser(
         id=777,
         is_bot=False,
@@ -210,10 +210,15 @@ async def test_start_shows_channel_choice_for_customer(monkeypatch) -> None:
     assert len(message.answers) == 1
     reply_markup = message.answers[0]["reply_markup"]
     assert reply_markup is not None
-    assert "Выберите удобный способ" in str(message.answers[0]["text"])
-    assert reply_markup.inline_keyboard[0][0].callback_data == "exchange:start"
-    assert reply_markup.inline_keyboard[1][0].web_app.url == "https://example.com/app"
-    assert reply_markup.inline_keyboard[2][0].callback_data == "menu:orders"
+    assert "выберите страну в списке ниже" in str(message.answers[0]["text"])
+    assert [button.callback_data for button in reply_markup.inline_keyboard[0]] == [
+        "exchange:country:thailand",
+        "exchange:country:vietnam",
+        "exchange:country:georgia",
+    ]
+    assert [button.callback_data for button in reply_markup.inline_keyboard[1]] == [
+        "menu:orders",
+    ]
 
 
 async def test_start_uses_configured_manager_schedule_in_customer_welcome(monkeypatch) -> None:

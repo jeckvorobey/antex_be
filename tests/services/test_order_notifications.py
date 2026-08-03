@@ -163,18 +163,17 @@ async def test_notify_order_created_sends_user_message_with_order_payload(
 
     await notify_order_created(order, user, manager)
 
-    assert bot.sent == []
-    assert len(bot.rich_sent) == 2
-    assert bot.rich_sent[0]["chat_id"] == 700002
-    assert "Заявка №" in str(bot.rich_sent[0]["rich_message"].html)
-    user_markup = cast(Any, bot.rich_sent[0]["reply_markup"])
-    assert user_markup.inline_keyboard[0][0].callback_data == "menu:orders"
-    assert user_markup.inline_keyboard[1][0].callback_data == "fsm:cancel"
-    manager_markup = cast(Any, bot.rich_sent[1]["reply_markup"])
+    assert len(bot.sent) == 1
+    assert len(bot.rich_sent) == 1
+    assert bot.sent[0]["chat_id"] == 700002
+    assert "Заявка №" in bot.sent[0]["text"]
+    assert bot.sent[0]["reply_markup"].inline_keyboard[0][0].callback_data == "menu:orders"
+    assert bot.sent[0]["reply_markup"].inline_keyboard[1][0].callback_data == "fsm:cancel"
+    manager_markup = cast(Any, bot.rich_sent[0]["reply_markup"])
     assert len(manager_markup.inline_keyboard) == 1
     assert manager_markup.inline_keyboard[0][0].callback_data == "op:cancel:8"
     assert manager_markup.inline_keyboard[0][1].callback_data == "op:take:8"
-    text = str(bot.rich_sent[1]["rich_message"].html)
+    text = str(bot.rich_sent[0]["rich_message"].html)
     assert "<footer>Статус заявки</footer>" in text
     assert "Страна</td><td><b>Таиланд" in text
     assert "Курс</td><td><b>30.96" in text
@@ -590,7 +589,7 @@ async def test_notify_order_status_changed_adds_summary_for_completed_order(
     await notify_order_status_changed(order, manager_chat_url="https://t.me/manager")
 
     assert bot.edited[0]["chat_id"] == 700002
-    text = str(bot.edited[0]["rich_message"].html)
+    text = str(bot.edited[0]["text"])
     assert "🎉 Заявка" in text and "успешно завершена." in text
     assert "🌍 Страна: Таиланд" in text
     assert "🏙️ Город: Бангкок" in text
@@ -598,9 +597,12 @@ async def test_notify_order_status_changed_adds_summary_for_completed_order(
     assert "💸 Отдаёте: 1,500 ₮ USDT" in text
     assert "💰 Получаете: 47,250 🇹🇭 THB" in text
     assert "🧾 Способ получения: Доставка наличных" in text
-    assert "Спасибо, что выбрали AntEx!" in text
-    assert "бонус $5 к следующему обмену" in text
-    assert "⭐ Будем рады отзыву — он помогает делать сервис лучше." in text
+    assert (
+        "Спасибо, что воспользовались нашим сервисом!\n\n"
+        "Мы ценим обратную связь. За видео-отзыв (кружок) предоставляем "
+        "<b>бонус 5$ к следующему обмену 💰</b>\n\n"
+        "⭐ Будем рады вашему отзыву. Это помогает нам становиться лучше."
+    ) in text
     reply_markup = cast(Any, bot.edited[0]["reply_markup"])
     assert reply_markup.inline_keyboard[0][0].text == "⭐ Оставить отзыв"
     assert reply_markup.inline_keyboard[1][0].text == "🏠 Главное меню"
@@ -646,7 +648,7 @@ async def test_notify_order_status_changed_adds_write_manager_button_for_process
     await notify_order_status_changed(order, manager_chat_url="https://t.me/manager")
 
     assert bot.edited[0]["chat_id"] == 700002
-    assert "принята в работу" in bot.edited[0]["rich_message"].html
+    assert "принята в работу" in bot.edited[0]["text"]
     reply_markup = cast(Any, bot.edited[0]["reply_markup"])
     user_text = str(user_button["message_text"]).replace("\u2068", "").replace("\u2069", "")
     assert user_text == "Здравствуйте! Я по заявке #2026050008. Готов продолжить обмен."

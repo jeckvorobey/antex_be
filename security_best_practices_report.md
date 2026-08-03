@@ -1,39 +1,55 @@
-# Security review: unified Telegram messages
+# Security and Complexity Review
+
+Дата: 2026-06-30
+Область: незакоммиченные backend-файлы в `back/`
 
 ## Итог
 
-Проверен изменённый Python/FastAPI и aiogram scope. Подтверждённых Critical, High,
-Medium или Low уязвимостей в изменениях нет.
+Критичных и высоких незакрытых security findings в просмотренной области не
+обнаружено. Найден и исправлен один риск утечки чувствительных данных в логах и
+одна лишняя сетевая операция в polling lifecycle.
 
-## Проверенный scope
+## Findings
 
-- `app/telegram/presentation/` — типизированная модель, escaping, компоненты и доставка;
-- `app/telegram/messages.py`, handlers и notification services — формирование и отправка
-  пользовательских и manager-сообщений;
-- `app/modules/broadcasts/schemas.py` — ограничение размера административной рассылки.
+### SEC-1: Telegram identity lookup мог логировать proxy credentials
 
-## Подтверждённые защитные меры
+- Статус: исправлено
+- Риск: Medium
+- Файл: `app/telegram/bot.py`
+- Область: `_get_safe_bot_identity()`
 
-- **SEC-001 — закрыт.** Динамические поля экранируются перед попаданием в Telegram HTML:
-  `app/telegram/presentation/escaping.py:10`,
-  `app/telegram/presentation/components.py:38`.
-- **SEC-002 — закрыт.** Rich/regular fallback выполняется ровно один раз и только при
-  подтверждённой несовместимости Telegram API; ошибки транспорта не маскируются:
-  `app/telegram/presentation/delivery.py:43`.
-- **SEC-003 — закрыт.** Свободный комментарий site lead ограничен 1 000 символами, а payload
-  административной рассылки валидируется до 4 096 символов:
-  `app/services/site_lead_notifications.py:60`,
-  `app/modules/broadcasts/schemas.py:12`.
-- **SEC-004 — закрыт.** Логи доставки не содержат тело сообщения, токены или HTML; в них
-  остаются только технические идентификаторы и тип операции.
+До исправления ошибка `bot.get_me()` логировалась с traceback. Для сетевых
+ошибок это могло вывести proxy URL с credentials из exception message. Сейчас
+логируется только тип ошибки:
 
-## Остаточный риск
+```text
+Failed to load Telegram bot identity: error_type=<ExceptionClass>
+```
 
-Реальная поддержка Rich Messages зависит от версии Telegram Bot API на production. При
-несовместимости применяется проверяемый regular HTML fallback; тесты покрывают запрет двойной
-доставки. Неизменённые API-auth/CORS/deployment настройки не входили в этот diff-аудит.
+Тест: `tests/telegram/test_bot_lifecycle.py::test_safe_bot_identity_failure_does_not_log_proxy_url`.
+
+### PERF-1: Повторный `get_me()` при polling retry/conflict logs
+
+- Статус: исправлено
+- Риск: Low
+- Файл: `app/telegram/bot.py`
+- Область: `_get_safe_bot_identity()`
+
+Если aiogram `Bot` не имел локальных `id`/`username`, safe identity могла
+запрашиваться через Telegram API при каждом повторном логировании polling
+startup/conflict. Добавлен lifecycle cache `_bot_identity_cache`, который
+сбрасывается при `init_bot()` и `stop_bot()`.
+
+Тест: `tests/telegram/test_bot_lifecycle.py::test_safe_bot_identity_uses_cached_get_me_result`.
 
 ## Проверки
 
-`uv run pytest tests -q` — 575 passed; `uv run ruff check .` и
-`uv run ruff format --check .` — успешно.
+Выполнено:
+
+```bash
+uv run pytest tests/telegram/test_bot_lifecycle.py -q
+uv run pytest tests -v
+uv run ruff check .
+```
+
+Результат полного backend suite: `186 passed, 15 warnings`.
