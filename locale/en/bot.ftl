@@ -5,17 +5,16 @@ welcome =
     I will help you create an exchange order in a few simple steps.
     Tap "New exchange" to start.
 
-exchange-start-welcome =
-    👋 Hello, { $name }!
-
-    <b>AntEx</b> is a service that helps you <u>quickly exchange money</u> and pay for the services you need without extra effort.
-
-    📝 To create a request, open the app or choose a country from the list below.
-
-    Requests are accepted around the clock.
-
-    ☝️ We’ll guide you at every step.
-manager-working-hours = Managers work { $hours }.
+exchange-start-greeting = Hello, { $name }!
+exchange-start-title = AntEx — currency exchange and service payments
+exchange-start-description = Exchange currency and pay for the services you need with fewer steps.
+exchange-start-instruction-title = How to create an order
+exchange-start-instruction = Open the app or choose a country below — we’ll guide you through each step.
+manager-working-hours-title = Working hours
+manager-requests-anytime = Orders are accepted around the clock.
+manager-label = Managers
+exchange-start-off-hours-title = We’ll process it in the morning, during working hours
+exchange-start-off-hours-text = You can create an order now.
 exchange-choose-country = Choose a country
 exchange-choose-service =
     <b>💠 Choose the service you need</b>
