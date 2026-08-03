@@ -21,6 +21,7 @@ from app.services.order_notifications import build_manager_status_text
 from app.telegram import messages
 from app.telegram.handlers.exchange import ExchangeState
 from app.telegram.i18n import get_user_translator
+from app.telegram.rich_messages import answer_rich
 from app.telegram.keyboards import (
     choose_country,
     manager_home,
@@ -85,7 +86,8 @@ async def cmd_start(message: Message, state: FSMContext) -> None:
             await state.clear()
             await state.set_state(ExchangeState.choosing_country)
             availability = ManagerWorkingHoursService().get_availability(config)
-            await message.answer(
+            await answer_rich(
+                message,
                 messages.exchange_start_welcome(
                     message.from_user.first_name,
                     translator=translate,
