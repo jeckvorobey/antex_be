@@ -34,6 +34,14 @@ exchange-choose-city-title = Выберите город
 exchange-choose-city-description = Укажите город, куда нужно привезти наличные.
 exchange-choose-city-options-title = Доступные города
 exchange-choose-city-options-hint = Выберите город на кнопке ниже.
+exchange-choose-currency-category = Выбор валюты
+exchange-choose-currency-title = Какую валюту обменять?
+exchange-choose-currency-description = Выберите валюту, которую хотите отдать.
+exchange-choose-currency-rates-title = Текущие курсы
+exchange-choose-currency-currency-column = Валюта
+exchange-choose-currency-rate-column = Курс
+exchange-choose-currency-rate-from = от
+exchange-choose-currency-options-hint = Выберите валюту на кнопке ниже.
 
 menu-orders = 📋 Мои заявки
 menu-new-site-leads = 🆕 Новые заявки
