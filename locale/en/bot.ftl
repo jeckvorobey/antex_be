@@ -224,6 +224,10 @@ order-completed = ✅ Order #{ $id } completed.
 order-completed-top = 🎉 Order #{ $id } completed successfully.
 order-completed-footer = Order completed
 order-completed-bottom = Thanks for using our service! If you have a minute, we’d love your review.
+order-completed-bottom-rich =
+    <p>Thanks for using our service. We value your feedback.</p>
+    <aside>💰 Send a video review (a video note) and receive a <b>$5 bonus for your next exchange 💰</b></aside>
+    <p>⭐ We’d be glad to receive your review. It helps us improve.</p>
 order-cancelled = ❌ Order #{ $id } cancelled.
 manager-chat-open-text = Hello! You had left order #{ $id } for exchanging { $amount } { $currency }. Are you ready to continue?
 user-chat-open-text = Hello! For order #{ $id } in the amount of { $amount } { $currency }, I confirm I’m ready to exchange.

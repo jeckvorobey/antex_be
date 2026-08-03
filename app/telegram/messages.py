@@ -799,7 +799,7 @@ def order_completed_rich(
         ),
         order_summary=render_order_rich(view, locale=current_locale),
         bottom=_strip_fluent_isolates(
-            order_completed_bottom(translator=translate, locale=current_locale)
+            translate("order-completed-bottom-rich")
         ),
     )
 
