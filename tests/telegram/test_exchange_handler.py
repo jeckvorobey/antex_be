@@ -1394,3 +1394,41 @@ async def test_fsm_cancel_returns_to_country_step() -> None:
     ]
     assert reply_markup.inline_keyboard[1][0].callback_data == "menu:orders"
     assert callback.answers[-1] == {"text": None, "show_alert": False}
+
+async def test_show_city_step_edits_as_rich_message_without_step_counter(monkeypatch) -> None:
+    callback = _FakeCallback(
+        TgUser(
+            id=777030,
+            is_bot=False,
+            first_name="City",
+            username="city-user",
+            language_code="ru",
+        )
+    )
+    state = _FakeState(
+        {"country": Country.VIETNAM.value, "service_label": "cash_delivery"}
+    )
+    city = SimpleNamespace(id=17, name="Дананг")
+
+    class _Result:
+        def scalars(self):
+            return SimpleNamespace(all=lambda: [city])
+
+    fake_db = _FakeDbSession()
+    fake_db.execute = AsyncMock(return_value=_Result())
+    edit_mock = AsyncMock()
+
+    async def _fake_get_db():
+        return fake_db
+
+    monkeypatch.setattr(exchange_handler, "_get_db", _fake_get_db)
+    monkeypatch.setattr(exchange_handler, "edit_rich", edit_mock)
+
+    await exchange_handler._show_city_step(callback, state, edit=True)
+
+    assert state.state == exchange_handler.ExchangeState.choosing_city.state
+    edit_mock.assert_awaited_once()
+    text = edit_mock.await_args.args[1]
+    assert "<h2>📍 Выберите город</h2>" in text
+    assert "Шаг 3" not in text
+    assert edit_mock.await_args.kwargs["reply_markup"].inline_keyboard[0][0].text == "Дананг"
