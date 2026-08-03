@@ -142,7 +142,7 @@ def build_manager_contact_url(manager) -> str | None:
 
 
 async def send_customer_handoff(order, manager) -> DeliveryOutcome:
-    """Отправить клиенту первичную инструкцию для единственного менеджера."""
+    """Отправить клиенту новую карточку принятой заявки и убрать предыдущее."""
     bot = _get_telegram_bot()
     user = getattr(order, "user", None)
     manager_url = build_manager_contact_url(manager)
@@ -160,16 +160,34 @@ async def send_customer_handoff(order, manager) -> DeliveryOutcome:
     view = OrderMessageView.from_order(order)
     draft = messages.customer_manager_draft(order.publicNumber, translator=translate)
     markup = user_order_write_manager(translate, chat_url=manager_url, message_text=draft)
+    previous_message_id = getattr(order, "userNotificationMessageId", None)
     delivery, message_id = await _send_rich_or_html(
         bot=bot,
         chat_id=user.telegram_id,
         rich_html=messages.order_handoff_rich(view, translator=translate, locale=locale),
         fallback_html=messages.order_handoff_html(view, translator=translate, locale=locale),
         reply_markup=markup,
-        existing_message_id=getattr(order, "userNotificationMessageId", None),
     )
     if message_id is not None:
         order.userNotificationMessageId = message_id
+        if previous_message_id is not None:
+            try:
+                await bot.delete_message(
+                    chat_id=user.telegram_id,
+                    message_id=previous_message_id,
+                )
+            except (TelegramBadRequest, TelegramForbiddenError, TelegramNotFound):
+                logger.info(
+                    "Previous order status message could not be deleted chat_id=%s message_id=%s",
+                    user.telegram_id,
+                    previous_message_id,
+                )
+            except Exception:
+                logger.exception(
+                    "Failed to delete previous order status message chat_id=%s message_id=%s",
+                    user.telegram_id,
+                    previous_message_id,
+                )
     return delivery
 
 

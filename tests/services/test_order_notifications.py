@@ -166,7 +166,10 @@ async def test_notify_order_created_sends_user_message_with_order_payload(
     assert len(bot.sent) == 1
     assert len(bot.rich_sent) == 1
     assert bot.sent[0]["chat_id"] == 700002
-    assert "Заявка №" in bot.sent[0]["text"]
+    assert "Заявка #2026050008" in (
+        bot.sent[0]["text"].replace("\u2068", "").replace("\u2069", "")
+    )
+    assert "№" not in bot.sent[0]["text"]
     assert bot.sent[0]["reply_markup"].inline_keyboard[0][0].callback_data == "menu:orders"
     assert bot.sent[0]["reply_markup"].inline_keyboard[1][0].callback_data == "fsm:cancel"
     manager_markup = cast(Any, bot.rich_sent[0]["reply_markup"])
@@ -290,7 +293,7 @@ async def test_customer_handoff_falls_back_once_to_regular_html(
     assert bot.rich_sent == []
     assert len(bot.sent) == 1
     assert "Напишите менеджеру первым" in bot.sent[0]["text"]
-    assert "поле ввода" not in bot.sent[0]["text"]
+    assert "поле ввода" in bot.sent[0]["text"]
 
 
 @pytest.mark.asyncio
@@ -334,7 +337,28 @@ async def test_customer_handoff_returns_failed_without_duplicate_delivery(
 
 
 @pytest.mark.asyncio
-async def test_customer_handoff_edits_existing_status_with_rich_message(
+async def test_customer_handoff_keeps_created_status_when_new_delivery_fails(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    bot = _FakeBot()
+    bot.rich_error = TelegramForbiddenError(method="sendRichMessage", message="bot blocked")
+    order = SimpleNamespace(
+        id=8,
+        publicNumber="2026050008",
+        user=SimpleNamespace(telegram_id=700002, language_code="ru"),
+        userNotificationMessageId=55,
+    )
+    monkeypatch.setattr(order_notifications, "_get_telegram_bot", lambda: bot)
+
+    delivery = await send_customer_handoff(order, SimpleNamespace(username="manager"))
+
+    assert delivery == DeliveryOutcome.FAILED
+    assert bot.deleted == []
+    assert order.userNotificationMessageId == 55
+
+
+@pytest.mark.asyncio
+async def test_customer_handoff_sends_new_rich_notification_then_deletes_created_status(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     bot = _FakeBot()
@@ -354,20 +378,19 @@ async def test_customer_handoff_edits_existing_status_with_rich_message(
 
     assert delivery == DeliveryOutcome.RICH
     assert bot.sent == []
-    assert bot.rich_sent == []
-    assert bot.edited[0]["message_id"] == 55
-    assert bot.edited[0]["text"] is None
-    assert bot.edited[0]["rich_message"].html is not None
-    assert order.userNotificationMessageId == 55
+    assert bot.edited == []
+    assert bot.rich_sent[0]["rich_message"].html is not None
+    assert bot.deleted == [(700002, 55)]
+    assert order.userNotificationMessageId == 89
 
 
 @pytest.mark.asyncio
-async def test_customer_handoff_falls_back_to_regular_edit_without_duplicate(
+async def test_customer_handoff_falls_back_to_new_regular_notification_and_deletes_old(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     bot = _FakeBot()
-    bot.rich_edit_error = TelegramBadRequest(
-        method="editMessageText",
+    bot.rich_error = TelegramBadRequest(
+        method="sendRichMessage",
         message="rich message is unsupported",
     )
     order = SimpleNamespace(
@@ -385,20 +408,20 @@ async def test_customer_handoff_falls_back_to_regular_edit_without_duplicate(
     delivery = await send_customer_handoff(order, SimpleNamespace(username="manager"))
 
     assert delivery == DeliveryOutcome.FALLBACK
-    assert len(bot.edited) == 1
-    assert "Напишите менеджеру первым" in bot.edited[0]["text"]
-    assert bot.sent == []
+    assert bot.edited == []
+    assert "Напишите менеджеру первым" in bot.sent[0]["text"]
+    assert bot.deleted == [(700002, 55)]
     assert bot.rich_sent == []
 
 
 @pytest.mark.asyncio
-async def test_customer_handoff_falls_back_when_rich_edit_is_not_found(
+async def test_customer_handoff_sends_new_fallback_when_rich_method_is_not_found(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     bot = _FakeBot()
-    bot.rich_edit_error = TelegramNotFound(
-        method="editMessageText",
-        message="rich edit method not found",
+    bot.rich_error = TelegramNotFound(
+        method="sendRichMessage",
+        message="rich method not found",
     )
     order = SimpleNamespace(
         id=8,
@@ -411,9 +434,9 @@ async def test_customer_handoff_falls_back_when_rich_edit_is_not_found(
     delivery = await send_customer_handoff(order, SimpleNamespace(username="manager"))
 
     assert delivery == DeliveryOutcome.FALLBACK
-    assert len(bot.edited) == 1
-    assert bot.edited[0]["rich_message"] is None
-    assert bot.sent == []
+    assert bot.edited == []
+    assert len(bot.sent) == 1
+    assert bot.deleted == [(700002, 55)]
 
 
 def test_manager_contact_url_rejects_invalid_username() -> None:

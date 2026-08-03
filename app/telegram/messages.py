@@ -612,13 +612,14 @@ def order_reminder_rich(
     translator: Translate | None = None,
     locale: str | None = None,
 ) -> str:
-    """Короткое Rich-напоминание клиенту без ложной срочности."""
+    """Rich-напоминание с карточкой заявки и инструкцией для клиента."""
     translate = _resolve_translator(translator, locale)
+    current_locale = locale or "ru"
     return _strip_fluent_isolates(
         translate(
             "order-reminder-rich",
             id=escape(view.public_number),
-            direction=escape(view.direction or ""),
+            summary=render_order_rich(view, locale=current_locale),
         )
     )
 
@@ -631,11 +632,12 @@ def order_reminder_html(
 ) -> str:
     """Обычный HTML fallback напоминания."""
     translate = _resolve_translator(translator, locale)
+    current_locale = locale or "ru"
     return _strip_fluent_isolates(
         translate(
             "order-reminder-html",
             id=escape(view.public_number),
-            direction=escape(view.direction or ""),
+            summary=render_order_regular(view, locale=current_locale),
         )
     )
 

@@ -90,12 +90,12 @@ def test_order_summary_escapes_persisted_telegram_values() -> None:
     [
         (
             "ru",
-            "Напишите менеджеру первым. После вашего сообщения он сможет ответить "
-            "и согласовать детали обмена.",
+            "Напишите менеджеру первым, чтобы открыть диалог. После этого он сможет "
+            "ответить и согласовать детали обмена.",
         ),
         (
             "en",
-            "Message the manager first. Once you send a message, the manager can reply "
+            "Message the manager first to open the conversation. The manager can then reply "
             "and confirm the exchange details.",
         ),
     ],
@@ -110,29 +110,25 @@ def test_handoff_copy_explains_why_customer_must_write_first(
 
     assert "<footer>" in rich
     assert "<table bordered striped>" in rich
+    assert "<ol>" in rich
+    assert "<blockquote>" in rich
+    assert "<details>" in rich
+    assert "Отправьте сообщение с предзаполненным текстом" in rich or "Send the pre-filled" in rich
     assert required_copy in rich
     assert required_copy in regular
-    for technical_copy in (
-        "поле ввода",
-        "автоматически",
-        "Подготовленный текст",
-        "input field",
-        "automatically",
-        "Prepared text",
-    ):
-        assert technical_copy not in rich
-        assert technical_copy not in regular
+    assert "не отправится автоматически" in rich or "will not be sent automatically" in rich
 
 
-def test_reminder_is_compact_and_keeps_order_direction(order_view: OrderMessageView) -> None:
+def test_reminder_reuses_handoff_details_and_instructions(order_view: OrderMessageView) -> None:
     rich = messages.order_reminder_rich(order_view, locale="ru")
     regular = messages.order_reminder_html(order_view, locale="ru")
 
     assert "#2026080096" in rich
-    assert "USDT → THB" in rich
-    assert "напишите менеджеру первым" in rich.lower()
-    assert "USDT → THB" in regular
-    assert "поле ввода" not in regular
+    assert "Менеджер ожидает ваше сообщение" in rich
+    assert "<table bordered striped>" in rich
+    assert "Что нужно сделать" in rich
+    assert "Отправьте сообщение с предзаполненным текстом" in rich
+    assert "Напишите менеджеру первым, чтобы открыть диалог" in regular
 
 
 @pytest.mark.parametrize(

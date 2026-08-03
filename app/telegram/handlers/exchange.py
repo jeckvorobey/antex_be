@@ -859,7 +859,7 @@ async def confirm_exchange_callback(callback: CallbackQuery, state: FSMContext) 
                     show_alert=True,
                 )
                 return
-            # При принятии заявки бот редактирует эту карточку вместо отправки дубликата.
+            # При принятии заявки бот удалит эту карточку после отправки нового уведомления.
             created_order.userNotificationMessageId = initial_message.message_id
             try:
                 await db.commit()

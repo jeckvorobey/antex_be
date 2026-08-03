@@ -25,8 +25,11 @@ def test_exchange_rate_formats_all_rates_with_two_decimals() -> None:
 
 def test_order_created_includes_order_number() -> None:
     text = messages.order_created(2026050008)
+    normalized = text.replace("\u2068", "").replace("\u2069", "").replace("\u00a0", "")
 
     assert "".join(re.findall(r"\d", text)) == "2026050008"
+    assert "#2026050008" in normalized
+    assert "№" not in text
 
 
 def test_order_created_adds_queue_notice_only_for_offline_managers() -> None:
