@@ -92,7 +92,10 @@ async def create_order(
     db: DbDep,
     user: MiniappUser,
 ) -> MiniappOrderItem:
+    """Создать предварительную заявку и вернуть полностью загруженный Mini App DTO."""
     order = await create_order_for_user(db, user, body)
+    # Уведомления могут истечь поля ORM-модели; загружаем их до синхронной сериализации DTO.
+    await db.refresh(order)
     availability = getattr(order, "manager_availability", None)
     if availability is None:
         availability = ManagerWorkingHoursService().get_availability(
