@@ -45,10 +45,8 @@ EXCHANGE_CURRENCY_TEMPLATE = """<footer>{category}</footer>
 <h2>💱 {title}</h2>
 <p>{description}</p>
 <hr/>
-<h3>{selection_title}</h3>
-<table bordered>
-{selection_rows}</table>
 <h3>{rates_title}</h3>
-<ul>
-{rate_items}</ul>
+<table bordered striped>
+<tr><th>{currency_column}</th><th>{rate_column}</th></tr>
+{rate_rows}</table>
 <p>{options_hint}</p>"""
