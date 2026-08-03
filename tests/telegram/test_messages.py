@@ -69,15 +69,49 @@ def test_exchange_off_hours_alert_is_short() -> None:
     assert text == "Менеджер обработает заявку утром после начала рабочего дня."
 
 
-def test_exchange_start_welcome_uses_current_business_schedule() -> None:
+def test_exchange_start_welcome_uses_template_and_current_business_schedule() -> None:
     text = messages.exchange_start_welcome(
         "Сергей",
         locale="ru",
         business_hours_text="Пн–Пт с 10:00 до 22:00 МСК",
     )
 
+    assert "<b>💱 AntEx — обмен валюты и оплата услуг</b>" in text
     assert "Заявки принимаются круглосуточно" in text
-    assert "Менеджеры работают Пн–Пт с 10:00 до 22:00 МСК" in _strip_bidi_marks(text)
+    assert "<blockquote>🕘 <b>Режим работы</b>" in text
+    assert "Менеджеры: Пн–Пт с 10:00 до 22:00 МСК." in _strip_bidi_marks(text)
+    assert "Обработаем утром" not in text
+
+
+def test_exchange_start_welcome_adds_offline_notice_only_when_confirmed() -> None:
+    ru_text = messages.exchange_start_welcome(
+        "Сергей",
+        locale="ru",
+        managers_offline=True,
+    )
+    en_text = messages.exchange_start_welcome(
+        "Sergey",
+        locale="en",
+        managers_offline=True,
+    )
+    unknown_text = messages.exchange_start_welcome(
+        "Сергей",
+        locale="ru",
+        managers_offline=False,
+    )
+
+    assert "<blockquote>⚠️ <b>Обработаем утром, в рабочее время</b>" in ru_text
+    assert "Оформить заявку можно уже сейчас." in ru_text
+    assert "We’ll process it in the morning, during working hours" in en_text
+    assert "You can create an order now." in en_text
+    assert "Обработаем утром, в рабочее время" not in unknown_text
+
+
+def test_exchange_start_welcome_escapes_first_name_for_html() -> None:
+    text = messages.exchange_start_welcome("<b>Сергей</b>", locale="ru")
+
+    assert "&lt;b&gt;Сергей&lt;/b&gt;" in text
+    assert "<b>Сергей</b>" not in text
 
 
 def test_referral_bonus_credited_is_short_and_formats_amount_with_two_decimals() -> None:
