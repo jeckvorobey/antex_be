@@ -410,14 +410,15 @@ async def _show_currency_step(actor, state: FSMContext, *, edit: bool) -> None:
     canonical_sell_currencies = [
         currency for currency in ("USDT", "RUB") if currency in CANONICAL_SELL_CURRENCIES
     ]
-    await _render_step(
-        actor=actor,
-        current=4,
-        body=messages.choose_currency_prompt(translator=translate),
-        reply_markup=choose_currency(translate, canonical_sell_currencies),
-        edit=edit,
-        featured_pairs=snapshots,
-    )
+    visible_pairs = [
+        pair for pair in snapshots if pair.currency_sell in canonical_sell_currencies
+    ]
+    text = messages.choose_currency_prompt(visible_pairs, translator=translate)
+    reply_markup = choose_currency(translate, canonical_sell_currencies)
+    if edit:
+        await edit_rich(actor.message, text, reply_markup=reply_markup)
+    else:
+        await answer_rich(actor, text, reply_markup=reply_markup)
 
 
 async def _show_orders(actor, *, edit: bool, page: int = 1) -> None:
