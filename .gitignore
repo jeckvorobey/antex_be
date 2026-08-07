@@ -9,3 +9,12 @@ __pycache__/
 .venv/
 env.prod
 .hermes/
+
+# eLama browser session and raw network artifacts (secrets)
+**/*auth_state*.json
+**/*storage_state*.json
+**/*cookies*.json
+**/*.har
+**/trace*.zip
+**/*.curl
+**/raw-network*/
