@@ -49,6 +49,8 @@ async def telegram_auth(db: AsyncSession, init_data: str) -> TokenResponse:
         is_bot=user_data.get("is_bot", False),
         is_premium=user_data.get("is_premium", False),
     )
+    if user_data.get("allows_write_to_pm") is True and not user.telegram_write_access:
+        user.telegram_write_access = True
     user.lastActiveAt = datetime.now(UTC)
     await db.flush()
     if is_new_user:
@@ -117,8 +119,20 @@ async def telegram_auth(db: AsyncSession, init_data: str) -> TokenResponse:
         elif not marketing_touch_created:
             await AttributionService(db).ensure_acquisition(user.id, source_type="direct")
 
-    token = create_access_token({"sub": str(user.id), "role": user.role})
-    return TokenResponse(access_token=token)
+    token = create_access_token({"sub": str(user.id), "role": user.role, "type": "user"})
+    logger.info(
+        "Telegram auth bootstrap: user_id=%s telegram_id=%s is_new_user=%s "
+        "telegram_write_access=%s",
+        user.id,
+        user.telegram_id,
+        is_new_user,
+        user.telegram_write_access,
+    )
+    return TokenResponse(
+        access_token=token,
+        is_new_user=is_new_user,
+        telegram_write_access=user.telegram_write_access,
+    )
 
 
 def extract_referral_code_from_start_param(start_param: object) -> str | None:

@@ -80,7 +80,7 @@ class _FakeMessage:
         self.message_id = _FakeMessage._next_message_id
         _FakeMessage._next_message_id += 1
         self.chat = SimpleNamespace(id=555001)
-        self.bot = _FakeBot()
+        self.bot = _FakeBot(self)
 
     async def edit_text(self, text: str, reply_markup=None) -> None:
         self.edits.append({"text": text, "reply_markup": reply_markup})
@@ -103,8 +103,20 @@ class _FakeMessage:
 
 
 class _FakeBot:
-    def __init__(self) -> None:
+    def __init__(self, message: _FakeMessage | None = None) -> None:
+        self.message = message
         self.deleted: list[dict[str, object]] = []
+
+    async def __call__(self, method):
+        """Имитирует callable Bot API и сохраняет Rich-редактирование сообщения."""
+        if self.message is not None:
+            self.message.edits.append(
+                {
+                    "text": method.rich_message["html"],
+                    "reply_markup": method.reply_markup,
+                }
+            )
+        return self.message
 
     async def delete_message(self, *, chat_id: int, message_id: int) -> None:
         self.deleted.append({"chat_id": chat_id, "message_id": message_id})
@@ -601,7 +613,7 @@ async def test_fsm_back_from_currency_returns_to_service_step() -> None:
     await exchange_handler.fsm_back(callback, state)
 
     assert state.state == exchange_handler.ExchangeState.choosing_service.state
-    assert "<b>💠 Выберите подходящую услугу</b>" in str(callback.message.edits[0]["text"])
+    assert "Как вам удобнее получить деньги?" in str(callback.message.edits[0]["text"])
     assert callback.answers[-1] == {"text": None, "show_alert": False}
 
 
@@ -621,7 +633,7 @@ async def test_fsm_back_from_city_returns_to_service_step() -> None:
     await exchange_handler.fsm_back(callback, state)
 
     assert state.state == exchange_handler.ExchangeState.choosing_service.state
-    assert "<b>💠 Выберите подходящую услугу</b>" in str(callback.message.edits[0]["text"])
+    assert "Как вам удобнее получить деньги?" in str(callback.message.edits[0]["text"])
     assert callback.answers[-1] == {"text": None, "show_alert": False}
 
 
@@ -647,8 +659,8 @@ async def test_fsm_back_from_service_returns_to_country_step(monkeypatch) -> Non
     await exchange_handler.fsm_back(callback, state)
 
     assert state.state == exchange_handler.ExchangeState.choosing_country.state
-    assert "<b>AntEx</b>" in str(callback.message.edits[0]["text"])
-    assert "выберите страну в списке ниже" in str(callback.message.edits[0]["text"])
+    assert "<h2>💱 AntEx</h2>" in str(callback.message.edits[0]["text"])
+    assert "выберите страну ниже" in str(callback.message.edits[0]["text"])
     assert callback.answers[-1] == {"text": None, "show_alert": False}
 
 
@@ -688,7 +700,7 @@ async def test_fsm_back_from_amount_returns_to_sell_currency_step(monkeypatch) -
     await exchange_handler.fsm_back(callback, state)
 
     assert state.state == exchange_handler.ExchangeState.choosing_currency.state
-    assert "Выберите валюту, которую хотите обменять" in str(callback.message.edits[0]["text"])
+    assert "Какую валюту вы отдаёте?" in str(callback.message.edits[0]["text"])
     reply_markup = callback.message.edits[0]["reply_markup"]
     assert [button.callback_data for button in reply_markup.inline_keyboard[0]] == [
         "exchange:currency:USDT",
@@ -1422,8 +1434,8 @@ async def test_fsm_cancel_returns_to_country_step() -> None:
     assert state.state == exchange_handler.ExchangeState.choosing_country.state
     assert len(callback.message.edits) == 1
     text = str(callback.message.edits[0]["text"])
-    assert "<b>AntEx</b>" in text
-    assert "выберите страну в списке ниже" in text
+    assert "<h2>💱 AntEx</h2>" in text
+    assert "выберите страну ниже" in text
     reply_markup = callback.message.edits[0]["reply_markup"]
     assert [button.callback_data for button in reply_markup.inline_keyboard[0]] == [
         "exchange:country:thailand",
@@ -1444,9 +1456,7 @@ async def test_show_city_step_edits_as_rich_message_without_step_counter(monkeyp
             language_code="ru",
         )
     )
-    state = _FakeState(
-        {"country": Country.VIETNAM.value, "service_label": "cash_delivery"}
-    )
+    state = _FakeState({"country": Country.VIETNAM.value, "service_label": "cash_delivery"})
     city = SimpleNamespace(id=17, name="Дананг")
 
     class _Result:

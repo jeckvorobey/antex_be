@@ -477,6 +477,7 @@ def test_user_role_helpers_and_serializer() -> None:
     fake_user.is_bot = False
     fake_user.role = UserRole.USER
     fake_user.is_premium = False
+    fake_user.telegram_write_access = False
     fake_user.city_id = None
     fake_user.city = None
     fake_user.createdAt = "2026-04-03T00:00:00+00:00"
@@ -486,6 +487,7 @@ def test_user_role_helpers_and_serializer() -> None:
     assert user_out.role == 9
     assert user_out.role_name == "Пользователь"
     assert user_out.language_code_app == "ru"
+    assert user_out.telegram_write_access is False
 
     fake_user.role = 1
     legacy_manager_out = build_user_out(fake_user)

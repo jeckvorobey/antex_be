@@ -360,6 +360,7 @@ def test_exchange_pair_rates_format_is_readable_with_currency_emoji() -> None:
         assert pair.label not in text
         assert pair.rate_text not in text
 
+
 def test_choose_currency_prompt_uses_rich_currency_cards_for_usdt_and_rub() -> None:
     pairs = [
         ExchangePairSnapshot(

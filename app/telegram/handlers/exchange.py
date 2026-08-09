@@ -437,9 +437,9 @@ async def _show_currency_step(actor, state: FSMContext, *, edit: bool) -> None:
         pair for currency in canonical_order for pair in snapshots if pair.currency_sell == currency
     ]
     available_sell_currencies = [
-        currency for currency in canonical_order if any(
-            pair.currency_sell == currency for pair in visible_pairs
-        )
+        currency
+        for currency in canonical_order
+        if any(pair.currency_sell == currency for pair in visible_pairs)
     ]
     if not visible_pairs:
         await _show_country_fallback(

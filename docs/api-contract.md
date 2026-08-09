@@ -4,6 +4,18 @@
 
 Miniapp использует backend-driven namespace `/api/miniapp/*`.
 
+Telegram bootstrap и разрешение сообщений:
+
+- `POST /api/auth/telegram` сохраняет прежние `access_token` и `token_type`, а
+  также возвращает `is_new_user` и `telegram_write_access`. Положительный
+  `allows_write_to_pm` учитывается только после HMAC-проверки Telegram
+  `initData`; отсутствие флага не отменяет ранее подтверждённое разрешение.
+- `GET /api/users/me` включает `telegram_write_access` текущего инстанса.
+- `POST /api/users/me/telegram-write-access` принимает только `status` со
+  значением `allowed`, `cancelled` или `unsupported`. Endpoint требует bearer
+  token и всегда обновляет только текущего пользователя; дополнительные поля,
+  включая произвольный `user_id`, запрещены.
+
 - `GET /api/miniapp/home` возвращает профиль, быстрые действия, featured rates,
   баннер, сервисы и города для главного экрана.
 - `GET /api/miniapp/aex/referral` возвращает ATXG referral payload для страницы

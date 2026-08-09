@@ -21,7 +21,7 @@ from app.models.user import User
 from app.repositories.config import ConfigRepository
 from app.schemas.miniapp import MiniappOrderCreate
 from app.services import order_flow
-from app.services.order_notifications import DeliveryOutcome
+from app.services.order_notifications import DeliveryOutcome, OrderCreatedDelivery
 
 
 @pytest.mark.asyncio
@@ -73,6 +73,60 @@ async def test_create_order_for_user_passes_global_manager_to_notification(
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("initial_access", "user_delivery", "expected_access"),
+    [
+        (False, DeliveryOutcome.SENT, True),
+        (True, DeliveryOutcome.INACCESSIBLE, False),
+    ],
+)
+async def test_create_order_syncs_write_access_from_actual_user_delivery(
+    db_session: AsyncSession,
+    monkeypatch: pytest.MonkeyPatch,
+    initial_access: bool,
+    user_delivery: DeliveryOutcome,
+    expected_access: bool,
+) -> None:
+    """Ловит рассинхронизацию кэша после успешной или постоянно неуспешной доставки."""
+    city = City(name="Bangkok", country=Country.THAILAND)
+    manager = User(
+        telegram_id=710001,
+        username="manager-sync",
+        role=int(UserRole.MANAGER),
+    )
+    customer = User(
+        telegram_id=710002,
+        username="customer-sync",
+        telegram_write_access=initial_access,
+    )
+    rate = Rate(currency="RUBTHB", price=0.41, margin=3.0, country=Country.THAILAND)
+    db_session.add_all([city, manager, customer, rate])
+    await db_session.flush()
+    customer.city_id = city.id
+    await db_session.commit()
+
+    async def notify(order, user, assigned_manager, *, notify_user=True):
+        return OrderCreatedDelivery(user=user_delivery, manager=DeliveryOutcome.RICH)
+
+    monkeypatch.setattr(order_flow, "notify_order_created", notify)
+    payload = MiniappOrderCreate(
+        country=Country.THAILAND,
+        cityId=city.id,
+        currencySell="RUB",
+        amountSell=30000,
+        currencyBuy="THB",
+        amountBuy=12000,
+        rate=0.4,
+        methodGet="cash",
+    )
+
+    await order_flow.create_order_for_user(db_session, customer, payload)
+
+    await db_session.refresh(customer)
+    assert customer.telegram_write_access is expected_access
+
+
+@pytest.mark.asyncio
 async def test_create_order_persists_customer_notification_message_id(
     db_session: AsyncSession,
     monkeypatch: pytest.MonkeyPatch,
@@ -96,7 +150,7 @@ async def test_create_order_persists_customer_notification_message_id(
         assert assigned_manager is manager
         assert notify_user is True
         order.userNotificationMessageId = 89
-        return DeliveryOutcome.RICH
+        return OrderCreatedDelivery(user=DeliveryOutcome.SENT, manager=DeliveryOutcome.RICH)
 
     monkeypatch.setattr(order_flow, "notify_order_created", notify)
     payload = MiniappOrderCreate(
@@ -135,7 +189,7 @@ async def test_create_order_returns_reloaded_order_when_notification_id_commit_f
 
     async def notify(order, user, assigned_manager, *, notify_user=True):
         order.userNotificationMessageId = 89
-        return DeliveryOutcome.RICH
+        return OrderCreatedDelivery(user=DeliveryOutcome.SENT, manager=DeliveryOutcome.RICH)
 
     original_commit = db_session.commit
     commit_count = 0
