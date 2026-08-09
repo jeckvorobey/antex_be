@@ -21,7 +21,11 @@ from app.services.aex import AexService
 from app.services.exchange import CANONICAL_BUY_CURRENCIES, ExchangeService, get_client_rate
 from app.services.manager_working_hours import ManagerWorkingHoursService
 from app.services.notifications import notify_order_created
-from app.services.order_notifications import DeliveryOutcome
+from app.services.order_notifications import (
+    DeliveryOutcome,
+    is_delivery_success,
+    reconcile_telegram_write_access,
+)
 from app.services.order_numbers import OrderNumberService
 
 logger = logging.getLogger(__name__)
@@ -152,6 +156,7 @@ async def create_order_for_user(
         return hydrated
 
     notification_message_id_before = getattr(hydrated, "userNotificationMessageId", None)
+    write_access_before = bool(getattr(user, "telegram_write_access", False))
     try:
         logger.info(
             "Order notification attempt: order_id=%s public_number=%s manager_user_id=%s "
@@ -162,12 +167,16 @@ async def create_order_for_user(
             getattr(manager, "telegram_id", None),
         )
         delivery = await notify_order_created(hydrated, user, manager, notify_user=notify_user)
-        if delivery == DeliveryOutcome.FAILED:
+        user_delivery = getattr(delivery, "user", DeliveryOutcome.SKIPPED)
+        manager_delivery = getattr(delivery, "manager", delivery)
+        reconcile_telegram_write_access(user, user_delivery, operation="order_created")
+        if not is_delivery_success(manager_delivery):
             logger.warning(
                 "Order notification completed with manager delivery failure: "
-                "order_id=%s public_number=%s",
+                "order_id=%s public_number=%s outcome=%s",
                 order.id,
                 getattr(order, "publicNumber", None),
+                manager_delivery,
             )
         else:
             logger.info(
@@ -186,7 +195,10 @@ async def create_order_for_user(
         )
     finally:
         notification_message_id = getattr(hydrated, "userNotificationMessageId", None)
-        if notification_message_id != notification_message_id_before:
+        write_access_changed = (
+            bool(getattr(user, "telegram_write_access", False)) != write_access_before
+        )
+        if notification_message_id != notification_message_id_before or write_access_changed:
             try:
                 await db.commit()
             except Exception:

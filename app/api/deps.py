@@ -33,6 +33,10 @@ async def get_current_user(
     except jwt.PyJWTError as exc:
         raise HTTPException(status_code=401, detail="Invalid token") from exc
 
+    token_type = payload.get("type")
+    if token_type not in (None, "user"):
+        raise HTTPException(status_code=403, detail="User access required")
+
     user_id = int(payload.get("sub", 0))
     repo = UserRepository(db)
     user = await repo.get_one(user_id)

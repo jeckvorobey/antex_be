@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import logging
 import re
-from dataclasses import replace
+from dataclasses import dataclass, replace
 from enum import StrEnum
 
 from aiogram.exceptions import TelegramBadRequest, TelegramForbiddenError, TelegramNotFound
@@ -29,11 +29,73 @@ _TELEGRAM_USERNAME_RE = re.compile(r"^[A-Za-z][A-Za-z0-9_]{4,31}$")
 
 
 class DeliveryOutcome(StrEnum):
-    """Результат доставки, который нужен manager callback-ам."""
+    """Результат отдельной попытки доставки Telegram-сообщения."""
 
     RICH = "rich"
     FALLBACK = "fallback"
+    SENT = "sent"
+    SKIPPED = "skipped"
+    INACCESSIBLE = "inaccessible"
     FAILED = "failed"
+
+
+@dataclass(frozen=True, slots=True)
+class OrderCreatedDelivery:
+    """Независимые результаты уведомления клиента и менеджера."""
+
+    user: DeliveryOutcome
+    manager: DeliveryOutcome
+
+
+def is_delivery_success(outcome: DeliveryOutcome) -> bool:
+    """Проверяет, что Telegram фактически принял сообщение или редактирование."""
+    return outcome in {
+        DeliveryOutcome.RICH,
+        DeliveryOutcome.FALLBACK,
+        DeliveryOutcome.SENT,
+    }
+
+
+def reconcile_telegram_write_access(
+    user: object | None,
+    outcome: DeliveryOutcome,
+    *,
+    operation: str,
+) -> bool:
+    """Синхронизирует локальный кэш по фактическому результату пользовательской доставки."""
+    if user is None:
+        return False
+    desired_access: bool | None = None
+    if is_delivery_success(outcome):
+        desired_access = True
+    elif outcome == DeliveryOutcome.INACCESSIBLE:
+        desired_access = False
+    if desired_access is None or desired_access == bool(
+        getattr(user, "telegram_write_access", False)
+    ):
+        return False
+
+    user.telegram_write_access = desired_access  # type: ignore[attr-defined]
+    logger.info(
+        "Telegram write access reconciled from delivery: user_id=%s telegram_id=%s "
+        "operation=%s outcome=%s telegram_write_access=%s",
+        getattr(user, "id", None),
+        getattr(user, "telegram_id", None),
+        operation,
+        outcome,
+        desired_access,
+    )
+    return True
+
+
+def is_permanent_telegram_delivery_error(exc: Exception) -> bool:
+    """Отличает постоянную недоступность личного чата от ошибок формата/метода."""
+    if isinstance(exc, TelegramForbiddenError):
+        return True
+    if not isinstance(exc, TelegramBadRequest):
+        return False
+    message = str(exc).lower()
+    return "chat not found" in message or "user is deactivated" in message
 
 
 async def _send_rich_or_html(
@@ -55,14 +117,19 @@ async def _send_rich_or_html(
                 reply_markup=reply_markup,
             )
             return DeliveryOutcome.RICH, existing_message_id
-        except (TelegramBadRequest, TelegramNotFound):
+        except (TelegramBadRequest, TelegramNotFound) as exc:
+            if is_permanent_telegram_delivery_error(exc):
+                logger.warning(
+                    "Order message edit skipped: chat is inaccessible chat_id=%s", chat_id
+                )
+                return DeliveryOutcome.INACCESSIBLE, None
             logger.info(
                 "Rich order edit was rejected; using regular HTML fallback chat_id=%s",
                 chat_id,
             )
         except TelegramForbiddenError:
             logger.warning("Order message edit skipped: chat is inaccessible chat_id=%s", chat_id)
-            return DeliveryOutcome.FAILED, None
+            return DeliveryOutcome.INACCESSIBLE, None
         except Exception:
             logger.exception("Rich order message edit failed chat_id=%s", chat_id)
             return DeliveryOutcome.FAILED, None
@@ -75,14 +142,17 @@ async def _send_rich_or_html(
                 reply_markup=reply_markup,
             )
             return DeliveryOutcome.FALLBACK, existing_message_id
-        except (TelegramBadRequest, TelegramNotFound):
+        except (TelegramBadRequest, TelegramNotFound) as exc:
+            if is_permanent_telegram_delivery_error(exc):
+                logger.warning("Order HTML edit skipped: chat is inaccessible chat_id=%s", chat_id)
+                return DeliveryOutcome.INACCESSIBLE, None
             logger.info(
                 "Order status message is no longer editable; sending one replacement chat_id=%s",
                 chat_id,
             )
         except TelegramForbiddenError:
             logger.warning("Order HTML edit skipped: chat is inaccessible chat_id=%s", chat_id)
-            return DeliveryOutcome.FAILED, None
+            return DeliveryOutcome.INACCESSIBLE, None
         except Exception:
             logger.exception("Order HTML fallback edit failed chat_id=%s", chat_id)
             return DeliveryOutcome.FAILED, None
@@ -94,7 +164,14 @@ async def _send_rich_or_html(
                 reply_markup=reply_markup,
             )
             return DeliveryOutcome.FALLBACK, sent.message_id
-        except TelegramForbiddenError:
+        except (TelegramBadRequest, TelegramForbiddenError) as exc:
+            if is_permanent_telegram_delivery_error(exc):
+                logger.warning(
+                    "Order replacement skipped: chat is inaccessible chat_id=%s", chat_id
+                )
+                return DeliveryOutcome.INACCESSIBLE, None
+            logger.exception("Order replacement failed chat_id=%s", chat_id)
+        except TelegramNotFound:
             logger.warning("Order replacement skipped: chat is inaccessible chat_id=%s", chat_id)
         except Exception:
             logger.exception("Order replacement failed chat_id=%s", chat_id)
@@ -107,14 +184,17 @@ async def _send_rich_or_html(
             reply_markup=reply_markup,
         )
         return DeliveryOutcome.RICH, sent.message_id
-    except (TelegramBadRequest, TelegramNotFound):
+    except (TelegramBadRequest, TelegramNotFound) as exc:
+        if is_permanent_telegram_delivery_error(exc):
+            logger.warning("Order message skipped: chat is inaccessible chat_id=%s", chat_id)
+            return DeliveryOutcome.INACCESSIBLE, None
         logger.info(
             "Rich order message was rejected; using regular HTML fallback chat_id=%s",
             chat_id,
         )
     except TelegramForbiddenError:
         logger.warning("Order message skipped: chat is inaccessible chat_id=%s", chat_id)
-        return DeliveryOutcome.FAILED, None
+        return DeliveryOutcome.INACCESSIBLE, None
     except Exception:
         logger.exception("Rich order message failed chat_id=%s", chat_id)
         return DeliveryOutcome.FAILED, None
@@ -126,8 +206,13 @@ async def _send_rich_or_html(
             reply_markup=reply_markup,
         )
         return DeliveryOutcome.FALLBACK, sent.message_id
-    except TelegramForbiddenError:
-        logger.warning("Order HTML fallback skipped: chat is inaccessible chat_id=%s", chat_id)
+    except (TelegramBadRequest, TelegramForbiddenError) as exc:
+        if is_permanent_telegram_delivery_error(exc):
+            logger.warning("Order HTML fallback skipped: chat is inaccessible chat_id=%s", chat_id)
+            return DeliveryOutcome.INACCESSIBLE, None
+        logger.exception("Order HTML fallback failed chat_id=%s", chat_id)
+    except TelegramNotFound:
+        logger.exception("Order HTML fallback failed chat_id=%s", chat_id)
     except Exception:
         logger.exception("Order HTML fallback failed chat_id=%s", chat_id)
     return DeliveryOutcome.FAILED, None
@@ -291,6 +376,26 @@ async def send_or_replace_user_status_message(
     text: str,
     reply_markup: InlineKeyboardMarkup | None,
 ) -> int | None:
+    """Отправляет пользовательский статус и возвращает id принятого сообщения."""
+    _, message_id = await _deliver_user_status_message(
+        bot=bot,
+        chat_id=chat_id,
+        order=order,
+        text=text,
+        reply_markup=reply_markup,
+    )
+    return message_id
+
+
+async def _deliver_user_status_message(
+    *,
+    bot,
+    chat_id: int,
+    order,
+    text: str,
+    reply_markup: InlineKeyboardMarkup | None,
+) -> tuple[DeliveryOutcome, int | None]:
+    """Доставляет статус и классифицирует постоянную недоступность чата."""
     old_message_id = getattr(order, "userNotificationMessageId", None)
     if old_message_id:
         try:
@@ -301,8 +406,10 @@ async def send_or_replace_user_status_message(
                 reply_markup=reply_markup,
             )
             order.userNotificationMessageId = old_message_id
-            return old_message_id
-        except TelegramBadRequest:
+            return DeliveryOutcome.SENT, old_message_id
+        except TelegramBadRequest as exc:
+            if is_permanent_telegram_delivery_error(exc):
+                return DeliveryOutcome.INACCESSIBLE, None
             logger.info(
                 "Failed to edit order message %s for chat %s, sending a new message",
                 old_message_id,
@@ -310,11 +417,23 @@ async def send_or_replace_user_status_message(
             )
         except TelegramForbiddenError:
             logger.warning("Cannot update order message for inaccessible chat %s", chat_id)
-            return None
+            return DeliveryOutcome.INACCESSIBLE, None
+        except Exception:
+            logger.exception("Failed to update order message for chat_id=%s", chat_id)
+            return DeliveryOutcome.FAILED, None
 
-    sent = await bot.send_message(chat_id=chat_id, text=text, reply_markup=reply_markup)
+    try:
+        sent = await bot.send_message(chat_id=chat_id, text=text, reply_markup=reply_markup)
+    except (TelegramBadRequest, TelegramForbiddenError) as exc:
+        if is_permanent_telegram_delivery_error(exc):
+            return DeliveryOutcome.INACCESSIBLE, None
+        logger.exception("Failed to send order message for chat_id=%s", chat_id)
+        return DeliveryOutcome.FAILED, None
+    except Exception:
+        logger.exception("Failed to send order message for chat_id=%s", chat_id)
+        return DeliveryOutcome.FAILED, None
     order.userNotificationMessageId = sent.message_id
-    return sent.message_id
+    return DeliveryOutcome.SENT, sent.message_id
 
 
 async def send_new_rich_user_status_message(
@@ -351,7 +470,7 @@ async def notify_order_created(
     manager,
     *,
     notify_user: bool = True,
-) -> DeliveryOutcome:
+) -> OrderCreatedDelivery:
     bot = _get_telegram_bot()
     if bot is None:
         logger.warning(
@@ -359,8 +478,12 @@ async def notify_order_created(
             getattr(order, "id", None),
             getattr(order, "publicNumber", None),
         )
-        return DeliveryOutcome.FAILED
+        return OrderCreatedDelivery(
+            user=DeliveryOutcome.SKIPPED if not notify_user else DeliveryOutcome.FAILED,
+            manager=DeliveryOutcome.FAILED,
+        )
 
+    user_delivery = DeliveryOutcome.SKIPPED
     if notify_user and getattr(user, "telegram_id", None):
         logger.info(
             "Sending order notification to user: order_id=%s public_number=%s "
@@ -372,7 +495,7 @@ async def notify_order_created(
         )
         translate = get_user_translator(user)
         availability = getattr(order, "manager_availability", None)
-        await send_or_replace_user_status_message(
+        user_delivery, _ = await _deliver_user_status_message(
             bot=bot,
             chat_id=user.telegram_id,
             order=order,
@@ -383,13 +506,19 @@ async def notify_order_created(
             ),
             reply_markup=order_created_actions(translate),
         )
-        logger.info(
-            "Order notification sent to user: order_id=%s public_number=%s telegram_id=%s",
+        log_method = logger.info if is_delivery_success(user_delivery) else logger.warning
+        log_method(
+            "Order notification user result: order_id=%s public_number=%s recipient_role=user "
+            "recipient_user_id=%s recipient_telegram_id=%s operation=order_created "
+            "outcome=%s",
             getattr(order, "id", None),
             getattr(order, "publicNumber", None),
+            getattr(user, "id", None),
             getattr(user, "telegram_id", None),
+            user_delivery,
         )
     elif notify_user:
+        user_delivery = DeliveryOutcome.INACCESSIBLE
         logger.warning(
             "Order user notification skipped: user chat is unavailable order_id=%s "
             "public_number=%s user_id=%s",
@@ -426,25 +555,29 @@ async def notify_order_created(
             ),
             reply_markup=manager_order_open_chat(translate, order_id=order.id),
         )
-        if delivery == DeliveryOutcome.FAILED:
+        if not is_delivery_success(delivery):
             logger.warning(
                 "Order notification delivery to manager failed: order_id=%s "
-                "public_number=%s manager_user_id=%s manager_telegram_id=%s",
+                "public_number=%s recipient_role=manager recipient_user_id=%s "
+                "recipient_telegram_id=%s operation=order_created outcome=%s",
                 getattr(order, "id", None),
                 getattr(order, "publicNumber", None),
                 getattr(manager, "id", None),
                 getattr(manager, "telegram_id", None),
+                delivery,
             )
-            return delivery
+            return OrderCreatedDelivery(user=user_delivery, manager=delivery)
         logger.info(
             "Order notification sent to manager: order_id=%s public_number=%s "
-            "manager_user_id=%s manager_telegram_id=%s",
+            "recipient_role=manager recipient_user_id=%s recipient_telegram_id=%s "
+            "operation=order_created outcome=%s",
             getattr(order, "id", None),
             getattr(order, "publicNumber", None),
             getattr(manager, "id", None),
             getattr(manager, "telegram_id", None),
+            delivery,
         )
-        return delivery
+        return OrderCreatedDelivery(user=user_delivery, manager=delivery)
     else:
         logger.warning(
             "Order manager notification skipped: manager chat is unavailable order_id=%s "
@@ -453,14 +586,19 @@ async def notify_order_created(
             getattr(order, "publicNumber", None),
             getattr(manager, "id", None),
         )
-        return DeliveryOutcome.FAILED
+        return OrderCreatedDelivery(user=user_delivery, manager=DeliveryOutcome.INACCESSIBLE)
 
 
-async def notify_order_status_changed(order, *, manager_chat_url: str | None = None) -> None:
+async def notify_order_status_changed(
+    order,
+    *,
+    manager_chat_url: str | None = None,
+) -> DeliveryOutcome:
+    """Доставляет новый статус и возвращает outcome для reconciliation доступа."""
     bot = _get_telegram_bot()
     if bot is None:
         logger.warning("Status notification skipped: bot is not initialized")
-        return
+        return DeliveryOutcome.FAILED
 
     user = getattr(order, "user", None)
     if user is None or not getattr(user, "telegram_id", None):
@@ -468,7 +606,7 @@ async def notify_order_status_changed(order, *, manager_chat_url: str | None = N
             "Status notification skipped: user chat is unavailable for order %s",
             order.id,
         )
-        return
+        return DeliveryOutcome.INACCESSIBLE
 
     translate = get_user_translator(user)
     reply_markup = None
@@ -482,7 +620,7 @@ async def notify_order_status_changed(order, *, manager_chat_url: str | None = N
         reply_markup = review_link(translate, REVIEW_URL)
 
         locale = normalize_locale(getattr(user, "language_code", None))
-        await send_new_rich_user_status_message(
+        return await send_new_rich_user_status_message(
             bot=bot,
             chat_id=user.telegram_id,
             order=order,
@@ -494,15 +632,14 @@ async def notify_order_status_changed(order, *, manager_chat_url: str | None = N
             fallback_html=_build_user_status_text(order, translate=translate),
             reply_markup=reply_markup,
         )
-        return
-
-    await send_or_replace_user_status_message(
+    delivery, _ = await _deliver_user_status_message(
         bot=bot,
         chat_id=user.telegram_id,
         order=order,
         text=_build_user_status_text(order, translate=translate),
         reply_markup=reply_markup,
     )
+    return delivery
 
 
 def build_chat_url_for_user(user) -> str | None:

@@ -25,7 +25,7 @@ async def answer_rich(
     *,
     reply_markup: Any | None = None,
 ) -> Message:
-    """Отправляет Rich Message с сохранением заданной клавиатуры."""
+    """Отправляет структурированное сообщение и заданную клавиатуру."""
     return await message.bot(
         SendRichMessage(
             chat_id=message.chat.id,
@@ -53,7 +53,7 @@ async def edit_rich(
     *,
     reply_markup: Any | None = None,
 ) -> Message | bool:
-    """Редактирует Rich Message и его inline-клавиатуру без нового сообщения."""
+    """Редактирует структурированное сообщение и встроенную клавиатуру."""
     return await message.bot(
         EditRichMessageText(
             chat_id=message.chat.id,

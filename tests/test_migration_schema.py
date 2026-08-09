@@ -173,3 +173,24 @@ def test_model_metadata_contains_required_migration_columns() -> None:
     assert "address" not in Base.metadata.tables["Orders"].columns
     assert Base.metadata.tables["Orders"].columns["CityId"].nullable is True
     assert Base.metadata.tables["Orders"].columns["country"].nullable is False
+    write_access = Base.metadata.tables["Users"].columns["telegram_write_access"]
+    assert write_access.nullable is False
+    assert write_access.server_default is not None
+
+
+def test_write_access_migration_adds_non_nullable_false_default() -> None:
+    """Ловит миграцию, небезопасную для уже существующих Users."""
+    env = os.environ.copy()
+    env["DATABASE_URL"] = "postgresql+asyncpg://antex:antex@localhost:5432/antex"
+
+    result = subprocess.run(
+        [sys.executable, "-m", "alembic", "upgrade", "head", "--sql"],
+        cwd=BACK_ROOT,
+        env=env,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert "ADD COLUMN telegram_write_access BOOLEAN DEFAULT false NOT NULL" in result.stdout

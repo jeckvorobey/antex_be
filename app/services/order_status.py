@@ -16,7 +16,9 @@ from app.repositories.user import UserRepository
 from app.services.order_notifications import (
     DeliveryOutcome,
     build_chat_url_for_user,
+    is_delivery_success,
     notify_order_status_changed,
+    reconcile_telegram_write_access,
     send_customer_handoff,
 )
 from app.telegram import messages
@@ -208,7 +210,15 @@ async def update_order_status(
     manager_chat_url = build_chat_url_for_user(manager) if manager is not None else None
 
     try:
-        await notify_order_status_changed(hydrated, manager_chat_url=manager_chat_url)
+        delivery = await notify_order_status_changed(
+            hydrated,
+            manager_chat_url=manager_chat_url,
+        )
+        reconcile_telegram_write_access(
+            getattr(hydrated, "user", None),
+            delivery,
+            operation="order_status_changed",
+        )
         await db.commit()
     except Exception:
         logger.exception(
@@ -241,11 +251,15 @@ async def take_order_in_work(db: AsyncSession, *, order_id: int) -> OrderTakeRes
     manager = await UserRepository(db).get_manager()
     notification_message_id_before = getattr(order, "userNotificationMessageId", None)
     delivery = await send_customer_handoff(order, manager)
+    write_access_changed = reconcile_telegram_write_access(
+        getattr(order, "user", None),
+        delivery,
+        operation="customer_handoff",
+    )
     notification_message_id = getattr(order, "userNotificationMessageId", None)
     if (
-        delivery != DeliveryOutcome.FAILED
-        and notification_message_id != notification_message_id_before
-    ):
+        is_delivery_success(delivery) and notification_message_id != notification_message_id_before
+    ) or write_access_changed:
         try:
             await db.commit()
         except SQLAlchemyError:

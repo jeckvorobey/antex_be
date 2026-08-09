@@ -32,6 +32,7 @@ class _FakeBot:
         self.edit_error: Exception | None = None
         self.rich_edit_error: Exception | None = None
         self.rich_error: Exception | None = None
+        self.send_error: Exception | None = None
 
     async def delete_message(self, chat_id: int, message_id: int) -> None:
         self.deleted.append((chat_id, message_id))
@@ -58,6 +59,8 @@ class _FakeBot:
         )
 
     async def send_message(self, chat_id: int, text: str, reply_markup=None):
+        if self.send_error is not None:
+            raise self.send_error
         self.sent.append({"chat_id": chat_id, "text": text, "reply_markup": reply_markup})
         return SimpleNamespace(message_id=88)
 
@@ -166,9 +169,7 @@ async def test_notify_order_created_sends_user_message_with_order_payload(
     assert len(bot.sent) == 1
     assert len(bot.rich_sent) == 1
     assert bot.sent[0]["chat_id"] == 700002
-    assert "Заявка #2026050008" in (
-        bot.sent[0]["text"].replace("\u2068", "").replace("\u2069", "")
-    )
+    assert "Заявка #2026050008" in (bot.sent[0]["text"].replace("\u2068", "").replace("\u2069", ""))
     assert "№" not in bot.sent[0]["text"]
     assert bot.sent[0]["reply_markup"].inline_keyboard[0][0].callback_data == "menu:orders"
     assert bot.sent[0]["reply_markup"].inline_keyboard[1][0].callback_data == "fsm:cancel"
@@ -331,7 +332,7 @@ async def test_customer_handoff_returns_failed_without_duplicate_delivery(
 
     delivery = await send_customer_handoff(order, SimpleNamespace(username="manager"))
 
-    assert delivery == DeliveryOutcome.FAILED
+    assert delivery == DeliveryOutcome.INACCESSIBLE
     assert bot.sent == []
     assert bot.rich_sent == []
 
@@ -352,7 +353,7 @@ async def test_customer_handoff_keeps_created_status_when_new_delivery_fails(
 
     delivery = await send_customer_handoff(order, SimpleNamespace(username="manager"))
 
-    assert delivery == DeliveryOutcome.FAILED
+    assert delivery == DeliveryOutcome.INACCESSIBLE
     assert bot.deleted == []
     assert order.userNotificationMessageId == 55
 
@@ -520,9 +521,90 @@ async def test_notify_order_created_reports_failed_manager_delivery(
 
     delivery = await notify_order_created(order, user, manager, notify_user=False)
 
-    assert delivery == DeliveryOutcome.FAILED
+    assert delivery.user == DeliveryOutcome.SKIPPED
+    assert delivery.manager == DeliveryOutcome.INACCESSIBLE
     assert "Order notification sent to manager" not in caplog.text
     assert "Order notification delivery to manager failed" in caplog.text
+
+
+@pytest.mark.asyncio
+async def test_rich_chat_not_found_does_not_trigger_html_fallback(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Ловит повторный бесполезный sendMessage после постоянного chat not found."""
+    bot = _FakeBot()
+    bot.rich_error = TelegramBadRequest(method="sendRichMessage", message="chat not found")
+    order = SimpleNamespace(
+        id=8,
+        publicNumber="2026050008",
+        user=SimpleNamespace(telegram_id=700002, language_code="ru"),
+    )
+    monkeypatch.setattr(order_notifications, "_get_telegram_bot", lambda: bot)
+
+    delivery = await send_customer_handoff(order, SimpleNamespace(username="manager"))
+
+    assert delivery == DeliveryOutcome.INACCESSIBLE
+    assert bot.sent == []
+    assert bot.rich_sent == []
+
+
+@pytest.mark.asyncio
+async def test_user_chat_not_found_does_not_block_manager_delivery(
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """Ловит последовательный flow, где ошибка клиента отменяет уведомление менеджера."""
+    bot = _FakeBot()
+    bot.send_error = TelegramBadRequest(method="sendMessage", message="chat not found")
+    order = SimpleNamespace(
+        id=9,
+        publicNumber="2026050009",
+        amountSell=100,
+        currencySell="USDT",
+        amountBuy=3096,
+        currencyBuy="THB",
+        methodGet="qrcode",
+        rate=30.96,
+        status=1,
+        contactTelegram="customer",
+        city=None,
+        country=SimpleNamespace(value="thailand"),
+        userNotificationMessageId=None,
+    )
+    user = SimpleNamespace(id=6, telegram_id=700002, username="customer", phone=None)
+    manager = SimpleNamespace(id=7, telegram_id=700001)
+    monkeypatch.setattr(order_notifications, "_get_telegram_bot", lambda: bot)
+
+    delivery = await notify_order_created(order, user, manager)
+
+    assert delivery.user == DeliveryOutcome.INACCESSIBLE
+    assert delivery.manager == DeliveryOutcome.RICH
+    assert [message["chat_id"] for message in bot.rich_sent] == [700001]
+    assert "recipient_role=user" in caplog.text
+    assert "outcome=inaccessible" in caplog.text
+    assert "Traceback" not in caplog.text
+
+
+@pytest.mark.asyncio
+async def test_notify_order_created_reports_skipped_user_separately(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Ловит потерю явного skipped outcome при notify_user=false."""
+    bot = _FakeBot()
+    order = SimpleNamespace(
+        id=9,
+        publicNumber="2026050009",
+        status=1,
+        user=SimpleNamespace(username="customer"),
+    )
+    user = SimpleNamespace(id=6, telegram_id=700002, username="customer", phone=None)
+    manager = SimpleNamespace(id=7, telegram_id=700001)
+    monkeypatch.setattr(order_notifications, "_get_telegram_bot", lambda: bot)
+
+    delivery = await notify_order_created(order, user, manager, notify_user=False)
+
+    assert delivery.user == DeliveryOutcome.SKIPPED
+    assert delivery.manager == DeliveryOutcome.RICH
 
 
 def test_build_manager_status_text_uses_new_middle_format_for_processing() -> None:
@@ -624,16 +706,14 @@ async def test_notify_order_status_changed_adds_summary_for_completed_order(
     assert "Получаете</td><td><b>47 250 🇹🇭 THB" in rich
     assert "Способ получения</td><td><b>Доставка наличных" in rich
     assert (
-        "<p>💚 <b>Спасибо, что воспользовались нашим сервисом!</b><br/>"
-        "Мы ценим обратную связь.</p>"
+        "<p>💚 <b>Спасибо, что воспользовались нашим сервисом!</b><br/>Мы ценим обратную связь.</p>"
     ) in rich
     assert (
         "<aside>💰 За видео-отзыв (кружок) предоставляем "
         "<b>бонус 5$ к следующему обмену 💰</b></aside>"
     ) in rich
     assert (
-        "<p>⭐ <b>Будем рады вашему отзыву!</b><br/>"
-        "Это помогает нам становиться лучше.</p>"
+        "<p>⭐ <b>Будем рады вашему отзыву!</b><br/>Это помогает нам становиться лучше.</p>"
     ) in rich
     reply_markup = cast(Any, bot.rich_sent[0]["reply_markup"])
     assert reply_markup.inline_keyboard[0][0].text == "⭐ Оставить отзыв"

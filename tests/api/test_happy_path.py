@@ -85,6 +85,8 @@ async def test_telegram_auth_returns_token_and_allows_get_me(
     payload = auth_response.json()
     assert payload["token_type"] == "bearer"
     assert payload["access_token"]
+    assert payload["is_new_user"] is True
+    assert payload["telegram_write_access"] is False
 
     me_response = await client.get(
         "/api/users/me",
@@ -94,6 +96,7 @@ async def test_telegram_auth_returns_token_and_allows_get_me(
     assert me_response.status_code == 200
     assert me_response.json()["username"] == "telegram_user"
     assert me_response.json()["photo_url"] == "https://t.me/i/userpic/320/telegram-user.jpg"
+    assert me_response.json()["telegram_write_access"] is False
 
     stored_user = await db_session.get(User, 1)
     assert stored_user is not None
