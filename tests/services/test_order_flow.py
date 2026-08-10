@@ -73,6 +73,49 @@ async def test_create_order_for_user_passes_global_manager_to_notification(
 
 
 @pytest.mark.asyncio
+async def test_create_order_persists_server_quote_and_display_snapshot(
+    db_session: AsyncSession,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    city = City(name="Tbilisi", country=Country.GEORGIA)
+    manager = User(telegram_id=700011, username="manager-ge", role=int(UserRole.MANAGER))
+    customer = User(telegram_id=700012, username="customer-ge")
+    rate = Rate(
+        currency="RUBGEL",
+        price=0.03,
+        margin=3.0,
+        country=Country.GEORGIA,
+        display_reversed=True,
+    )
+    db_session.add_all([city, manager, customer, rate])
+    await db_session.flush()
+    customer.city_id = city.id
+    await db_session.commit()
+    monkeypatch.setattr(order_flow, "notify_order_created", AsyncMock())
+
+    created = await order_flow.create_order_for_user(
+        db_session,
+        customer,
+        MiniappOrderCreate(
+            country=Country.GEORGIA,
+            cityId=city.id,
+            currencySell="RUB",
+            amountSell=30000,
+            currencyBuy="GEL",
+            amountBuy=999999,
+            rate=99,
+            methodGet="cash",
+        ),
+    )
+
+    assert created.rate == pytest.approx(0.0291)
+    assert created.amountBuy == pytest.approx(873)
+    assert created.displayRate == pytest.approx(34.3642611684)
+    assert created.displayCurrencySell == "GEL"
+    assert created.displayCurrencyBuy == "RUB"
+
+
+@pytest.mark.asyncio
 @pytest.mark.parametrize(
     ("initial_access", "user_delivery", "expected_access"),
     [

@@ -66,8 +66,20 @@ async def seed_admin_exchange_data(db_session: AsyncSession) -> tuple[Admin, Use
             city,
             manager,
             customer,
-            Rate(currency="RUBTHB", price=0.41, margin=3.0, country=Country.THAILAND),
-            Rate(currency="RUBGEL", price=0.03, margin=3.0, country=Country.GEORGIA),
+            Rate(
+                currency="RUBTHB",
+                price=0.41,
+                margin=3.0,
+                country=Country.THAILAND,
+                display_reversed=True,
+            ),
+            Rate(
+                currency="RUBGEL",
+                price=0.03,
+                margin=3.0,
+                country=Country.GEORGIA,
+                display_reversed=True,
+            ),
             Rate(currency="USDTTHB", price=36.2, margin=3.0, country=Country.THAILAND),
         ]
     )
@@ -112,6 +124,30 @@ async def test_admin_rates_include_base_and_final_values(
     rub_gel = rows_by_currency["RUBGEL"]
     assert rub_gel["country"] == "georgia"
     assert rub_gel["countryRuName"] == "Грузия"
+
+
+@pytest.mark.asyncio
+async def test_admin_can_toggle_reversed_rate_display(
+    api_client: tuple[AsyncClient, AsyncSession],
+) -> None:
+    client, db_session = api_client
+    admin, _ = await seed_admin_exchange_data(db_session)
+    token = create_access_token({"sub": str(admin.id), "type": "admin"})
+    rate = await db_session.scalar(select(Rate).where(Rate.currency == "USDTTHB"))
+    assert rate is not None
+
+    response = await client.patch(
+        f"/api/admin/rates/{rate.id}",
+        headers={"Authorization": f"Bearer {token}"},
+        json={"displayReversed": True},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["isReversed"] is True
+    assert response.json()["displayCurrencySell"] == "THB"
+    assert response.json()["displayCurrencyBuy"] == "USDT"
+    await db_session.refresh(rate)
+    assert rate.display_reversed is True
 
 
 @pytest.mark.asyncio
@@ -163,6 +199,7 @@ async def test_admin_summary_returns_featured_rates(
                 margin=3.0,
                 country=None,
                 is_internal=True,
+                display_reversed=True,
             ),
             Order(
                 UserId=customer.id,
@@ -253,6 +290,7 @@ async def test_internal_rates_are_visible_only_in_admin_list(
         margin=3.0,
         country=None,
         is_internal=True,
+        display_reversed=True,
     )
     db_session.add_all([internal, inverse])
     await db_session.commit()
@@ -298,6 +336,12 @@ async def test_internal_rates_are_visible_only_in_admin_list(
         "RUBGEL",
         "USDTTHB",
     }
+    public_rows = {row["currency"]: row for row in public_response.json()}
+    rub_thb_public = public_rows["RUBTHB"]
+    assert rub_thb_public["price"] == pytest.approx(2.51)
+    assert rub_thb_public["priceDisplay"] == "2.51"
+    assert rub_thb_public["displayCurrencySell"] == "THB"
+    assert rub_thb_public["displayCurrencyBuy"] == "RUB"
     assert {row["currency"] for row in miniapp_response.json()["items"]} == {
         "RUBTHB",
         "RUBGEL",
@@ -429,7 +473,7 @@ async def test_admin_cannot_assign_internal_country_to_external_entities(
 
 
 @pytest.mark.asyncio
-async def test_orders_api_accepts_preliminary_rate_and_amount_buy_fields(
+async def test_orders_api_recalculates_preliminary_values_and_returns_display_snapshot(
     api_client: tuple[AsyncClient, AsyncSession],
 ) -> None:
     client, db_session = api_client
@@ -453,5 +497,7 @@ async def test_orders_api_accepts_preliminary_rate_and_amount_buy_fields(
 
     assert response.status_code == 201
     payload = response.json()
-    assert payload["amountBuy"] == 999999
-    assert payload["rate"] == 99
+    assert payload["amountBuy"] == pytest.approx(11931)
+    assert payload["rate"] == pytest.approx(0.3977)
+    assert payload["rateDisplay"] == "2.51"
+    assert payload["rateText"] == "1 THB = 2.51 RUB"

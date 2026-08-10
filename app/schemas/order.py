@@ -45,6 +45,8 @@ class OrderOut(BaseModel):
     currencyBuy: str
     amountBuy: float | None
     rate: float | None
+    rateDisplay: str | None
+    rateText: str | None
     status: int
     contactTelegram: str | None
     methodGet: str
@@ -70,6 +72,9 @@ class PaginatedOrdersResponse(BaseModel):
 def build_order_out(order) -> OrderOut:
     from app.schemas.city import build_city_out
     from app.schemas.user import build_user_out
+    from app.services.order_rate import build_order_rate_presentation
+
+    rate_presentation = build_order_rate_presentation(order)
 
     return OrderOut(
         id=order.id,
@@ -82,6 +87,8 @@ def build_order_out(order) -> OrderOut:
         currencyBuy=order.currencyBuy,
         amountBuy=order.amountBuy,
         rate=order.rate,
+        rateDisplay=rate_presentation.value_display if rate_presentation else None,
+        rateText=rate_presentation.text if rate_presentation else None,
         status=order.status,
         contactTelegram=order.contactTelegram,
         methodGet=order.methodGet,

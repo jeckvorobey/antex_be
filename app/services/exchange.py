@@ -51,7 +51,6 @@ DEFAULT_METHODS_BY_BUY_CURRENCY = {
 SUPPORTED_CURRENCIES = ("USDT", "RUB", "THB", "GEL", "VND")
 CANONICAL_SELL_CURRENCIES = frozenset({"RUB", "USDT"})
 CANONICAL_BUY_CURRENCIES = frozenset({"THB", "GEL", "VND"})
-REVERSED_DISPLAY_PAIRS = frozenset({"RUBTHB", "RUBGEL", "RUBUSDT"})
 
 
 def round_rate_value(rate: float) -> float:
@@ -84,8 +83,14 @@ def get_client_rate(rate: Rate) -> float:
     return round_rate_value(apply_margin_to_rate(rate.price, rate.margin))
 
 
-def should_reverse_display_pair(currency: str) -> bool:
-    return currency.upper() in REVERSED_DISPLAY_PAIRS
+def get_calculation_rate(rate: Rate) -> float:
+    """Возвращает точный прямой курс без округления для денежных расчётов."""
+    return apply_margin_to_rate(rate.price, rate.margin)
+
+
+def should_reverse_display_pair(rate: Rate) -> bool:
+    """Возвращает сохранённую для пары ориентацию пользовательского показа."""
+    return bool(rate.display_reversed)
 
 
 def get_display_pair(rate: Rate) -> tuple[str, str]:
@@ -93,24 +98,34 @@ def get_display_pair(rate: Rate) -> tuple[str, str]:
     if parsed is None:
         raise ExchangeService.unsupported_pair_error()
     sell, buy = parsed
-    if should_reverse_display_pair(rate.currency):
+    if should_reverse_display_pair(rate):
         return buy, sell
     return sell, buy
 
 
 def get_display_base_rate(rate: Rate) -> float:
-    if should_reverse_display_pair(rate.currency) and rate.price:
+    if should_reverse_display_pair(rate) and rate.price:
         return 1 / rate.price
     return rate.price
 
 
 def get_display_final_rate(rate: Rate) -> float:
-    if should_reverse_display_pair(rate.currency):
+    if should_reverse_display_pair(rate):
         direct_client_rate = apply_margin_to_rate(rate.price, rate.margin)
         if direct_client_rate <= 0:
             return 0.0
         return round_rate_value(1 / direct_client_rate)
     return get_client_rate(rate)
+
+
+def get_exact_display_final_rate(rate: Rate) -> float:
+    """Возвращает неокруглённое значение только для снимка представления."""
+    calculation_rate = get_calculation_rate(rate)
+    if calculation_rate <= 0:
+        return 0.0
+    if should_reverse_display_pair(rate):
+        return 1 / calculation_rate
+    return calculation_rate
 
 
 def get_admin_base_rate(rate: Rate) -> float:
@@ -143,6 +158,9 @@ class ExchangeQuote:
     amount_sell: int
     amount_buy: float
     rate: float
+    display_rate: float
+    display_currency_sell: str
+    display_currency_buy: str
     rate_display: str
     rate_text: str
     updated_at: datetime
@@ -195,7 +213,7 @@ class ExchangeService:
             sell, buy = parsed
             if not self.is_canonical_pair(sell, buy):
                 continue
-            quote_rate = get_client_rate(rate)
+            quote_rate = get_calculation_rate(rate)
             display_rate = get_display_final_rate(rate)
             display_sell, display_buy = get_display_pair(rate)
             amount_sell = 5000 if sell == "RUB" else 100
@@ -278,7 +296,9 @@ class ExchangeService:
         if rate_model is None:
             raise self.unsupported_pair_error()
 
-        rate = get_client_rate(rate_model)
+        rate = get_calculation_rate(rate_model)
+        display_rate = get_exact_display_final_rate(rate_model)
+        display_sell, display_buy = get_display_pair(rate_model)
         amount_buy = round(payload.amount_sell * rate, RATE_PRECISION)
         return ExchangeQuote(
             currency_sell=sell,
@@ -286,8 +306,11 @@ class ExchangeService:
             amount_sell=payload.amount_sell,
             amount_buy=amount_buy,
             rate=rate,
-            rate_display=format_rate_value(rate),
-            rate_text=f"1 {sell} = {format_rate_value(rate)} {buy}",
+            display_rate=display_rate,
+            display_currency_sell=display_sell,
+            display_currency_buy=display_buy,
+            rate_display=format_rate_value(display_rate),
+            rate_text=f"1 {display_sell} = {format_rate_value(display_rate)} {display_buy}",
             updated_at=rate_model.updatedAt,
             available_methods=self.get_methods_for_currency(buy),
         )

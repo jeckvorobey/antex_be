@@ -520,6 +520,7 @@ async def test_choose_exchange_currency_falls_back_to_direct_pair_rate_for_rever
             price=0.035,
             margin=0.0,
             country=Country.THAILAND,
+            display_reversed=True,
             updatedAt=datetime(2026, 6, 9, 12, 0, tzinfo=UTC),
         )
     ]
@@ -542,9 +543,9 @@ async def test_choose_exchange_currency_falls_back_to_direct_pair_rate_for_rever
 
     assert state.state == exchange_handler.ExchangeState.entering_amount.state
     text = str(callback.message.edits[0]["text"])
-    assert "1 RUB" in text
+    assert "1 THB" in text
     assert "THB" in text
-    assert "1 THB = 28.50 RUB" not in text
+    assert "1 RUB = 0.04 THB" not in text
     assert callback.answers[-1] == {"text": None, "show_alert": False}
 
 
@@ -569,6 +570,7 @@ async def test_choose_exchange_currency_falls_back_to_direct_pair_rate_for_georg
             price=0.0325,
             margin=0.0,
             country=Country.GEORGIA,
+            display_reversed=True,
             updatedAt=datetime(2026, 6, 9, 12, 0, tzinfo=UTC),
         )
     ]
@@ -591,9 +593,9 @@ async def test_choose_exchange_currency_falls_back_to_direct_pair_rate_for_georg
 
     assert state.state == exchange_handler.ExchangeState.entering_amount.state
     text = str(callback.message.edits[0]["text"])
-    assert "1 RUB" in text
+    assert "1 GEL" in text
     assert "GEL" in text
-    assert "1 GEL = 31.00 RUB" not in text
+    assert "1 RUB = 0.03 GEL" not in text
     assert callback.answers[-1] == {"text": None, "show_alert": False}
 
 

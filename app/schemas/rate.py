@@ -14,9 +14,9 @@ from app.services.exchange import (
     format_rate_value,
     get_admin_base_rate,
     get_admin_final_rate,
-    get_client_rate,
     get_direct_base_rate,
     get_direct_final_rate,
+    get_display_final_rate,
     get_display_pair,
     should_reverse_display_pair,
 )
@@ -30,6 +30,8 @@ class RateOut(BaseModel):
     countryRuName: str
     price: float
     priceDisplay: str
+    displayCurrencySell: str
+    displayCurrencyBuy: str
     createdAt: datetime
     updatedAt: datetime
 
@@ -55,12 +57,13 @@ class AdminRateOut(RateOut):
 
 
 class RateCreate(BaseModel):
-    model_config = {"extra": "forbid"}
+    model_config = {"extra": "forbid", "populate_by_name": True}
 
     currency: str = Field(min_length=3, max_length=20)
     country: Country
     price: float
     margin: float = Field(default=3.0, ge=0.0, le=100.0)
+    display_reversed: bool = Field(default=False, alias="displayReversed")
 
     @field_validator("currency")
     @classmethod
@@ -80,12 +83,13 @@ class RateCreate(BaseModel):
 
 
 class RateUpdate(BaseModel):
-    model_config = {"extra": "forbid"}
+    model_config = {"extra": "forbid", "populate_by_name": True}
 
     currency: str | None = Field(default=None, min_length=3, max_length=20)
     country: Country | None = None
     price: float | None = None
     margin: float | None = Field(default=None, ge=0.0, le=100.0)
+    display_reversed: bool | None = Field(default=None, alias="displayReversed")
 
     @field_validator("currency")
     @classmethod
@@ -107,7 +111,8 @@ class RateUpdate(BaseModel):
 
 
 def build_rate_out(rate) -> RateOut:
-    client_price = get_client_rate(rate)
+    client_price = get_display_final_rate(rate)
+    display_sell, display_buy = get_display_pair(rate)
     return RateOut(
         id=rate.id,
         currency=rate.currency,
@@ -115,6 +120,8 @@ def build_rate_out(rate) -> RateOut:
         countryRuName=rate.country.ru_name,
         price=client_price,
         priceDisplay=format_rate_value(client_price),
+        displayCurrencySell=display_sell,
+        displayCurrencyBuy=display_buy,
         createdAt=rate.createdAt,
         updatedAt=rate.updatedAt,
     )
@@ -139,7 +146,7 @@ def build_admin_rate_out(rate) -> AdminRateOut:
         finalRate=final_price,
         finalRateDisplay=format_admin_rate_value(rate, final_price),
         margin=rate.margin,
-        isReversed=should_reverse_display_pair(rate.currency),
+        isReversed=should_reverse_display_pair(rate),
         displayCurrencySell=display_sell,
         displayCurrencyBuy=display_buy,
         directBaseRate=direct_base_price,
