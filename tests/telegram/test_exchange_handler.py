@@ -1093,6 +1093,16 @@ async def test_confirm_exchange_does_not_repeat_created_order_when_message_id_co
         id=99,
         publicNumber="202607270001",
         status=int(OrderStatus.CREATED),
+        amountSell=15000,
+        currencySell="RUB",
+        amountBuy=436.5,
+        currencyBuy="GEL",
+        rate=0.0291,
+        displayRate=34.36,
+        displayCurrencySell="GEL",
+        displayCurrencyBuy="RUB",
+        methodGet="qrcode",
+        country=Country.GEORGIA,
         manager_availability=SimpleNamespace(status="working"),
     )
     callback = _FakeCallback(
@@ -1150,6 +1160,7 @@ async def test_confirm_exchange_does_not_repeat_created_order_when_message_id_co
     assert notification_user.id == user.id
     assert notification_user.telegram_id == user.telegram_id
     assert notification_user.username == user.username
+    assert OrderMessageView.from_order(notification_order).rate_text == "1 GEL = 34.36 RUB"
 
 
 async def test_confirm_exchange_notifies_manager_when_initial_customer_card_fails(
