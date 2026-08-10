@@ -1309,11 +1309,14 @@ async def test_menu_orders_renders_compact_order_history(monkeypatch) -> None:
         id=11,
         publicNumber="2026060011",
         status=int(OrderStatus.CREATED),
-        amountSell=1400,
-        currencySell="USDT",
-        amountBuy=35738752.0,
-        currencyBuy="VND",
-        rate=25527.68,
+        amountSell=15000,
+        currencySell="RUB",
+        amountBuy=436.5,
+        currencyBuy="GEL",
+        rate=0.0291,
+        displayRate=34.36,
+        displayCurrencySell="GEL",
+        displayCurrencyBuy="RUB",
         methodGet="cash",
         createdAt=datetime(2026, 6, 13, 0, 45, tzinfo=UTC),
         updatedAt=None,
@@ -1353,8 +1356,9 @@ async def test_menu_orders_renders_compact_order_history(monkeypatch) -> None:
     text = str(callback.message.edits[0]["text"])
     assert "Ваши заявки:" in text
     assert "#2026060011: Новая" in text
-    assert "1,400 ₮ USDT → 35,738,752.0 🇻🇳 VND" in text
-    assert "Курс: 25527.68" in text
+    assert "15,000 🇷🇺 RUB → 436.5 🇬🇪 GEL" in text
+    assert "Курс: 1 GEL = 34.36 RUB" in text
+    assert "Курс: 0.0291" not in text
     assert "Способ получения: Доставка наличных" in text
     assert "13.06.2026 00:45 UTC" in text
     assert callback.answers[-1] == {"text": None, "show_alert": False}

@@ -66,6 +66,29 @@ async def test_upsert_many_keeps_internal_metadata_and_margin(db_session) -> Non
     assert updated[0].is_internal is True
 
 
+async def test_upsert_many_seeds_legacy_display_orientation_for_missing_rates(
+    db_session,
+) -> None:
+    repo = RateRepository(db_session)
+
+    created = await repo.upsert_many(
+        {
+            "RUBTHB": (0.41, Country.THAILAND, False),
+            "RUBGEL": (0.03, Country.GEORGIA, False),
+            "RUBUSDT": (0.011, None, True),
+            "USDTTHB": (36.2, Country.THAILAND, False),
+        }
+    )
+
+    orientation = {rate.currency: rate.display_reversed for rate in created}
+    assert orientation == {
+        "RUBTHB": True,
+        "RUBGEL": True,
+        "RUBUSDT": True,
+        "USDTTHB": False,
+    }
+
+
 async def test_visible_queries_exclude_internal_rates(db_session) -> None:
     """Внешняя выборка и поиск по id не раскрывают внутренние строки."""
     repo = RateRepository(db_session)

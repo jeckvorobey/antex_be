@@ -32,6 +32,7 @@ from app.services.exchange import (
 from app.services.manager_working_hours import ManagerWorkingHoursService
 from app.services.notifications import notify_order_created
 from app.services.order_flow import create_order_for_user, get_min_amount
+from app.services.order_rate import build_order_rate_presentation
 from app.telegram import messages
 from app.telegram.i18n import get_user_translator
 from app.telegram.keyboards import (
@@ -494,7 +495,7 @@ async def _show_orders(actor, *, edit: bool, page: int = 1) -> None:
                 currency_sell=order.currencySell,
                 amount_buy=order.amountBuy,
                 currency_buy=order.currencyBuy,
-                rate=getattr(order, "rate", None),
+                rate=_get_order_history_rate(order),
                 method=getattr(order, "methodGet", None),
                 created_at=getattr(order, "createdAt", None),
                 updated_at=getattr(order, "updatedAt", None),
@@ -515,6 +516,14 @@ async def _show_orders(actor, *, edit: bool, page: int = 1) -> None:
         await _safe_edit_text(actor.message, text, reply_markup=reply_markup)
     else:
         await actor.answer(text, reply_markup=reply_markup)
+
+
+def _get_order_history_rate(order) -> str | float | None:
+    """Показывает сохранённый снимок курса, сохраняя fallback для legacy-заявок."""
+    presentation = build_order_rate_presentation(order)
+    if presentation is not None:
+        return presentation.text
+    return getattr(order, "rate", None)
 
 
 async def _show_enter_amount_step(

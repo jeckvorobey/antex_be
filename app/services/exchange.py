@@ -297,6 +297,8 @@ class ExchangeService:
             raise self.unsupported_pair_error()
 
         rate = get_calculation_rate(rate_model)
+        if rate <= 0:
+            raise self.rate_unavailable_error()
         display_rate = get_exact_display_final_rate(rate_model)
         display_sell, display_buy = get_display_pair(rate_model)
         amount_buy = round(payload.amount_sell * rate, RATE_PRECISION)

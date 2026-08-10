@@ -245,3 +245,15 @@ class TestExchangeService:
                 [],
                 ExchangeQuoteInput(currency_sell="RUB", currency_buy="THB", amount_sell=1000),
             )
+
+    def test_quote_rejects_non_positive_effective_rate(self) -> None:
+        service = ExchangeService()
+        rates = [_make_rate("RUBTHB", 0.4, 100.0, country=Country.THAILAND)]
+
+        with pytest.raises(AntExError, match="Rate is unavailable") as error:
+            service.build_quote(
+                rates,
+                ExchangeQuoteInput(currency_sell="RUB", currency_buy="THB", amount_sell=1000),
+            )
+
+        assert error.value.status_code == 503
