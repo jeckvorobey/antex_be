@@ -664,6 +664,32 @@ def test_build_manager_status_text_uses_shared_middle_format_for_completed() -> 
     assert "Пользователь: <b>@sergeywebdev</b>" in text
 
 
+def test_completed_user_status_fallback_uses_saved_rate_presentation() -> None:
+    order = SimpleNamespace(
+        publicNumber="2026050027",
+        amountSell=15000,
+        currencySell="RUB",
+        amountBuy=436.5,
+        currencyBuy="GEL",
+        methodGet="cash",
+        rate=0.0291,
+        displayRate=34.36,
+        displayCurrencySell="GEL",
+        displayCurrencyBuy="RUB",
+        status=3,
+        city=SimpleNamespace(name="Батуми"),
+        country=SimpleNamespace(value="georgia"),
+    )
+
+    text = order_notifications._build_user_status_text(
+        order,
+        translate=get_translator("ru"),
+    )
+
+    assert "📈 Курс: 1 GEL = 34.36 RUB" in text
+    assert "📈 Курс: 0.0291" not in text
+
+
 @pytest.mark.asyncio
 async def test_notify_order_status_changed_adds_summary_for_completed_order(
     monkeypatch: pytest.MonkeyPatch,

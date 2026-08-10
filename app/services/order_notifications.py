@@ -670,10 +670,11 @@ def _build_user_status_text(order, *, translate) -> str:
     if factory is not None:
         return factory(order.publicNumber, translator=translate)
     if order.status == 3:
+        view = OrderMessageView.from_order(order)
         city_name = _format_city_name(order)
         summary = messages.exchange_summary_middle(
             country=_format_country_name(getattr(order, "country", None)),
-            rate=_format_rate(getattr(order, "rate", None)),
+            rate=view.rate_text or _format_rate(view.rate),
             amount=getattr(order, "amountSell", 0) or 0,
             from_currency=getattr(order, "currencySell", "—"),
             result=getattr(order, "amountBuy", 0) or 0,

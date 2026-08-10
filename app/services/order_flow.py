@@ -18,7 +18,12 @@ from app.repositories.rate import RateRepository
 from app.repositories.user import UserRepository
 from app.schemas.miniapp import MiniappOrderCreate
 from app.services.aex import AexService
-from app.services.exchange import CANONICAL_BUY_CURRENCIES, ExchangeService, get_client_rate
+from app.services.exchange import (
+    CANONICAL_BUY_CURRENCIES,
+    ExchangeQuoteInput,
+    ExchangeService,
+    get_client_rate,
+)
 from app.services.manager_working_hours import ManagerWorkingHoursService
 from app.services.notifications import notify_order_created
 from app.services.order_notifications import (
@@ -81,8 +86,31 @@ async def create_order_for_user(
     currency_sell = _normalize_token_currency(payload.currency_sell)
     currency_buy = payload.currency_buy.upper()
     server_quote = await _get_internal_aex_quote(db, payload)
-    amount_buy = server_quote[0] if server_quote else payload.amount_buy
-    rate = server_quote[1] if server_quote else payload.rate
+    if server_quote is not None:
+        amount_buy, rate = server_quote
+        display_rate = rate
+        display_currency_sell = currency_sell
+        display_currency_buy = currency_buy
+    elif not _is_aex_withdrawal(payload):
+        quote = await ExchangeService().get_quote(
+            db,
+            ExchangeQuoteInput(
+                currency_sell=currency_sell,
+                currency_buy=currency_buy,
+                amount_sell=payload.amount_sell,
+            ),
+        )
+        amount_buy = quote.amount_buy
+        rate = quote.rate
+        display_rate = quote.display_rate
+        display_currency_sell = quote.display_currency_sell
+        display_currency_buy = quote.display_currency_buy
+    else:
+        amount_buy = payload.amount_buy
+        rate = payload.rate
+        display_rate = rate
+        display_currency_sell = currency_sell
+        display_currency_buy = currency_buy
     _validate_quote_country(payload.country, currency_buy)
     await _validate_aex_withdrawal_balance(db, user.id, payload)
 
@@ -105,6 +133,9 @@ async def create_order_for_user(
             currencyBuy=currency_buy,
             amountBuy=amount_buy,
             rate=rate,
+            displayRate=display_rate,
+            displayCurrencySell=display_currency_sell,
+            displayCurrencyBuy=display_currency_buy,
             status=int(OrderStatus.CREATED),
             contactTelegram=user.username or None,
             methodGet=payload.method_get,
@@ -136,7 +167,7 @@ async def create_order_for_user(
         await db.rollback()
         raise
     hydrated = await order_repo.get_one(order.id)
-    # Снимок не сохраняется в БД: он нужен ровно для текущего response и уведомления.
+    # Доступность менеджера вычисляется только для текущего response и уведомления.
     if hydrated is not None:
         hydrated.manager_availability = ManagerWorkingHoursService().get_availability(
             await ConfigRepository(db).get_or_create()

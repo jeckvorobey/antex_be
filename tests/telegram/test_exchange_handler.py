@@ -520,6 +520,7 @@ async def test_choose_exchange_currency_falls_back_to_direct_pair_rate_for_rever
             price=0.035,
             margin=0.0,
             country=Country.THAILAND,
+            display_reversed=True,
             updatedAt=datetime(2026, 6, 9, 12, 0, tzinfo=UTC),
         )
     ]
@@ -542,9 +543,9 @@ async def test_choose_exchange_currency_falls_back_to_direct_pair_rate_for_rever
 
     assert state.state == exchange_handler.ExchangeState.entering_amount.state
     text = str(callback.message.edits[0]["text"])
-    assert "1 RUB" in text
+    assert "1 THB" in text
     assert "THB" in text
-    assert "1 THB = 28.50 RUB" not in text
+    assert "1 RUB = 0.04 THB" not in text
     assert callback.answers[-1] == {"text": None, "show_alert": False}
 
 
@@ -569,6 +570,7 @@ async def test_choose_exchange_currency_falls_back_to_direct_pair_rate_for_georg
             price=0.0325,
             margin=0.0,
             country=Country.GEORGIA,
+            display_reversed=True,
             updatedAt=datetime(2026, 6, 9, 12, 0, tzinfo=UTC),
         )
     ]
@@ -591,9 +593,9 @@ async def test_choose_exchange_currency_falls_back_to_direct_pair_rate_for_georg
 
     assert state.state == exchange_handler.ExchangeState.entering_amount.state
     text = str(callback.message.edits[0]["text"])
-    assert "1 RUB" in text
+    assert "1 GEL" in text
     assert "GEL" in text
-    assert "1 GEL = 31.00 RUB" not in text
+    assert "1 RUB = 0.03 GEL" not in text
     assert callback.answers[-1] == {"text": None, "show_alert": False}
 
 
@@ -1091,6 +1093,16 @@ async def test_confirm_exchange_does_not_repeat_created_order_when_message_id_co
         id=99,
         publicNumber="202607270001",
         status=int(OrderStatus.CREATED),
+        amountSell=15000,
+        currencySell="RUB",
+        amountBuy=436.5,
+        currencyBuy="GEL",
+        rate=0.0291,
+        displayRate=34.36,
+        displayCurrencySell="GEL",
+        displayCurrencyBuy="RUB",
+        methodGet="qrcode",
+        country=Country.GEORGIA,
         manager_availability=SimpleNamespace(status="working"),
     )
     callback = _FakeCallback(
@@ -1148,6 +1160,7 @@ async def test_confirm_exchange_does_not_repeat_created_order_when_message_id_co
     assert notification_user.id == user.id
     assert notification_user.telegram_id == user.telegram_id
     assert notification_user.username == user.username
+    assert OrderMessageView.from_order(notification_order).rate_text == "1 GEL = 34.36 RUB"
 
 
 async def test_confirm_exchange_notifies_manager_when_initial_customer_card_fails(
@@ -1307,11 +1320,14 @@ async def test_menu_orders_renders_compact_order_history(monkeypatch) -> None:
         id=11,
         publicNumber="2026060011",
         status=int(OrderStatus.CREATED),
-        amountSell=1400,
-        currencySell="USDT",
-        amountBuy=35738752.0,
-        currencyBuy="VND",
-        rate=25527.68,
+        amountSell=15000,
+        currencySell="RUB",
+        amountBuy=436.5,
+        currencyBuy="GEL",
+        rate=0.0291,
+        displayRate=34.36,
+        displayCurrencySell="GEL",
+        displayCurrencyBuy="RUB",
         methodGet="cash",
         createdAt=datetime(2026, 6, 13, 0, 45, tzinfo=UTC),
         updatedAt=None,
@@ -1351,8 +1367,9 @@ async def test_menu_orders_renders_compact_order_history(monkeypatch) -> None:
     text = str(callback.message.edits[0]["text"])
     assert "Ваши заявки:" in text
     assert "#2026060011: Новая" in text
-    assert "1,400 ₮ USDT → 35,738,752.0 🇻🇳 VND" in text
-    assert "Курс: 25527.68" in text
+    assert "15,000 🇷🇺 RUB → 436.5 🇬🇪 GEL" in text
+    assert "Курс: 1 GEL = 34.36 RUB" in text
+    assert "Курс: 0.0291" not in text
     assert "Способ получения: Доставка наличных" in text
     assert "13.06.2026 00:45 UTC" in text
     assert callback.answers[-1] == {"text": None, "show_alert": False}

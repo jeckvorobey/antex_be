@@ -10,6 +10,8 @@ from app.enums.country import Country
 from app.models.rate import Rate
 from app.repositories.base import BaseRepository
 
+DEFAULT_REVERSED_DISPLAY_CURRENCIES = frozenset({"RUBTHB", "RUBGEL", "RUBUSDT"})
+
 
 class RateRepository(BaseRepository[Rate]):
     """Управляет хранением и безопасными выборками валютных курсов."""
@@ -152,6 +154,9 @@ class RateRepository(BaseRepository[Rate]):
                     "price": price,
                     "country": country,
                     "is_internal": is_internal,
+                    "display_reversed": (
+                        normalized_currency in DEFAULT_REVERSED_DISPLAY_CURRENCIES
+                    ),
                 }
                 if margin is not None:
                     payload["margin"] = margin
