@@ -9,6 +9,7 @@ from pydantic import BaseModel, Field, field_validator
 
 from app.enums.country import Country
 from app.services.exchange import (
+    ExchangeService,
     format_admin_rate_value,
     format_direct_admin_rate_value,
     format_rate_value,
@@ -21,6 +22,15 @@ from app.services.exchange import (
     should_reverse_display_pair,
 )
 from app.services.rate_fetcher import INTERNAL_RATE_CURRENCIES
+
+
+def _validate_external_rate_currency(value: str) -> str:
+    normalized = value.upper()
+    if normalized in INTERNAL_RATE_CURRENCIES:
+        raise ValueError("Internal rate currency is reserved")
+    if ExchangeService().parse_pair(normalized) is None:
+        raise ValueError("Unsupported rate currency pair")
+    return normalized
 
 
 class RateOut(BaseModel):
@@ -69,10 +79,7 @@ class RateCreate(BaseModel):
     @classmethod
     def reject_internal_currency(cls, value: str) -> str:
         """Запрещает создание системных внутренних пар через admin API."""
-        normalized = value.upper()
-        if normalized in INTERNAL_RATE_CURRENCIES:
-            raise ValueError("Internal rate currency is reserved")
-        return normalized
+        return _validate_external_rate_currency(value)
 
     @field_validator("country")
     @classmethod
@@ -97,10 +104,7 @@ class RateUpdate(BaseModel):
         """Запрещает переименование внешнего курса во внутреннюю пару."""
         if value is None:
             return None
-        normalized = value.upper()
-        if normalized in INTERNAL_RATE_CURRENCIES:
-            raise ValueError("Internal rate currency is reserved")
-        return normalized
+        return _validate_external_rate_currency(value)
 
     @field_validator("country")
     @classmethod

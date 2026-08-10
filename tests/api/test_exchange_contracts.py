@@ -408,6 +408,30 @@ async def test_admin_cannot_create_reserved_internal_rate(
 
 
 @pytest.mark.asyncio
+async def test_admin_cannot_create_unsupported_rate_pair(
+    api_client: tuple[AsyncClient, AsyncSession],
+) -> None:
+    client, db_session = api_client
+    admin, _ = await seed_admin_exchange_data(db_session)
+    token = create_access_token({"sub": str(admin.id), "type": "admin"})
+
+    response = await client.post(
+        "/api/admin/rates",
+        headers={"Authorization": f"Bearer {token}"},
+        json={
+            "currency": "EURTHB",
+            "country": "thailand",
+            "price": 38.0,
+            "margin": 3.0,
+        },
+    )
+
+    assert response.status_code == 422
+    stored = await db_session.scalar(select(Rate).where(Rate.currency == "EURTHB"))
+    assert stored is None
+
+
+@pytest.mark.asyncio
 @pytest.mark.parametrize("reserved_currency", ["USDTRUB", "rubusdt"])
 async def test_admin_cannot_rename_visible_rate_to_reserved_internal_rate(
     api_client: tuple[AsyncClient, AsyncSession],
