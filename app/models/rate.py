@@ -32,3 +32,9 @@ class Rate(Base, TimestampMixin):
         server_default=false(),
         nullable=False,
     )
+    display_reversed: Mapped[bool] = mapped_column(
+        Boolean,
+        default=False,
+        server_default=false(),
+        nullable=False,
+    )

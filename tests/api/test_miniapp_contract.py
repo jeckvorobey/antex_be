@@ -76,8 +76,20 @@ async def seed_exchange_data(db_session: AsyncSession) -> tuple[City, User, User
             city,
             manager,
             customer,
-            Rate(currency="RUBTHB", price=0.41, margin=3.0, country=Country.THAILAND),
-            Rate(currency="RUBGEL", price=0.03, margin=3.0, country=Country.GEORGIA),
+            Rate(
+                currency="RUBTHB",
+                price=0.41,
+                margin=3.0,
+                country=Country.THAILAND,
+                display_reversed=True,
+            ),
+            Rate(
+                currency="RUBGEL",
+                price=0.03,
+                margin=3.0,
+                country=Country.GEORGIA,
+                display_reversed=True,
+            ),
             Rate(currency="RUBVND", price=280.0, margin=3.0, country=Country.VIETNAM),
             Rate(currency="USDTTHB", price=36.2, margin=3.0, country=Country.THAILAND),
             Rate(currency="USDTGEL", price=2.7, margin=3.0, country=Country.GEORGIA),
@@ -151,7 +163,7 @@ async def test_miniapp_home_and_exchange_are_backend_driven(
     assert home["rates"]["featured"][0]["fromCurrency"] == "RUB"
     assert home["rates"]["featured"][0]["toCurrency"] == "THB"
     assert home["rates"]["featured"][0]["rate"] == pytest.approx(2.51)
-    assert home["rates"]["featured"][0]["calculationRate"] == pytest.approx(0.4)
+    assert home["rates"]["featured"][0]["calculationRate"] == pytest.approx(0.3977)
     assert home["rates"]["featured"][0]["rateDisplay"] == "2.51"
     assert home["rates"]["featured"][0]["amountSellExample"] == 5000
     expected_methods = ["qrcode", "cash", "bank_account", "pay_services"]
@@ -171,15 +183,15 @@ async def test_miniapp_home_and_exchange_are_backend_driven(
         "toCurrency": "THB",
         "amountSell": 5000,
     }
-    assert exchange["quote"]["rate"] == 0.4
-    assert exchange["quote"]["rateDisplay"] == "0.40"
-    assert exchange["quote"]["rateText"] == "1 RUB = 0.40 THB"
-    assert exchange["quote"]["amountBuy"] == pytest.approx(5000 * 0.4)
+    assert exchange["quote"]["rate"] == pytest.approx(0.3977)
+    assert exchange["quote"]["rateDisplay"] == "2.51"
+    assert exchange["quote"]["rateText"] == "1 THB = 2.51 RUB"
+    assert exchange["quote"]["amountBuy"] == pytest.approx(1988.5)
     assert exchange["pairs"][0]["id"] == "rub-thb"
     assert exchange["pairs"][0]["fromCurrency"] == "RUB"
     assert exchange["pairs"][0]["toCurrency"] == "THB"
     assert exchange["pairs"][0]["rate"] == pytest.approx(2.51)
-    assert exchange["pairs"][0]["calculationRate"] == pytest.approx(0.4)
+    assert exchange["pairs"][0]["calculationRate"] == pytest.approx(0.3977)
     assert exchange["pairs"][0]["rateDisplay"] == "2.51"
     assert exchange["pairs"][0]["rateText"] == "1 THB = 2.51 RUB"
     assert exchange["aexPayoutOptions"] == [
@@ -1143,10 +1155,10 @@ async def test_miniapp_quote_rejects_reverse_pairs_outside_preliminary_contract(
     )
 
     assert direct_response.status_code == 200
-    assert direct_response.json()["rate"] == 0.4
-    assert direct_response.json()["rateDisplay"] == "0.40"
-    assert direct_response.json()["rateText"] == "1 RUB = 0.40 THB"
-    assert direct_response.json()["amountBuy"] == pytest.approx(10000 * 0.4)
+    assert direct_response.json()["rate"] == pytest.approx(0.3977)
+    assert direct_response.json()["rateDisplay"] == "2.51"
+    assert direct_response.json()["rateText"] == "1 THB = 2.51 RUB"
+    assert direct_response.json()["amountBuy"] == pytest.approx(3977)
 
     assert reverse_response.status_code == 422
     assert reverse_response.json()["code"] == "UNSUPPORTED_PAIR"
@@ -1177,10 +1189,10 @@ async def test_miniapp_quote_supports_gel_and_vnd_pairs(
     )
 
     assert rub_gel_response.status_code == 200
-    assert rub_gel_response.json()["rate"] == 0.03
-    assert rub_gel_response.json()["rateDisplay"] == "0.03"
-    assert rub_gel_response.json()["rateText"] == "1 RUB = 0.03 GEL"
-    assert rub_gel_response.json()["amountBuy"] == pytest.approx(10000 * 0.03)
+    assert rub_gel_response.json()["rate"] == pytest.approx(0.0291)
+    assert rub_gel_response.json()["rateDisplay"] == "34.36"
+    assert rub_gel_response.json()["rateText"] == "1 GEL = 34.36 RUB"
+    assert rub_gel_response.json()["amountBuy"] == pytest.approx(291)
     expected_methods = ["qrcode", "cash", "bank_account", "pay_services"]
     assert rub_gel_response.json()["availableMethods"] == expected_methods
 
@@ -1214,7 +1226,7 @@ async def test_miniapp_quote_rejects_pairs_outside_canonical_contract(
 
 
 @pytest.mark.asyncio
-async def test_miniapp_order_is_created_with_preliminary_client_quote(
+async def test_miniapp_order_is_created_with_server_quote_and_display_snapshot(
     api_client: tuple[AsyncClient, AsyncSession],
 ) -> None:
     client, db_session = api_client
@@ -1243,8 +1255,10 @@ async def test_miniapp_order_is_created_with_preliminary_client_quote(
     assert order["country"] == "thailand"
     assert order["currencySell"] == "RUB"
     assert order["currencyBuy"] == "THB"
-    assert order["rate"] == 9.99
-    assert order["amountBuy"] == pytest.approx(123.45)
+    assert order["rate"] == pytest.approx(0.3977)
+    assert order["amountBuy"] == pytest.approx(7954)
+    assert order["rateDisplay"] == "2.51"
+    assert order["rateText"] == "1 THB = 2.51 RUB"
     assert order["contactTelegram"] == "customer"
     assert order["city"] is None
     assert order["publicNumber"] == f"{datetime.now(UTC):%Y%m}0001"

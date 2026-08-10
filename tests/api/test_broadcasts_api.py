@@ -60,7 +60,7 @@ async def api_client(
     from app.core.config import settings
     from app.main import app
 
-    settings.jwt_secret = "test-secret-for-broadcasts-api"
+    settings.jwt_secret = "test-secret-for-broadcasts-api-at-least-32-bytes"
     schedule_mock = AsyncMock()
     monkeypatch.setattr(broadcasts, "schedule_broadcast", schedule_mock)
 

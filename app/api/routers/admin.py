@@ -660,10 +660,10 @@ async def update_rate(rate_id: int, body: RateUpdate, db: DbDep, _: AdminUser) -
     if not rate:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Rate not found")
     update_data = body.model_dump(exclude_unset=True, exclude_none=True)
-    if rate.is_internal and (set(update_data) != {"margin"}):
+    if rate.is_internal and not set(update_data).issubset({"margin", "display_reversed"}):
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail="Only margin can be changed for an internal rate",
+            detail="Only margin and display orientation can be changed for an internal rate",
         )
     updated = await repo.update(rate, **update_data)
     await db.commit()

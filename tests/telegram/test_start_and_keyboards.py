@@ -66,14 +66,31 @@ class _FakeState:
 class _FakeMessage:
     def __init__(self, user: TgUser) -> None:
         self.from_user = user
+        self.chat = SimpleNamespace(id=user.id)
         self.answers: list[dict[str, object]] = []
         self.edits: list[dict[str, object]] = []
+        self.bot = _FakeBot(self)
 
     async def answer(self, text: str, reply_markup=None) -> None:
         self.answers.append({"text": text, "reply_markup": reply_markup})
 
     async def edit_text(self, text: str, reply_markup=None) -> None:
         self.edits.append({"text": text, "reply_markup": reply_markup})
+
+
+class _FakeBot:
+    def __init__(self, message: _FakeMessage) -> None:
+        self.message = message
+
+    async def __call__(self, method):
+        """Имитирует callable Bot API и сохраняет Rich-ответ сообщения."""
+        self.message.answers.append(
+            {
+                "text": method.rich_message["html"],
+                "reply_markup": method.reply_markup,
+            }
+        )
+        return self.message
 
 
 class _FakeCallback:
@@ -210,7 +227,7 @@ async def test_start_shows_country_selection_for_customer(monkeypatch) -> None:
     assert len(message.answers) == 1
     reply_markup = message.answers[0]["reply_markup"]
     assert reply_markup is not None
-    assert "выберите страну в списке ниже" in str(message.answers[0]["text"])
+    assert "выберите страну ниже" in str(message.answers[0]["text"])
     assert [button.callback_data for button in reply_markup.inline_keyboard[0]] == [
         "exchange:country:thailand",
         "exchange:country:vietnam",
@@ -285,7 +302,7 @@ async def test_start_shows_offline_notice_only_for_offline_schedule(monkeypatch)
 
         @staticmethod
         def format_business_hours(*args, **kwargs) -> str:
-            return "Пн–Пт с 10:00 до 22:00 МСК"
+            return "Пн–Пт с 10:00 до 22:00 МСК"  # noqa: RUF001
 
     async def _fake_get_db():
         return fake_db

@@ -32,6 +32,7 @@ from app.services.exchange import (
 from app.services.manager_working_hours import ManagerWorkingHoursService
 from app.services.notifications import notify_order_created
 from app.services.order_flow import create_order_for_user, get_min_amount
+from app.services.order_rate import build_order_rate_presentation
 from app.telegram import messages
 from app.telegram.i18n import get_user_translator
 from app.telegram.keyboards import (
@@ -136,6 +137,9 @@ def _detached_order_snapshot(order):
         amountBuy=view.amount_buy,
         currencyBuy=view.currency_buy,
         rate=view.rate,
+        displayRate=getattr(order, "displayRate", None),
+        displayCurrencySell=getattr(order, "displayCurrencySell", None),
+        displayCurrencyBuy=getattr(order, "displayCurrencyBuy", None),
         methodGet=view.method,
         country=view.country,
         city=SimpleNamespace(name=view.city) if view.city is not None else None,
@@ -437,9 +441,9 @@ async def _show_currency_step(actor, state: FSMContext, *, edit: bool) -> None:
         pair for currency in canonical_order for pair in snapshots if pair.currency_sell == currency
     ]
     available_sell_currencies = [
-        currency for currency in canonical_order if any(
-            pair.currency_sell == currency for pair in visible_pairs
-        )
+        currency
+        for currency in canonical_order
+        if any(pair.currency_sell == currency for pair in visible_pairs)
     ]
     if not visible_pairs:
         await _show_country_fallback(
@@ -494,7 +498,7 @@ async def _show_orders(actor, *, edit: bool, page: int = 1) -> None:
                 currency_sell=order.currencySell,
                 amount_buy=order.amountBuy,
                 currency_buy=order.currencyBuy,
-                rate=getattr(order, "rate", None),
+                rate=_get_order_history_rate(order),
                 method=getattr(order, "methodGet", None),
                 created_at=getattr(order, "createdAt", None),
                 updated_at=getattr(order, "updatedAt", None),
@@ -515,6 +519,14 @@ async def _show_orders(actor, *, edit: bool, page: int = 1) -> None:
         await _safe_edit_text(actor.message, text, reply_markup=reply_markup)
     else:
         await actor.answer(text, reply_markup=reply_markup)
+
+
+def _get_order_history_rate(order) -> str | float | None:
+    """Показывает сохранённый снимок курса, сохраняя fallback для legacy-заявок."""
+    presentation = build_order_rate_presentation(order)
+    if presentation is not None:
+        return presentation.text
+    return getattr(order, "rate", None)
 
 
 async def _show_enter_amount_step(

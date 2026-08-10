@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING
 from app.services.order_notifications import notify_order_created as notify_order_created_message
 
 if TYPE_CHECKING:
-    from app.services.order_notifications import DeliveryOutcome
+    from app.services.order_notifications import OrderCreatedDelivery
 
 
 async def notify_order_created(
@@ -16,5 +16,5 @@ async def notify_order_created(
     manager,
     *,
     notify_user: bool = True,
-) -> DeliveryOutcome:
+) -> OrderCreatedDelivery:
     return await notify_order_created_message(order, user, manager, notify_user=notify_user)

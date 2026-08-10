@@ -48,6 +48,17 @@ class Order(Base, TimestampMixin):
     currencyBuy: Mapped[str] = mapped_column("currencyBuy", String(20), nullable=False)
     amountBuy: Mapped[float | None] = mapped_column("amountBuy", Float, nullable=True)
     rate: Mapped[float | None] = mapped_column(Float, nullable=True)
+    displayRate: Mapped[float | None] = mapped_column("displayRate", Float, nullable=True)
+    displayCurrencySell: Mapped[str | None] = mapped_column(
+        "displayCurrencySell",
+        String(20),
+        nullable=True,
+    )
+    displayCurrencyBuy: Mapped[str | None] = mapped_column(
+        "displayCurrencyBuy",
+        String(20),
+        nullable=True,
+    )
     status: Mapped[int] = mapped_column(Integer, default=int(OrderStatus.CREATED), nullable=False)
     contactTelegram: Mapped[str | None] = mapped_column(
         "contactTelegram",

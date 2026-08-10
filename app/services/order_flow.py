@@ -18,10 +18,19 @@ from app.repositories.rate import RateRepository
 from app.repositories.user import UserRepository
 from app.schemas.miniapp import MiniappOrderCreate
 from app.services.aex import AexService
-from app.services.exchange import CANONICAL_BUY_CURRENCIES, ExchangeService, get_client_rate
+from app.services.exchange import (
+    CANONICAL_BUY_CURRENCIES,
+    ExchangeQuoteInput,
+    ExchangeService,
+    get_client_rate,
+)
 from app.services.manager_working_hours import ManagerWorkingHoursService
 from app.services.notifications import notify_order_created
-from app.services.order_notifications import DeliveryOutcome
+from app.services.order_notifications import (
+    DeliveryOutcome,
+    is_delivery_success,
+    reconcile_telegram_write_access,
+)
 from app.services.order_numbers import OrderNumberService
 
 logger = logging.getLogger(__name__)
@@ -77,8 +86,31 @@ async def create_order_for_user(
     currency_sell = _normalize_token_currency(payload.currency_sell)
     currency_buy = payload.currency_buy.upper()
     server_quote = await _get_internal_aex_quote(db, payload)
-    amount_buy = server_quote[0] if server_quote else payload.amount_buy
-    rate = server_quote[1] if server_quote else payload.rate
+    if server_quote is not None:
+        amount_buy, rate = server_quote
+        display_rate = rate
+        display_currency_sell = currency_sell
+        display_currency_buy = currency_buy
+    elif not _is_aex_withdrawal(payload):
+        quote = await ExchangeService().get_quote(
+            db,
+            ExchangeQuoteInput(
+                currency_sell=currency_sell,
+                currency_buy=currency_buy,
+                amount_sell=payload.amount_sell,
+            ),
+        )
+        amount_buy = quote.amount_buy
+        rate = quote.rate
+        display_rate = quote.display_rate
+        display_currency_sell = quote.display_currency_sell
+        display_currency_buy = quote.display_currency_buy
+    else:
+        amount_buy = payload.amount_buy
+        rate = payload.rate
+        display_rate = rate
+        display_currency_sell = currency_sell
+        display_currency_buy = currency_buy
     _validate_quote_country(payload.country, currency_buy)
     await _validate_aex_withdrawal_balance(db, user.id, payload)
 
@@ -101,6 +133,9 @@ async def create_order_for_user(
             currencyBuy=currency_buy,
             amountBuy=amount_buy,
             rate=rate,
+            displayRate=display_rate,
+            displayCurrencySell=display_currency_sell,
+            displayCurrencyBuy=display_currency_buy,
             status=int(OrderStatus.CREATED),
             contactTelegram=user.username or None,
             methodGet=payload.method_get,
@@ -132,7 +167,7 @@ async def create_order_for_user(
         await db.rollback()
         raise
     hydrated = await order_repo.get_one(order.id)
-    # Снимок не сохраняется в БД: он нужен ровно для текущего response и уведомления.
+    # Доступность менеджера вычисляется только для текущего response и уведомления.
     if hydrated is not None:
         hydrated.manager_availability = ManagerWorkingHoursService().get_availability(
             await ConfigRepository(db).get_or_create()
@@ -152,6 +187,7 @@ async def create_order_for_user(
         return hydrated
 
     notification_message_id_before = getattr(hydrated, "userNotificationMessageId", None)
+    write_access_before = bool(getattr(user, "telegram_write_access", False))
     try:
         logger.info(
             "Order notification attempt: order_id=%s public_number=%s manager_user_id=%s "
@@ -162,12 +198,16 @@ async def create_order_for_user(
             getattr(manager, "telegram_id", None),
         )
         delivery = await notify_order_created(hydrated, user, manager, notify_user=notify_user)
-        if delivery == DeliveryOutcome.FAILED:
+        user_delivery = getattr(delivery, "user", DeliveryOutcome.SKIPPED)
+        manager_delivery = getattr(delivery, "manager", delivery)
+        reconcile_telegram_write_access(user, user_delivery, operation="order_created")
+        if not is_delivery_success(manager_delivery):
             logger.warning(
                 "Order notification completed with manager delivery failure: "
-                "order_id=%s public_number=%s",
+                "order_id=%s public_number=%s outcome=%s",
                 order.id,
                 getattr(order, "publicNumber", None),
+                manager_delivery,
             )
         else:
             logger.info(
@@ -186,7 +226,10 @@ async def create_order_for_user(
         )
     finally:
         notification_message_id = getattr(hydrated, "userNotificationMessageId", None)
-        if notification_message_id != notification_message_id_before:
+        write_access_changed = (
+            bool(getattr(user, "telegram_write_access", False)) != write_access_before
+        )
+        if notification_message_id != notification_message_id_before or write_access_changed:
             try:
                 await db.commit()
             except Exception:

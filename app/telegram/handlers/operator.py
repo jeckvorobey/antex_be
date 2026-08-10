@@ -7,6 +7,7 @@ import logging
 
 from aiogram import F, Router
 from aiogram.types import CallbackQuery
+from sqlalchemy.exc import SQLAlchemyError
 
 from app.core.database import create_db_session
 from app.enums.order import OrderStatus
@@ -14,9 +15,10 @@ from app.enums.user import has_operator_access
 from app.repositories.order import OrderRepository
 from app.repositories.user import UserRepository
 from app.services.order_notifications import (
-    DeliveryOutcome,
     build_chat_url_for_user,
     edit_manager_order_card,
+    is_delivery_success,
+    reconcile_telegram_write_access,
     send_customer_reminder,
 )
 from app.services.order_status import take_order_in_work, update_order_status
@@ -94,12 +96,12 @@ async def operator_take(callback: CallbackQuery) -> None:
             chat_url=chat_url,
             message_text=_manager_chat_draft_text(order),
         ),
-        customer_notified=result.delivery != DeliveryOutcome.FAILED,
+        customer_notified=is_delivery_success(result.delivery),
     )
-    if card_delivery == DeliveryOutcome.FAILED:
+    if not is_delivery_success(card_delivery):
         await callback.answer("Не удалось обновить карточку заявки", show_alert=True)
         return
-    if result.delivery == DeliveryOutcome.FAILED:
+    if not is_delivery_success(result.delivery):
         await callback.answer(
             "Заявка принята, но клиенту не удалось отправить инструкцию. "
             "Проверьте username менеджера и повторите напоминание.",
@@ -131,8 +133,22 @@ async def operator_remind(callback: CallbackQuery) -> None:
             return
         manager = await UserRepository(db).get_manager()
         delivery = await send_customer_reminder(order, manager)
+        if reconcile_telegram_write_access(
+            getattr(order, "user", None),
+            delivery,
+            operation="customer_reminder",
+        ):
+            try:
+                await db.commit()
+            except SQLAlchemyError:
+                await db.rollback()
+                logger.exception(
+                    "Failed to persist reminder write access outcome: order_id=%s outcome=%s",
+                    order_id,
+                    delivery,
+                )
 
-    if delivery == DeliveryOutcome.FAILED:
+    if not is_delivery_success(delivery):
         await callback.answer(
             "Не удалось отправить напоминание. Попробуйте ещё раз.",
             show_alert=True,
@@ -179,7 +195,7 @@ async def operator_cancel_confirm(callback: CallbackQuery) -> None:
         order=order,
         reply_markup=reply_markup,
     )
-    if card_delivery == DeliveryOutcome.FAILED:
+    if not is_delivery_success(card_delivery):
         await callback.answer("Не удалось обновить карточку заявки", show_alert=True)
         return
     await callback.answer("Заявка отменена", show_alert=True)
@@ -233,7 +249,7 @@ async def operator_close(callback: CallbackQuery) -> None:
         order=order,
         reply_markup=reply_markup,
     )
-    if card_delivery == DeliveryOutcome.FAILED:
+    if not is_delivery_success(card_delivery):
         await callback.answer("Не удалось обновить карточку заявки", show_alert=True)
         return
     await callback.answer()

@@ -265,6 +265,56 @@ async def test_operator_remind_reports_actual_delivery(
     assert callback.answers[-1] == {"text": answer, "show_alert": show_alert, "url": None}
 
 
+async def test_operator_remind_reconciles_inaccessible_customer_chat(monkeypatch) -> None:
+    """Фиксирует revoke после постоянной ошибки reminder-доставки."""
+    callback = _FakeCallback("op:remind:5")
+    customer = SimpleNamespace(id=8, telegram_id=700002, telegram_write_access=True)
+    order = SimpleNamespace(id=5, status=int(OrderStatus.PROCESSING), user=customer)
+    commit = AsyncMock()
+
+    class _ReminderDb(_FakeDbSession):
+        async def commit(self):
+            await commit()
+
+        async def rollback(self):
+            return None
+
+    class _FakeOrderRepository:
+        def __init__(self, session) -> None:
+            self.session = session
+
+        async def get_one(self, order_id: int):
+            return order
+
+    class _FakeUserRepository:
+        def __init__(self, session) -> None:
+            self.session = session
+
+        async def get_manager(self):
+            return SimpleNamespace(id=7, username="manager")
+
+    async def _fake_get_db():
+        return _ReminderDb()
+
+    async def _fake_check_user(db, tg_user):
+        return SimpleNamespace(role=2), False
+
+    monkeypatch.setattr(operator_handler, "_get_db", _fake_get_db)
+    monkeypatch.setattr(operator_handler, "check_user", _fake_check_user)
+    monkeypatch.setattr(operator_handler, "OrderRepository", _FakeOrderRepository)
+    monkeypatch.setattr(operator_handler, "UserRepository", _FakeUserRepository)
+    monkeypatch.setattr(
+        operator_handler,
+        "send_customer_reminder",
+        AsyncMock(return_value=DeliveryOutcome.INACCESSIBLE),
+    )
+
+    await operator_handler.operator_remind(callback)
+
+    assert customer.telegram_write_access is False
+    commit.assert_awaited_once()
+
+
 @pytest.mark.parametrize(
     ("order", "answer"),
     [

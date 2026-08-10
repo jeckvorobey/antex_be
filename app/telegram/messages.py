@@ -75,8 +75,7 @@ def _format_currency_rate_icon(currency: str) -> str:
     """Возвращает Premium-иконку USDT с корректным emoji fallback для Telegram."""
     if currency.upper() == "USDT":
         return (
-            f'<tg-emoji emoji-id="{_USDT_CUSTOM_EMOJI_ID}">'
-            f"{_USDT_CUSTOM_EMOJI_FALLBACK}</tg-emoji>"
+            f'<tg-emoji emoji-id="{_USDT_CUSTOM_EMOJI_ID}">{_USDT_CUSTOM_EMOJI_FALLBACK}</tg-emoji>'
         )
     return _format_currency_emoji(currency)
 
@@ -116,9 +115,7 @@ def exchange_start_welcome(
 ) -> str:
     """Собирает локализованное HTML-приветствие с режимом работы менеджеров."""
     translate = cast(Any, _resolve_translator(translator, locale))
-    greeting = _strip_fluent_isolates(
-        translate("exchange-start-greeting", name=escape(first_name))
-    )
+    greeting = _strip_fluent_isolates(translate("exchange-start-greeting", name=escape(first_name)))
     working_hours_block = ""
     if business_hours_text is not None:
         working_hours_block = WORKING_HOURS_BLOCK_TEMPLATE.format(
@@ -173,16 +170,34 @@ def choose_service_prompt(
     return EXCHANGE_SERVICE_TEMPLATE.format(
         category=escape(_strip_fluent_isolates(translate("exchange-choose-service-category"))),
         title=escape(_strip_fluent_isolates(translate("exchange-choose-service-title"))),
-        description=escape(_strip_fluent_isolates(translate("exchange-choose-service-description"))),
-        options_title=escape(_strip_fluent_isolates(translate("exchange-choose-service-options-title"))),
-        cash_delivery_title=escape(_strip_fluent_isolates(translate("exchange-service-cash-delivery-title"))),
-        cash_delivery_description=escape(_strip_fluent_isolates(translate("exchange-service-cash-delivery-description"))),
+        description=escape(
+            _strip_fluent_isolates(translate("exchange-choose-service-description"))
+        ),
+        options_title=escape(
+            _strip_fluent_isolates(translate("exchange-choose-service-options-title"))
+        ),
+        cash_delivery_title=escape(
+            _strip_fluent_isolates(translate("exchange-service-cash-delivery-title"))
+        ),
+        cash_delivery_description=escape(
+            _strip_fluent_isolates(translate("exchange-service-cash-delivery-description"))
+        ),
         cash_atm_title=escape(_strip_fluent_isolates(translate("exchange-service-cash-atm-title"))),
-        cash_atm_description=escape(_strip_fluent_isolates(translate("exchange-service-cash-atm-description"))),
-        bank_account_title=escape(_strip_fluent_isolates(translate("exchange-service-bank-account-title"))),
-        bank_account_description=escape(_strip_fluent_isolates(translate("exchange-service-bank-account-description"))),
-        pay_services_title=escape(_strip_fluent_isolates(translate("exchange-service-pay-services-title"))),
-        pay_services_description=escape(_strip_fluent_isolates(translate("exchange-service-pay-services-description"))),
+        cash_atm_description=escape(
+            _strip_fluent_isolates(translate("exchange-service-cash-atm-description"))
+        ),
+        bank_account_title=escape(
+            _strip_fluent_isolates(translate("exchange-service-bank-account-title"))
+        ),
+        bank_account_description=escape(
+            _strip_fluent_isolates(translate("exchange-service-bank-account-description"))
+        ),
+        pay_services_title=escape(
+            _strip_fluent_isolates(translate("exchange-service-pay-services-title"))
+        ),
+        pay_services_description=escape(
+            _strip_fluent_isolates(translate("exchange-service-pay-services-description"))
+        ),
     )
 
 
@@ -199,7 +214,9 @@ def choose_city_prompt(
         category=escape(_strip_fluent_isolates(translate("exchange-choose-city-category"))),
         title=escape(_strip_fluent_isolates(translate("exchange-choose-city-title"))),
         description=escape(_strip_fluent_isolates(translate("exchange-choose-city-description"))),
-        options_title=escape(_strip_fluent_isolates(translate("exchange-choose-city-options-title"))),
+        options_title=escape(
+            _strip_fluent_isolates(translate("exchange-choose-city-options-title"))
+        ),
         options_hint=escape(_strip_fluent_isolates(translate("exchange-choose-city-options-hint"))),
     )
 
@@ -297,9 +314,7 @@ def enter_amount_rich(
     translate = cast(Any, _resolve_translator(translator, locale))
     safe_currency = escape(currency.upper())
     rate_block = (
-        f"\n<p>{_format_currency_rate_icon(currency)} {escape(rate_text)}</p>"
-        if rate_text
-        else ""
+        f"\n<p>{_format_currency_rate_icon(currency)} {escape(rate_text)}</p>" if rate_text else ""
     )
     minimum_block = ""
     if min_amount is not None:
@@ -798,9 +813,7 @@ def order_completed_rich(
             )
         ),
         order_summary=render_order_rich(view, locale=current_locale),
-        bottom=_strip_fluent_isolates(
-            translate("order-completed-bottom-rich")
-        ),
+        bottom=_strip_fluent_isolates(translate("order-completed-bottom-rich")),
     )
 
 

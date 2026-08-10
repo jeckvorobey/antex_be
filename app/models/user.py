@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import TYPE_CHECKING
 
-from sqlalchemy import BigInteger, Boolean, DateTime, ForeignKey, Integer, String, Text
+from sqlalchemy import BigInteger, Boolean, DateTime, ForeignKey, Integer, String, Text, false
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.enums.user import UserRole
@@ -32,6 +32,12 @@ class User(Base, TimestampMixin):
     session: Mapped[str | None] = mapped_column(Text, nullable=True)
     role: Mapped[int] = mapped_column(Integer, default=int(UserRole.USER), nullable=False)
     is_premium: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    telegram_write_access: Mapped[bool] = mapped_column(
+        Boolean,
+        default=False,
+        server_default=false(),
+        nullable=False,
+    )
     city_id: Mapped[int | None] = mapped_column(ForeignKey("Cities.id"), nullable=True)
     language_code_app: Mapped[str] = mapped_column(
         String(10),

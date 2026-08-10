@@ -80,7 +80,7 @@ class _FakeMessage:
         self.message_id = _FakeMessage._next_message_id
         _FakeMessage._next_message_id += 1
         self.chat = SimpleNamespace(id=555001)
-        self.bot = _FakeBot()
+        self.bot = _FakeBot(self)
 
     async def edit_text(self, text: str, reply_markup=None) -> None:
         self.edits.append({"text": text, "reply_markup": reply_markup})
@@ -103,8 +103,20 @@ class _FakeMessage:
 
 
 class _FakeBot:
-    def __init__(self) -> None:
+    def __init__(self, message: _FakeMessage | None = None) -> None:
+        self.message = message
         self.deleted: list[dict[str, object]] = []
+
+    async def __call__(self, method):
+        """Имитирует callable Bot API и сохраняет Rich-редактирование сообщения."""
+        if self.message is not None:
+            self.message.edits.append(
+                {
+                    "text": method.rich_message["html"],
+                    "reply_markup": method.reply_markup,
+                }
+            )
+        return self.message
 
     async def delete_message(self, *, chat_id: int, message_id: int) -> None:
         self.deleted.append({"chat_id": chat_id, "message_id": message_id})
@@ -508,6 +520,7 @@ async def test_choose_exchange_currency_falls_back_to_direct_pair_rate_for_rever
             price=0.035,
             margin=0.0,
             country=Country.THAILAND,
+            display_reversed=True,
             updatedAt=datetime(2026, 6, 9, 12, 0, tzinfo=UTC),
         )
     ]
@@ -530,9 +543,9 @@ async def test_choose_exchange_currency_falls_back_to_direct_pair_rate_for_rever
 
     assert state.state == exchange_handler.ExchangeState.entering_amount.state
     text = str(callback.message.edits[0]["text"])
-    assert "1 RUB" in text
+    assert "1 THB" in text
     assert "THB" in text
-    assert "1 THB = 28.50 RUB" not in text
+    assert "1 RUB = 0.04 THB" not in text
     assert callback.answers[-1] == {"text": None, "show_alert": False}
 
 
@@ -557,6 +570,7 @@ async def test_choose_exchange_currency_falls_back_to_direct_pair_rate_for_georg
             price=0.0325,
             margin=0.0,
             country=Country.GEORGIA,
+            display_reversed=True,
             updatedAt=datetime(2026, 6, 9, 12, 0, tzinfo=UTC),
         )
     ]
@@ -579,9 +593,9 @@ async def test_choose_exchange_currency_falls_back_to_direct_pair_rate_for_georg
 
     assert state.state == exchange_handler.ExchangeState.entering_amount.state
     text = str(callback.message.edits[0]["text"])
-    assert "1 RUB" in text
+    assert "1 GEL" in text
     assert "GEL" in text
-    assert "1 GEL = 31.00 RUB" not in text
+    assert "1 RUB = 0.03 GEL" not in text
     assert callback.answers[-1] == {"text": None, "show_alert": False}
 
 
@@ -601,7 +615,7 @@ async def test_fsm_back_from_currency_returns_to_service_step() -> None:
     await exchange_handler.fsm_back(callback, state)
 
     assert state.state == exchange_handler.ExchangeState.choosing_service.state
-    assert "<b>💠 Выберите подходящую услугу</b>" in str(callback.message.edits[0]["text"])
+    assert "Как вам удобнее получить деньги?" in str(callback.message.edits[0]["text"])
     assert callback.answers[-1] == {"text": None, "show_alert": False}
 
 
@@ -621,7 +635,7 @@ async def test_fsm_back_from_city_returns_to_service_step() -> None:
     await exchange_handler.fsm_back(callback, state)
 
     assert state.state == exchange_handler.ExchangeState.choosing_service.state
-    assert "<b>💠 Выберите подходящую услугу</b>" in str(callback.message.edits[0]["text"])
+    assert "Как вам удобнее получить деньги?" in str(callback.message.edits[0]["text"])
     assert callback.answers[-1] == {"text": None, "show_alert": False}
 
 
@@ -647,8 +661,8 @@ async def test_fsm_back_from_service_returns_to_country_step(monkeypatch) -> Non
     await exchange_handler.fsm_back(callback, state)
 
     assert state.state == exchange_handler.ExchangeState.choosing_country.state
-    assert "<b>AntEx</b>" in str(callback.message.edits[0]["text"])
-    assert "выберите страну в списке ниже" in str(callback.message.edits[0]["text"])
+    assert "<h2>💱 AntEx</h2>" in str(callback.message.edits[0]["text"])
+    assert "выберите страну ниже" in str(callback.message.edits[0]["text"])
     assert callback.answers[-1] == {"text": None, "show_alert": False}
 
 
@@ -688,7 +702,7 @@ async def test_fsm_back_from_amount_returns_to_sell_currency_step(monkeypatch) -
     await exchange_handler.fsm_back(callback, state)
 
     assert state.state == exchange_handler.ExchangeState.choosing_currency.state
-    assert "Выберите валюту, которую хотите обменять" in str(callback.message.edits[0]["text"])
+    assert "Какую валюту вы отдаёте?" in str(callback.message.edits[0]["text"])
     reply_markup = callback.message.edits[0]["reply_markup"]
     assert [button.callback_data for button in reply_markup.inline_keyboard[0]] == [
         "exchange:currency:USDT",
@@ -1079,6 +1093,16 @@ async def test_confirm_exchange_does_not_repeat_created_order_when_message_id_co
         id=99,
         publicNumber="202607270001",
         status=int(OrderStatus.CREATED),
+        amountSell=15000,
+        currencySell="RUB",
+        amountBuy=436.5,
+        currencyBuy="GEL",
+        rate=0.0291,
+        displayRate=34.36,
+        displayCurrencySell="GEL",
+        displayCurrencyBuy="RUB",
+        methodGet="qrcode",
+        country=Country.GEORGIA,
         manager_availability=SimpleNamespace(status="working"),
     )
     callback = _FakeCallback(
@@ -1136,6 +1160,7 @@ async def test_confirm_exchange_does_not_repeat_created_order_when_message_id_co
     assert notification_user.id == user.id
     assert notification_user.telegram_id == user.telegram_id
     assert notification_user.username == user.username
+    assert OrderMessageView.from_order(notification_order).rate_text == "1 GEL = 34.36 RUB"
 
 
 async def test_confirm_exchange_notifies_manager_when_initial_customer_card_fails(
@@ -1295,11 +1320,14 @@ async def test_menu_orders_renders_compact_order_history(monkeypatch) -> None:
         id=11,
         publicNumber="2026060011",
         status=int(OrderStatus.CREATED),
-        amountSell=1400,
-        currencySell="USDT",
-        amountBuy=35738752.0,
-        currencyBuy="VND",
-        rate=25527.68,
+        amountSell=15000,
+        currencySell="RUB",
+        amountBuy=436.5,
+        currencyBuy="GEL",
+        rate=0.0291,
+        displayRate=34.36,
+        displayCurrencySell="GEL",
+        displayCurrencyBuy="RUB",
         methodGet="cash",
         createdAt=datetime(2026, 6, 13, 0, 45, tzinfo=UTC),
         updatedAt=None,
@@ -1339,8 +1367,9 @@ async def test_menu_orders_renders_compact_order_history(monkeypatch) -> None:
     text = str(callback.message.edits[0]["text"])
     assert "Ваши заявки:" in text
     assert "#2026060011: Новая" in text
-    assert "1,400 ₮ USDT → 35,738,752.0 🇻🇳 VND" in text
-    assert "Курс: 25527.68" in text
+    assert "15,000 🇷🇺 RUB → 436.5 🇬🇪 GEL" in text
+    assert "Курс: 1 GEL = 34.36 RUB" in text
+    assert "Курс: 0.0291" not in text
     assert "Способ получения: Доставка наличных" in text
     assert "13.06.2026 00:45 UTC" in text
     assert callback.answers[-1] == {"text": None, "show_alert": False}
@@ -1422,8 +1451,8 @@ async def test_fsm_cancel_returns_to_country_step() -> None:
     assert state.state == exchange_handler.ExchangeState.choosing_country.state
     assert len(callback.message.edits) == 1
     text = str(callback.message.edits[0]["text"])
-    assert "<b>AntEx</b>" in text
-    assert "выберите страну в списке ниже" in text
+    assert "<h2>💱 AntEx</h2>" in text
+    assert "выберите страну ниже" in text
     reply_markup = callback.message.edits[0]["reply_markup"]
     assert [button.callback_data for button in reply_markup.inline_keyboard[0]] == [
         "exchange:country:thailand",
@@ -1444,9 +1473,7 @@ async def test_show_city_step_edits_as_rich_message_without_step_counter(monkeyp
             language_code="ru",
         )
     )
-    state = _FakeState(
-        {"country": Country.VIETNAM.value, "service_label": "cash_delivery"}
-    )
+    state = _FakeState({"country": Country.VIETNAM.value, "service_label": "cash_delivery"})
     city = SimpleNamespace(id=17, name="Дананг")
 
     class _Result:

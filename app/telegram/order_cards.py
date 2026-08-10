@@ -7,6 +7,7 @@ from decimal import Decimal
 from html import escape
 from typing import Any
 
+from app.services.order_rate import build_order_rate_presentation
 from app.telegram.i18n import get_translator, normalize_locale
 
 Number = Decimal | int | float
@@ -42,6 +43,7 @@ class OrderMessageView:
     amount_buy: Number | None = None
     currency_buy: str | None = None
     rate: Number | None = None
+    rate_text: str | None = None
     method: str | None = None
     country: str | None = None
     city: str | None = None
@@ -53,6 +55,11 @@ class OrderMessageView:
         country = getattr(order, "country", None)
         city = getattr(order, "city", None)
         user = getattr(order, "user", None)
+        rate_presentation = build_order_rate_presentation(order)
+        has_display_snapshot = all(
+            getattr(order, field, None) is not None
+            for field in ("displayRate", "displayCurrencySell", "displayCurrencyBuy")
+        )
         return cls(
             public_number=str(getattr(order, "publicNumber", "")),
             amount_sell=getattr(order, "amountSell", None),
@@ -60,6 +67,11 @@ class OrderMessageView:
             amount_buy=getattr(order, "amountBuy", None),
             currency_buy=getattr(order, "currencyBuy", None),
             rate=getattr(order, "rate", None),
+            rate_text=(
+                rate_presentation.text
+                if rate_presentation is not None and has_display_snapshot
+                else None
+            ),
             method=getattr(order, "methodGet", None),
             country=getattr(country, "value", country) if country is not None else None,
             city=getattr(city, "name", None),
@@ -125,7 +137,9 @@ def _order_rows(
                 f"{_currency_label(view.currency_buy)}",
             )
         )
-    if view.rate is not None:
+    if view.rate_text:
+        rows.append((translate("exchange-summary-rate"), view.rate_text))
+    elif view.rate is not None:
         rows.append(
             (translate("exchange-summary-rate"), format_order_number(view.rate, locale=locale))
         )

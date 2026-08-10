@@ -5,6 +5,7 @@ from __future__ import annotations
 
 from datetime import datetime
 from decimal import Decimal
+from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
@@ -47,6 +48,7 @@ class UserOut(BaseModel):
     role: int
     role_name: str
     is_premium: bool
+    telegram_write_access: bool
     city_id: int | None
     city: CityOut | None = None
     trusted_contact: str | None
@@ -75,6 +77,18 @@ class UserUpdate(BaseModel):
         if not is_assignable_user_role(value):
             raise ValueError("Only user and manager roles are allowed")
         return normalize_user_role(value)
+
+
+class TelegramWriteAccessRequest(BaseModel):
+    """Результат нативного запроса Telegram Mini App для текущего пользователя."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    status: Literal["allowed", "cancelled", "unsupported"]
+
+
+class TelegramWriteAccessResponse(BaseModel):
+    telegram_write_access: bool
 
 
 def _format_referral_rate(rate: Decimal) -> str:
@@ -124,6 +138,7 @@ def build_user_out(
         role=normalize_user_role(user.role),
         role_name=get_role_title(user.role),
         is_premium=user.is_premium,
+        telegram_write_access=user.telegram_write_access,
         city_id=user.city_id,
         city=build_city_out(user.city) if user.city else None,
         trusted_contact=trusted_contact.contact,

@@ -69,6 +69,29 @@ def test_order_summary_omits_missing_optional_values() -> None:
     assert "—" not in rich
 
 
+def test_order_summary_uses_saved_display_rate_snapshot() -> None:
+    order = SimpleNamespace(
+        publicNumber="2026080097",
+        amountSell=15000,
+        currencySell="RUB",
+        amountBuy=436.5,
+        currencyBuy="GEL",
+        rate=0.0291,
+        displayRate=34.3642611684,
+        displayCurrencySell="GEL",
+        displayCurrencyBuy="RUB",
+        methodGet="qrcode",
+        country=SimpleNamespace(value="georgia"),
+        city=None,
+        user=None,
+    )
+
+    rich = render_order_rich(OrderMessageView.from_order(order), locale="ru")
+
+    assert "Курс</td><td><b>1 GEL = 34.36 RUB</b>" in rich
+    assert "0.0291" not in rich
+
+
 def test_order_summary_escapes_persisted_telegram_values() -> None:
     view = OrderMessageView(
         public_number="2026080096",

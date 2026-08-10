@@ -144,6 +144,14 @@ class UserRepository(BaseRepository[User]):
             await self.session.refresh(user)
         return user
 
+    async def set_telegram_write_access(self, user_id: int, allowed: bool) -> User | None:
+        """Обновляет локальный признак разрешения для указанного пользователя."""
+        user = await self.session.get(User, user_id)
+        if user:
+            user.telegram_write_access = allowed
+            await self.session.flush()
+        return user
+
     async def get_manager_by_city(self, city_id: int) -> User | None:
         result = await self.session.execute(
             select(User).where(
