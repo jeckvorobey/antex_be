@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from urllib.parse import parse_qsl, urlencode, urlparse, urlunparse
+from urllib.parse import parse_qsl, quote, urlencode, urlparse, urlunparse
 
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup, WebAppInfo
 
@@ -26,13 +26,13 @@ def _chat_url_with_draft(chat_url: str, message_text: str | None = None) -> str:
         if path:
             query = dict(parse_qsl(parsed.query, keep_blank_values=True))
             query["text"] = message_text
-            return urlunparse(parsed._replace(query=urlencode(query)))
+            return urlunparse(parsed._replace(query=urlencode(query, quote_via=quote)))
 
     if parsed.scheme == "tg" and parsed.netloc == "resolve":
         query = dict(parse_qsl(parsed.query, keep_blank_values=True))
         if query.get("domain"):
             query["text"] = message_text
-            return urlunparse(parsed._replace(query=urlencode(query)))
+            return urlunparse(parsed._replace(query=urlencode(query, quote_via=quote)))
 
     return chat_url
 
