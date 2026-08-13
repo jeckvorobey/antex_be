@@ -13,6 +13,7 @@ from app.enums.country import Country
 from app.telegram.handlers import start as start_handler
 from app.telegram.i18n import get_translator
 from app.telegram.keyboards import (
+    _chat_url_with_draft,
     amount_controls,
     back_to_main_menu,
     choose_city,
@@ -30,6 +31,25 @@ from app.telegram.keyboards import (
     review_link,
     user_order_write_manager,
 )
+
+
+def test_chat_url_with_draft_percent_encodes_message_text() -> None:
+    """Черновик сохраняется после percent-encoding для обоих Telegram URL."""
+    message_text = "Привет мир 👋\n& ? +"
+
+    for chat_url in ("https://t.me/manager", "tg://resolve?domain=manager"):
+        generated_url = _chat_url_with_draft(chat_url, message_text)
+        query = urlparse(generated_url).query
+
+        assert "%20" in query
+        assert "+" not in query
+        assert "%D0%9F" in query
+        assert "%F0%9F%91%8B" in query
+        assert "%0A" in query
+        assert "%26" in query
+        assert "%3F" in query
+        assert "%2B" in query
+        assert parse_qs(query)["text"] == [message_text]
 
 
 class _FakeDbSession:
