@@ -28,12 +28,25 @@ from app.schemas.chat import (
 )
 from app.services.chat import ChatService
 from app.services.chat_realtime import SOCKET_TICKET_TTL_SECONDS, manager_realtime_hub
+from app.services.order_notifications import (
+    notify_order_status_changed,
+    reconcile_telegram_write_access,
+)
+from app.services.order_status import update_order_status
 
 router = APIRouter(prefix="/api/manager", tags=["manager"])
 
 
 def _not_found(detail: str) -> HTTPException:
     return HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=detail)
+
+
+def _manager_order_out(order) -> ManagerOrderSummary:
+    payload = ChatService.order_out(order)
+    customer = getattr(order, "user", None)
+    if customer is not None:
+        payload = payload.model_copy(update={"user": ChatService.user_out(customer)})
+    return payload
 
 
 @router.get("/chats", response_model=ChatListResponse)
@@ -107,7 +120,7 @@ async def send_chat_message(
         message, conversation, created = await service.send_manager_message(
             conversation_id=conversation_id,
             client_request_id=body.clientRequestId,
-            text=body.text.strip(),
+            text=body.text,
             reply_to_message_id=body.replyToMessageId,
         )
     except LookupError as exc:
@@ -167,7 +180,7 @@ async def list_manager_orders(db: DbDep, manager: ManagerUser) -> ManagerOrderLi
     created = await repo.list_by_status(OrderStatus.CREATED, limit=100)
     processing = await repo.list_by_status(OrderStatus.PROCESSING, limit=100)
     orders = sorted([*created, *processing], key=lambda item: item.createdAt, reverse=True)
-    return ManagerOrderListResponse(items=[ChatService.order_out(order) for order in orders])
+    return ManagerOrderListResponse(items=[_manager_order_out(order) for order in orders])
 
 
 @router.get("/orders/{order_id}", response_model=ManagerOrderSummary)
@@ -180,7 +193,25 @@ async def get_manager_order(
     order = await OrderRepository(db).get_one(order_id)
     if order is None:
         raise _not_found("Order not found")
-    return ChatService.order_out(order)
+    return _manager_order_out(order)
+
+
+@router.post("/orders/{order_id}/chat", response_model=ChatConversationOut)
+async def ensure_order_chat(
+    order_id: int,
+    db: DbDep,
+    manager: ManagerUser,
+) -> ChatConversationOut:
+    del manager
+    order = await OrderRepository(db).get_one(order_id)
+    if order is None:
+        raise _not_found("Order not found")
+    repo = ChatRepository(db)
+    conversation, created = await repo.get_or_create_conversation(order.UserId)
+    if created:
+        conversation.user = order.user
+    await db.commit()
+    return await ChatService(db).conversation_out(conversation)
 
 
 @router.patch("/orders/{order_id}/status", response_model=ManagerOrderSummary)
@@ -191,12 +222,21 @@ async def update_manager_order_status(
     manager: ManagerUser,
 ) -> ManagerOrderSummary:
     del manager
-    repo = OrderRepository(db)
-    order = await repo.update_status(order_id, body.status)
-    if order is None:
-        raise _not_found("Order not found")
-    await db.commit()
-    payload = ChatService.order_out(order)
+    order = await update_order_status(
+        db,
+        order_id=order_id,
+        status=body.status,
+        notify_user=False,
+    )
+    delivery = await notify_order_status_changed(order, manager_chat_url=None)
+    if reconcile_telegram_write_access(
+        getattr(order, "user", None),
+        delivery,
+        operation="manager_workspace_order_status",
+    ):
+        await db.commit()
+
+    payload = _manager_order_out(order)
     conversation = await ChatRepository(db).get_conversation_by_user(order.UserId)
     await manager_realtime_hub.publish(
         "chat.order.updated",

@@ -28,6 +28,7 @@ class ManagerOrderSummary(BaseModel):
     status: int
     methodGet: str
     createdAt: datetime
+    user: ManagerChatUser | None = None
 
 
 class ChatAttachmentOut(BaseModel):
