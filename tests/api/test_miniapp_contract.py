@@ -115,6 +115,15 @@ async def credit_aex_wallet(
     return wallet
 
 
+async def get_latest_order_for_user(db_session: AsyncSession, user_id: int) -> Order:
+    """Вернуть последнюю созданную заявку пользователя для проверки POST без response DTO."""
+    order = await db_session.scalar(
+        select(Order).where(Order.UserId == user_id).order_by(Order.id.desc())
+    )
+    assert order is not None
+    return order
+
+
 @pytest.mark.asyncio
 async def test_miniapp_home_and_exchange_are_backend_driven(
     api_client: tuple[AsyncClient, AsyncSession],
@@ -1255,6 +1264,34 @@ async def test_miniapp_quote_rejects_pairs_outside_canonical_contract(
 
 
 @pytest.mark.asyncio
+async def test_miniapp_cash_order_returns_empty_created_response(
+    api_client: tuple[AsyncClient, AsyncSession],
+) -> None:
+    """Создание cash-заявки подтверждается пустым 201 без ORM-сериализации города."""
+    client, db_session = api_client
+    city, _, customer = await seed_exchange_data(db_session)
+    token = create_access_token({"sub": str(customer.id), "role": customer.role})
+
+    response = await client.post(
+        "/api/miniapp/orders",
+        headers={"Authorization": f"Bearer {token}"},
+        json={
+            "country": "thailand",
+            "cityId": city.id,
+            "currencySell": "rub",
+            "amountSell": 25000,
+            "currencyBuy": "thb",
+            "amountBuy": 123.45,
+            "rate": 9.99,
+            "methodGet": "cash",
+        },
+    )
+
+    assert response.status_code == 201
+    assert response.content == b""
+
+
+@pytest.mark.asyncio
 async def test_miniapp_order_is_created_with_server_quote_and_display_snapshot(
     api_client: tuple[AsyncClient, AsyncSession],
 ) -> None:
@@ -1279,29 +1316,27 @@ async def test_miniapp_order_is_created_with_server_quote_and_display_snapshot(
     )
 
     assert response.status_code == 201
-    order = response.json()
-    assert order["cityId"] is None
-    assert order["country"] == "thailand"
-    assert order["currencySell"] == "RUB"
-    assert order["currencyBuy"] == "THB"
-    assert order["rate"] == pytest.approx(0.3977)
-    assert order["amountBuy"] == pytest.approx(7954)
-    assert order["rateDisplay"] == "2.51"
-    assert order["rateText"] == "1 THB = 2.51 RUB"
-    assert order["contactTelegram"] == "customer"
-    assert order["city"] is None
-    assert order["publicNumber"] == f"{datetime.now(UTC):%Y%m}0001"
-    assert order["managerAvailability"]["status"] in {"working", "offline", "unknown"}
-    if order["managerAvailability"]["status"] == "offline":
-        assert order["managerAvailability"]["nextStartAt"] is not None
+    assert response.content == b""
+    order = await get_latest_order_for_user(db_session, customer.id)
+    assert order.CityId is None
+    assert order.country is Country.THAILAND
+    assert order.currencySell == "RUB"
+    assert order.currencyBuy == "THB"
+    assert order.rate == pytest.approx(0.3977)
+    assert order.amountBuy == pytest.approx(7954)
+    assert order.displayRate == pytest.approx(1 / 0.3977)
+    assert order.displayCurrencySell == "THB"
+    assert order.displayCurrencyBuy == "RUB"
+    assert order.contactTelegram == "customer"
+    assert order.publicNumber == f"{datetime.now(UTC):%Y%m}0001"
     order_flow.notify_order_created.assert_awaited_once()
 
 
 @pytest.mark.asyncio
-async def test_miniapp_order_response_refreshes_expired_orm_fields(
+async def test_miniapp_order_creation_does_not_serialize_expired_orm_fields(
     api_client: tuple[AsyncClient, AsyncSession],
 ) -> None:
-    """Возвращает DTO заявки, когда уведомление истекло её ORM-поле."""
+    """Подтверждает создание без сериализации истекшего ORM-поля."""
     client, db_session = api_client
     from app.services import order_flow
 
@@ -1328,7 +1363,8 @@ async def test_miniapp_order_response_refreshes_expired_orm_fields(
     )
 
     assert response.status_code == 201
-    assert response.json()["updatedAt"] is not None
+    assert response.content == b""
+    assert (await get_latest_order_for_user(db_session, customer.id)).updatedAt is not None
 
 
 @pytest.mark.asyncio
@@ -1357,10 +1393,8 @@ async def test_miniapp_order_keeps_saved_order_when_manager_notification_fails(
     )
 
     assert response.status_code == 201
-    order = response.json()
-    stored_order = await db_session.get(Order, order["id"])
-    assert stored_order is not None
-    assert stored_order.publicNumber == order["publicNumber"]
+    stored_order = await get_latest_order_for_user(db_session, customer.id)
+    assert stored_order.publicNumber
     order_flow.notify_order_created.assert_awaited_once()
 
 
@@ -1388,9 +1422,9 @@ async def test_miniapp_order_accepts_atxg_withdrawal_via_usdt_based_pair(
     )
 
     assert response.status_code == 201
-    order = response.json()
-    assert order["currencySell"] == "ATXG"
-    assert order["currencyBuy"] == "THB"
+    order = await get_latest_order_for_user(db_session, customer.id)
+    assert order.currencySell == "ATXG"
+    assert order.currencyBuy == "THB"
 
     wallet = await db_session.scalar(select(AexWallet).where(AexWallet.user_id == customer.id))
     assert wallet is not None
@@ -1445,8 +1479,9 @@ async def test_miniapp_order_accepts_internal_atxg_payout(
     )
 
     assert response.status_code == 201
-    assert response.json()["country"] == "internal"
-    assert response.json()["methodGet"] == "bank_account"
+    order = await get_latest_order_for_user(db_session, customer.id)
+    assert order.country is Country.INTERNAL
+    assert order.methodGet == "bank_account"
     wallet = await db_session.scalar(select(AexWallet).where(AexWallet.user_id == customer.id))
     assert wallet is not None
     assert wallet.balance_available == 600
@@ -1479,8 +1514,9 @@ async def test_miniapp_internal_payout_recalculates_client_quote(
     )
 
     assert response.status_code == 201
-    assert response.json()["amountBuy"] == pytest.approx(400)
-    assert response.json()["rate"] == pytest.approx(1)
+    order = await get_latest_order_for_user(db_session, customer.id)
+    assert order.amountBuy == pytest.approx(400)
+    assert order.rate == pytest.approx(1)
 
 
 @pytest.mark.asyncio
@@ -1779,7 +1815,8 @@ async def test_completed_aex_order_debits_reserved_balance(
             "methodGet": "qrcode",
         },
     )
-    order_id = response.json()["id"]
+    assert response.status_code == 201
+    order_id = (await get_latest_order_for_user(db_session, customer.id)).id
 
     updated = await update_order_status(db_session, order_id=order_id, status=OrderStatus.COMPLETED)
 
@@ -1825,7 +1862,8 @@ async def test_cancelled_aex_order_releases_reserved_balance(
             "methodGet": "qrcode",
         },
     )
-    order_id = response.json()["id"]
+    assert response.status_code == 201
+    order_id = (await get_latest_order_for_user(db_session, customer.id)).id
 
     updated = await update_order_status(db_session, order_id=order_id, status=OrderStatus.CANCELLED)
 
@@ -1871,7 +1909,8 @@ async def test_aex_order_status_retry_does_not_mutate_balance_twice(
             "methodGet": "qrcode",
         },
     )
-    order_id = response.json()["id"]
+    assert response.status_code == 201
+    order_id = (await get_latest_order_for_user(db_session, customer.id)).id
 
     await update_order_status(db_session, order_id=order_id, status=OrderStatus.COMPLETED)
     await update_order_status(db_session, order_id=order_id, status=OrderStatus.COMPLETED)
@@ -1910,7 +1949,8 @@ async def test_completed_aex_order_rejects_later_cancellation_without_balance_mu
             "methodGet": "qrcode",
         },
     )
-    order_id = response.json()["id"]
+    assert response.status_code == 201
+    order_id = (await get_latest_order_for_user(db_session, customer.id)).id
     await update_order_status(db_session, order_id=order_id, status=OrderStatus.COMPLETED)
 
     with pytest.raises(AntExException) as exc_info:
@@ -1960,7 +2000,8 @@ async def test_completed_aex_order_does_not_credit_referral_bonus(
             "methodGet": "qrcode",
         },
     )
-    order_id = response.json()["id"]
+    assert response.status_code == 201
+    order_id = (await get_latest_order_for_user(db_session, customer.id)).id
 
     await update_order_status(db_session, order_id=order_id, status=OrderStatus.COMPLETED)
 
@@ -2025,9 +2066,8 @@ async def test_reengagement_order_keeps_referral_bonus_without_marketing_ledger(
     )
     assert response.status_code == 201, response.text
 
-    await update_order_status(
-        db_session, order_id=response.json()["id"], status=OrderStatus.COMPLETED
-    )
+    order = await get_latest_order_for_user(db_session, customer.id)
+    await update_order_status(db_session, order_id=order.id, status=OrderStatus.COMPLETED)
 
     reference_types = set(
         (await db_session.execute(select(AexLedgerEntry.reference_type))).scalars().all()
@@ -2137,10 +2177,9 @@ async def test_miniapp_order_non_cash_services_do_not_save_city(
         )
 
         assert response.status_code == 201
-        order = response.json()
-        assert order["methodGet"] == method
-        assert order["cityId"] is None
-        assert order["city"] is None
+        order = await get_latest_order_for_user(db_session, customer.id)
+        assert order.methodGet == method
+        assert order.CityId is None
 
 
 @pytest.mark.asyncio
@@ -2235,8 +2274,7 @@ async def test_miniapp_order_allows_missing_trusted_contact(
     )
 
     assert response.status_code == 201
-    order = response.json()
-    assert order["contactTelegram"] is None
+    assert (await get_latest_order_for_user(db_session, customer.id)).contactTelegram is None
 
 
 @pytest.mark.asyncio

@@ -2,10 +2,9 @@
 
 from __future__ import annotations
 
-from fastapi import APIRouter, Query, status
+from fastapi import APIRouter, Query, Response, status
 
 from app.api.deps import DbDep, MiniappUser
-from app.repositories.config import ConfigRepository
 from app.schemas.aex import ReferralApplyRequest, ReferralApplyResponse
 from app.schemas.miniapp import (
     MiniappAexReferralResponse,
@@ -16,14 +15,11 @@ from app.schemas.miniapp import (
     MiniappHomeResponse,
     MiniappManagerAvailability,
     MiniappOrderCreate,
-    MiniappOrderItem,
     MiniappOrdersResponse,
     MiniappProfileScreenResponse,
     MiniappQuoteResponse,
     MiniappRatesResponse,
-    build_miniapp_order_item,
 )
-from app.services.manager_working_hours import ManagerWorkingHoursService
 from app.services.miniapp import (
     calculate_miniapp_quote,
     get_miniapp_aex_referral,
@@ -92,24 +88,17 @@ async def get_orders(
 
 @router.post(
     "/orders",
-    response_model=MiniappOrderItem,
     status_code=status.HTTP_201_CREATED,
+    response_class=Response,
 )
 async def create_order(
     body: MiniappOrderCreate,
     db: DbDep,
     user: MiniappUser,
-) -> MiniappOrderItem:
-    """Создать предварительную заявку и вернуть полностью загруженный Mini App DTO."""
-    order = await create_order_for_user(db, user, body)
-    # Уведомления могут истечь поля ORM-модели; загружаем их до синхронной сериализации DTO.
-    await db.refresh(order)
-    availability = getattr(order, "manager_availability", None)
-    if availability is None:
-        availability = ManagerWorkingHoursService().get_availability(
-            await ConfigRepository(db).get_or_create()
-        )
-    return build_miniapp_order_item(order, manager_availability=availability)
+) -> Response:
+    """Создать предварительную заявку и подтвердить сохранение без ORM DTO."""
+    await create_order_for_user(db, user, body)
+    return Response(status_code=status.HTTP_201_CREATED)
 
 
 @router.get("/profile", response_model=MiniappProfileScreenResponse)
