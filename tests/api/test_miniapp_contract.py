@@ -223,6 +223,35 @@ async def test_miniapp_home_and_exchange_are_backend_driven(
 
 
 @pytest.mark.asyncio
+async def test_miniapp_manager_availability_is_available_without_exchange_screen(
+    api_client: tuple[AsyncClient, AsyncSession],
+) -> None:
+    """Мини-приложение получает режим менеджеров без полной exchange-котировки."""
+    client, db_session = api_client
+    _, _, customer = await seed_exchange_data(db_session)
+    token = create_access_token({"sub": str(customer.id), "role": customer.role})
+
+    response = await client.get(
+        "/api/miniapp/manager-availability",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+
+    assert response.status_code == 200
+    assert set(response.json()) == {
+        "status",
+        "scheduleEnabled",
+        "workingDaysUtc",
+        "startTimeUtc",
+        "endTimeUtc",
+        "currentStartAt",
+        "currentEndAt",
+        "nextStartAt",
+        "businessHoursText",
+    }
+    assert response.json()["status"] in {"working", "offline"}
+
+
+@pytest.mark.asyncio
 async def test_miniapp_exchange_omits_rub_payout_without_internal_rate(
     api_client: tuple[AsyncClient, AsyncSession],
 ) -> None:
