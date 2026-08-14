@@ -18,6 +18,7 @@ from app.api.routers import (
     auth,
     broadcasts,
     manager,
+    manager_attachments,
     marketing,
     miniapp,
     orders,
@@ -162,6 +163,7 @@ app.include_router(users.router)
 app.include_router(orders.router)
 app.include_router(miniapp.router)
 app.include_router(manager.router)
+app.include_router(manager_attachments.router)
 app.include_router(admin.router)
 app.include_router(aex.router)
 app.include_router(aex.admin_router)
