@@ -30,6 +30,7 @@ from app.schemas.miniapp import (
     MiniappExchangeScreenResponse,
     MiniappHomeResponse,
     MiniappLocationItem,
+    MiniappManagerAvailability,
     MiniappMenuItem,
     MiniappOrdersResponse,
     MiniappProfileScreenResponse,
@@ -90,6 +91,12 @@ async def list_miniapp_rates(db) -> MiniappRatesResponse:
     """Возвращает пользовательские итоговые курсы для обратной совместимости miniapp."""
     rates = await ExchangeService().load_rates(db)
     return MiniappRatesResponse(items=[build_rate_out(rate) for rate in rates])
+
+
+async def get_miniapp_manager_availability(db) -> MiniappManagerAvailability:
+    """Возвращает актуальный режим менеджеров без данных экрана обмена."""
+    config = await ConfigRepository(db).get_or_create()
+    return build_miniapp_manager_availability(ManagerWorkingHoursService().get_availability(config))
 
 
 async def list_miniapp_orders(
@@ -354,11 +361,7 @@ async def get_miniapp_exchange(db) -> MiniappExchangeScreenResponse:
         pairs=featured,
         quote=quote,
         aexPayoutOptions=await _build_aex_payout_options(db),
-        managerAvailability=build_miniapp_manager_availability(
-            ManagerWorkingHoursService().get_availability(
-                await ConfigRepository(db).get_or_create()
-            )
-        ),
+        managerAvailability=await get_miniapp_manager_availability(db),
     )
 
 
@@ -434,11 +437,7 @@ async def get_miniapp_profile_screen(db, user) -> MiniappProfileScreenResponse:
             ),
         ],
         version="1.0.0",
-        managerAvailability=build_miniapp_manager_availability(
-            ManagerWorkingHoursService().get_availability(
-                await ConfigRepository(db).get_or_create()
-            )
-        ),
+        managerAvailability=await get_miniapp_manager_availability(db),
     )
 
 

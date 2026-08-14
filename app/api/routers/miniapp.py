@@ -14,6 +14,7 @@ from app.schemas.miniapp import (
     MiniappCitiesResponse,
     MiniappExchangeScreenResponse,
     MiniappHomeResponse,
+    MiniappManagerAvailability,
     MiniappOrderCreate,
     MiniappOrderItem,
     MiniappOrdersResponse,
@@ -28,6 +29,7 @@ from app.services.miniapp import (
     get_miniapp_aex_referral,
     get_miniapp_exchange,
     get_miniapp_home,
+    get_miniapp_manager_availability,
     get_miniapp_profile_screen,
     list_miniapp_aex_referrals,
     list_miniapp_aex_transactions,
@@ -49,6 +51,12 @@ async def get_home(db: DbDep, user: MiniappUser) -> MiniappHomeResponse:
 @router.get("/exchange", response_model=MiniappExchangeScreenResponse)
 async def get_exchange(db: DbDep, _: MiniappUser) -> MiniappExchangeScreenResponse:
     return await get_miniapp_exchange(db)
+
+
+@router.get("/manager-availability", response_model=MiniappManagerAvailability)
+async def get_manager_availability(db: DbDep, _: MiniappUser) -> MiniappManagerAvailability:
+    """Вернуть режим работы менеджеров без обновления exchange-screen."""
+    return await get_miniapp_manager_availability(db)
 
 
 @router.get("/exchange/quote", response_model=MiniappQuoteResponse)
