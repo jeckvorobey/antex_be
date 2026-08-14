@@ -151,5 +151,6 @@ Machine-readable marketing errors:
 `managerAvailability`: серверный `status` (`working`, `offline`, `unknown`), UTC
 границы текущего/следующего интервала и `businessHoursText`. Mini App форматирует
 `nextStartAt` в локальной зоне браузера. Успешный `POST /api/miniapp/orders`
-возвращает тот же availability snapshot в `managerAvailability` созданной заявки;
-расписание никогда не является причиной отказа в создании заявки.
+возвращает пустой response со статусом `201 Created`; Mini App затем запрашивает
+первую страницу истории заявок. Расписание никогда не является причиной отказа в
+создании заявки и предупреждается до её отправки.
