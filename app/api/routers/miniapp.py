@@ -2,9 +2,12 @@
 
 from __future__ import annotations
 
+from typing import Annotated
+
 from fastapi import APIRouter, Query, Response, status
 
 from app.api.deps import DbDep, MiniappUser
+from app.enums.order import MethodGet
 from app.schemas.aex import ReferralApplyRequest, ReferralApplyResponse
 from app.schemas.miniapp import (
     MiniappAexReferralResponse,
@@ -62,8 +65,15 @@ async def get_exchange_quote(
     currency_sell: str = Query(alias="currencySell", min_length=3, max_length=20),
     currency_buy: str = Query(alias="currencyBuy", min_length=3, max_length=20),
     amount_sell: int = Query(alias="amountSell", gt=0),
+    method_get: Annotated[MethodGet | None, Query(alias="methodGet")] = None,
 ) -> MiniappQuoteResponse:
-    return await calculate_miniapp_quote(db, currency_sell, currency_buy, amount_sell)
+    return await calculate_miniapp_quote(
+        db,
+        currency_sell,
+        currency_buy,
+        amount_sell,
+        method_get=method_get,
+    )
 
 
 @router.get("/cities", response_model=MiniappCitiesResponse)

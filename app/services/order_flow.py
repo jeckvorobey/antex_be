@@ -86,8 +86,11 @@ async def create_order_for_user(
     currency_sell = _normalize_token_currency(payload.currency_sell)
     currency_buy = payload.currency_buy.upper()
     server_quote = await _get_internal_aex_quote(db, payload)
+    delivery_rate = None
     if server_quote is not None:
         amount_buy, rate = server_quote
+        if payload.method_get == MethodGet.CASH:
+            delivery_rate = rate
         display_rate = rate
         display_currency_sell = currency_sell
         display_currency_buy = currency_buy
@@ -98,16 +101,20 @@ async def create_order_for_user(
                 currency_sell=currency_sell,
                 currency_buy=currency_buy,
                 amount_sell=payload.amount_sell,
+                method_get=payload.method_get,
             ),
         )
         amount_buy = quote.amount_buy
-        rate = quote.rate
+        rate = quote.base_rate
+        delivery_rate = quote.delivery_rate
         display_rate = quote.display_rate
         display_currency_sell = quote.display_currency_sell
         display_currency_buy = quote.display_currency_buy
     else:
         amount_buy = payload.amount_buy
         rate = payload.rate
+        if payload.method_get == MethodGet.CASH:
+            delivery_rate = rate
         display_rate = rate
         display_currency_sell = currency_sell
         display_currency_buy = currency_buy
@@ -133,6 +140,7 @@ async def create_order_for_user(
             currencyBuy=currency_buy,
             amountBuy=amount_buy,
             rate=rate,
+            deliveryRate=delivery_rate,
             displayRate=display_rate,
             displayCurrencySell=display_currency_sell,
             displayCurrencyBuy=display_currency_buy,

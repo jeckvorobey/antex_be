@@ -400,6 +400,8 @@ async def calculate_miniapp_quote(
     currency_sell: str,
     currency_buy: str,
     amount_sell: int,
+    *,
+    method_get: str | None = None,
 ) -> MiniappQuoteResponse:
     """Рассчитывает quote через единый exchange-domain."""
     quote = await ExchangeService().get_quote(
@@ -408,6 +410,7 @@ async def calculate_miniapp_quote(
             currency_sell=currency_sell,
             currency_buy=currency_buy,
             amount_sell=amount_sell,
+            method_get=method_get,
         ),
     )
     return _build_quote_response(quote)
