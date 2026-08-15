@@ -14,9 +14,11 @@ from datetime import datetime
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.enums.country import Country
+from app.enums.order import MethodGet
 from app.exceptions import AntExException
 from app.models.rate import Rate
 from app.repositories.rate import RateRepository
+from app.services.cash_delivery_rate import CashDeliveryRatePolicy
 from app.services.rate_calculator import apply_margin_to_rate
 
 RATE_PRECISION = 2
@@ -120,12 +122,16 @@ def get_display_final_rate(rate: Rate) -> float:
 
 def get_exact_display_final_rate(rate: Rate) -> float:
     """Возвращает неокруглённое значение только для снимка представления."""
-    calculation_rate = get_calculation_rate(rate)
-    if calculation_rate <= 0:
+    return get_exact_display_rate(rate, get_calculation_rate(rate))
+
+
+def get_exact_display_rate(rate: Rate, direct_rate: float) -> float:
+    """Переводит точный прямой курс в сохранённую display-ориентацию пары."""
+    if direct_rate <= 0:
         return 0.0
     if should_reverse_display_pair(rate):
-        return 1 / calculation_rate
-    return calculation_rate
+        return 1 / direct_rate
+    return direct_rate
 
 
 def get_admin_base_rate(rate: Rate) -> float:
@@ -149,6 +155,7 @@ class ExchangeQuoteInput:
     currency_sell: str
     currency_buy: str
     amount_sell: int
+    method_get: MethodGet | str | None = None
 
 
 @dataclass(frozen=True)
@@ -157,6 +164,8 @@ class ExchangeQuote:
     currency_buy: str
     amount_sell: int
     amount_buy: float
+    base_rate: float
+    delivery_rate: float | None
     rate: float
     display_rate: float
     display_currency_sell: str
@@ -299,15 +308,25 @@ class ExchangeService:
         rate = get_calculation_rate(rate_model)
         if rate <= 0:
             raise self.rate_unavailable_error()
-        display_rate = get_exact_display_final_rate(rate_model)
+        adjusted = CashDeliveryRatePolicy().calculate(
+            rates,
+            method_get=payload.method_get,
+            currency_sell=sell,
+            currency_buy=buy,
+            amount_sell=payload.amount_sell,
+            base_rate=rate,
+        )
+        effective_rate = adjusted.delivery_rate if adjusted.delivery_rate is not None else rate
+        display_rate = get_exact_display_rate(rate_model, effective_rate)
         display_sell, display_buy = get_display_pair(rate_model)
-        amount_buy = round(payload.amount_sell * rate, RATE_PRECISION)
         return ExchangeQuote(
             currency_sell=sell,
             currency_buy=buy,
             amount_sell=payload.amount_sell,
-            amount_buy=amount_buy,
-            rate=rate,
+            amount_buy=adjusted.amount_buy,
+            base_rate=rate,
+            delivery_rate=adjusted.delivery_rate,
+            rate=effective_rate,
             display_rate=display_rate,
             display_currency_sell=display_sell,
             display_currency_buy=display_buy,

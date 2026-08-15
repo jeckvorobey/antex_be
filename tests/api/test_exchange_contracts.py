@@ -497,6 +497,91 @@ async def test_admin_cannot_assign_internal_country_to_external_entities(
 
 
 @pytest.mark.asyncio
+async def test_miniapp_cash_quote_returns_effective_public_contract(
+    api_client: tuple[AsyncClient, AsyncSession],
+) -> None:
+    """Игнорирование methodGet вернёт обычный курс вместо cash-курса."""
+    client, db_session = api_client
+    _, customer = await seed_admin_exchange_data(db_session)
+    token = create_access_token({"sub": str(customer.id), "role": customer.role})
+
+    response = await client.get(
+        "/api/miniapp/exchange/quote",
+        headers={"Authorization": f"Bearer {token}"},
+        params={
+            "currencySell": "RUB",
+            "currencyBuy": "THB",
+            "amountSell": 25_000,
+            "methodGet": "cash",
+        },
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["amountBuy"] == pytest.approx(9_590.5)
+    assert payload["rate"] == pytest.approx(0.38362)
+    assert payload["rateDisplay"] == "2.61"
+    assert payload["rateText"] == "1 THB = 2.61 RUB"
+    assert "deliveryRate" not in payload
+    assert "cashDeliveryFee" not in payload
+    assert set(payload) == {
+        "currencySell",
+        "currencyBuy",
+        "amountSell",
+        "amountBuy",
+        "rate",
+        "rateDisplay",
+        "rateText",
+        "updatedAt",
+        "availableMethods",
+    }
+
+
+@pytest.mark.asyncio
+async def test_miniapp_quote_without_method_preserves_existing_contract(
+    api_client: tuple[AsyncClient, AsyncSession],
+) -> None:
+    """Optional methodGet не должен менять старых клиентов."""
+    client, db_session = api_client
+    _, customer = await seed_admin_exchange_data(db_session)
+    token = create_access_token({"sub": str(customer.id), "role": customer.role})
+
+    response = await client.get(
+        "/api/miniapp/exchange/quote",
+        headers={"Authorization": f"Bearer {token}"},
+        params={"currencySell": "RUB", "currencyBuy": "THB", "amountSell": 25_000},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["amountBuy"] == pytest.approx(9_942.5)
+    assert response.json()["rate"] == pytest.approx(0.3977)
+    assert response.json()["rateDisplay"] == "2.51"
+
+
+@pytest.mark.asyncio
+async def test_miniapp_quote_rejects_unknown_receive_method(
+    api_client: tuple[AsyncClient, AsyncSession],
+) -> None:
+    """Произвольный methodGet не должен обходить enum-контракт."""
+    client, db_session = api_client
+    _, customer = await seed_admin_exchange_data(db_session)
+    token = create_access_token({"sub": str(customer.id), "role": customer.role})
+
+    response = await client.get(
+        "/api/miniapp/exchange/quote",
+        headers={"Authorization": f"Bearer {token}"},
+        params={
+            "currencySell": "RUB",
+            "currencyBuy": "THB",
+            "amountSell": 25_000,
+            "methodGet": "unknown",
+        },
+    )
+
+    assert response.status_code == 422
+
+
+@pytest.mark.asyncio
 async def test_orders_api_recalculates_preliminary_values_and_returns_display_snapshot(
     api_client: tuple[AsyncClient, AsyncSession],
 ) -> None:
@@ -521,7 +606,9 @@ async def test_orders_api_recalculates_preliminary_values_and_returns_display_sn
 
     assert response.status_code == 201
     payload = response.json()
-    assert payload["amountBuy"] == pytest.approx(11931)
-    assert payload["rate"] == pytest.approx(0.3977)
-    assert payload["rateDisplay"] == "2.51"
-    assert payload["rateText"] == "1 THB = 2.51 RUB"
+    assert payload["amountBuy"] == pytest.approx(11579)
+    assert payload["rate"] == pytest.approx(0.38596666666666665)
+    assert payload["rateDisplay"] == "2.59"
+    assert payload["rateText"] == "1 THB = 2.59 RUB"
+    assert "deliveryRate" not in payload
+    assert "cashDeliveryFee" not in payload

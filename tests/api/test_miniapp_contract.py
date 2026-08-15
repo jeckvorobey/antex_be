@@ -1290,6 +1290,17 @@ async def test_miniapp_cash_order_returns_empty_created_response(
     assert response.status_code == 201
     assert response.content == b""
 
+    history_response = await client.get(
+        "/api/miniapp/orders",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+
+    assert history_response.status_code == 200
+    history_item = history_response.json()["items"][0]
+    assert history_item["amountBuy"] == pytest.approx(9_590.5)
+    assert history_item["rate"] == pytest.approx(0.38362)
+    assert history_item["rateDisplay"] == "2.61"
+
 
 @pytest.mark.asyncio
 async def test_miniapp_order_is_created_with_server_quote_and_display_snapshot(

@@ -5,6 +5,7 @@ from datetime import UTC, datetime
 import pytest
 
 from app.enums.country import Country
+from app.enums.order import MethodGet
 from app.exceptions import AntExError
 from app.models.rate import Rate
 from app.services.exchange import (
@@ -41,6 +42,105 @@ def _make_rate(
 
 
 class TestExchangeService:
+    @pytest.mark.parametrize(
+        "method_get",
+        [None, MethodGet.QRCODE, MethodGet.BANK_ACCOUNT, MethodGet.PAY_SERVICES],
+    )
+    def test_non_cash_quote_preserves_existing_calculation(
+        self,
+        method_get: MethodGet | None,
+    ) -> None:
+        """Активация policy без cash сломает прежний quote-контракт."""
+        rate = _make_rate("RUBTHB", 0.4, 0.0, country=Country.THAILAND)
+
+        quote = ExchangeService().build_quote(
+            [rate],
+            ExchangeQuoteInput(
+                currency_sell="RUB",
+                currency_buy="THB",
+                amount_sell=25_000,
+                method_get=method_get,
+            ),
+        )
+
+        assert quote.base_rate == pytest.approx(0.4)
+        assert quote.delivery_rate is None
+        assert quote.rate == pytest.approx(0.4)
+        assert quote.amount_buy == pytest.approx(10_000.0)
+        assert quote.rate_display == "0.40"
+        assert quote.rate_text == "1 RUB = 0.40 THB"
+
+    def test_cash_quote_returns_effective_direct_rate_without_internal_fields(self) -> None:
+        """Публичный cash quote обязан согласовать rate и amountBuy."""
+        exchange_rate = _make_rate("RUBTHB", 0.4, 0.0, country=Country.THAILAND)
+        conversion_rate = _make_rate("USDTTHB", 36.201, 0.0, country=Country.THAILAND)
+
+        quote = ExchangeService().build_quote(
+            [exchange_rate, conversion_rate],
+            ExchangeQuoteInput(
+                currency_sell="RUB",
+                currency_buy="THB",
+                amount_sell=25_000,
+                method_get=MethodGet.CASH,
+            ),
+        )
+
+        assert quote.base_rate == pytest.approx(0.4)
+        assert quote.delivery_rate == pytest.approx(0.38548)
+        assert quote.rate == pytest.approx(0.38548)
+        assert quote.amount_buy == pytest.approx(9_637.0)
+        assert quote.display_rate == pytest.approx(0.38548)
+        assert quote.rate_display == "0.39"
+        assert quote.rate_text == "1 RUB = 0.39 THB"
+
+    def test_cash_quote_displays_reciprocal_of_effective_rate(self) -> None:
+        """Реверсивная пара не должна показывать reciprocal исходного rate."""
+        exchange_rate = _make_rate(
+            "RUBGEL",
+            0.03,
+            3.0,
+            country=Country.GEORGIA,
+            display_reversed=True,
+        )
+        conversion_rate = _make_rate("USDTGEL", 2.7, 3.0, country=Country.GEORGIA)
+
+        quote = ExchangeService().build_quote(
+            [exchange_rate, conversion_rate],
+            ExchangeQuoteInput(
+                currency_sell="RUB",
+                currency_buy="GEL",
+                amount_sell=30_000,
+                method_get=MethodGet.CASH,
+            ),
+        )
+
+        assert quote.base_rate == pytest.approx(0.0291)
+        assert quote.delivery_rate == pytest.approx(0.0282)
+        assert quote.rate == pytest.approx(0.0282)
+        assert quote.amount_buy == pytest.approx(846.0)
+        assert quote.display_rate == pytest.approx(35.4609929078)
+        assert quote.rate_display == "35.46"
+        assert quote.rate_text == "1 GEL = 35.46 RUB"
+
+    def test_cash_at_threshold_does_not_require_conversion_pair(self) -> None:
+        """Зависимая USDT-пара не должна ломать cash вне применимого порога."""
+        exchange_rate = _make_rate("RUBTHB", 0.4, 0.0, country=Country.THAILAND)
+
+        quote = ExchangeService().build_quote(
+            [exchange_rate],
+            ExchangeQuoteInput(
+                currency_sell="RUB",
+                currency_buy="THB",
+                amount_sell=100_000,
+                method_get=MethodGet.CASH,
+            ),
+        )
+
+        assert quote.base_rate == pytest.approx(0.4)
+        assert quote.delivery_rate == pytest.approx(0.4)
+        assert quote.rate == pytest.approx(0.4)
+        assert quote.amount_buy == pytest.approx(40_000.0)
+
     def test_rubusdt_admin_rate_is_displayed_as_rub_per_usdt(self) -> None:
         rate = Rate(
             id=9,

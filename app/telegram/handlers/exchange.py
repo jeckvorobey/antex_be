@@ -716,6 +716,7 @@ async def enter_amount(message: Message, state: FSMContext) -> None:
                     currency_sell=data["currency_sell"],
                     currency_buy=data["currency_buy"],
                     amount_sell=amount,
+                    method_get=data.get("method"),
                 ),
             )
     except AntExException:
@@ -752,15 +753,23 @@ async def choose_method(callback: CallbackQuery, state: FSMContext) -> None:
     method = callback.data.split(":")[1]  # type: ignore[union-attr]
     data = await state.get_data()
     db = await _get_db()
-    async with db:
-        quote = await ExchangeService().get_quote(
-            db,
-            ExchangeQuoteInput(
-                currency_sell=data["currency_sell"],
-                currency_buy=data["currency_buy"],
-                amount_sell=data["amount_sell"],
-            ),
+    try:
+        async with db:
+            quote = await ExchangeService().get_quote(
+                db,
+                ExchangeQuoteInput(
+                    currency_sell=data["currency_sell"],
+                    currency_buy=data["currency_buy"],
+                    amount_sell=data["amount_sell"],
+                    method_get=method,
+                ),
+            )
+    except AntExException:
+        await callback.answer(
+            messages.exchange_rate_unavailable(translator=translate),
+            show_alert=True,
         )
+        return
     if method not in quote.available_methods:
         await callback.answer(
             messages.exchange_rate_unavailable(translator=translate),
