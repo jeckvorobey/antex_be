@@ -344,6 +344,7 @@ async def test_enter_amount_preserves_selected_cash_method(monkeypatch) -> None:
         assert payload.currency_sell == "RUB"
         assert payload.currency_buy == "VND"
         assert payload.amount_sell == 25000
+        assert payload.method_get == "cash"
         return SimpleNamespace(
             currency_sell="RUB",
             currency_buy="VND",
@@ -368,6 +369,52 @@ async def test_enter_amount_preserves_selected_cash_method(monkeypatch) -> None:
     answer_rich_mock.assert_awaited_once()
     assert "<table bordered striped>" in answer_rich_mock.await_args.args[1]
     assert "Фукуок" in answer_rich_mock.await_args.args[1]
+
+
+async def test_choose_cash_method_refreshes_effective_telegram_quote(monkeypatch) -> None:
+    """Смена метода на cash обязана обновить сумму до экрана подтверждения."""
+    fake_db = _FakeDbSession()
+    callback = _FakeCallback(
+        TgUser(id=777000, is_bot=False, first_name="Test", language_code="ru"),
+        data="method:cash",
+    )
+    state = _FakeState(
+        {
+            "currency_sell": "RUB",
+            "currency_buy": "THB",
+            "amount_sell": 25_000,
+            "method": "qrcode",
+        }
+    )
+
+    async def _fake_get_db():
+        return fake_db
+
+    async def _fake_get_quote(self, db, payload):
+        assert db is fake_db
+        assert payload.method_get == "cash"
+        return SimpleNamespace(
+            currency_sell="RUB",
+            currency_buy="THB",
+            amount_sell=25_000,
+            amount_buy=9_638.0,
+            rate=0.38552,
+            rate_text="1 RUB = 0.39 THB",
+            available_methods=["qrcode", "cash"],
+        )
+
+    monkeypatch.setattr(exchange_handler, "_get_db", _fake_get_db)
+    monkeypatch.setattr(exchange_handler.ExchangeService, "get_quote", _fake_get_quote)
+    edit_rich_mock = AsyncMock()
+    monkeypatch.setattr(exchange_handler, "edit_rich", edit_rich_mock)
+
+    await exchange_handler.choose_method(callback, state)
+
+    assert state.state == exchange_handler.ExchangeState.confirming.state
+    assert state._data["method"] == "cash"
+    assert state._data["quote"]["amountBuy"] == 9_638.0
+    assert state._data["quote"]["rateText"] == "1 RUB = 0.39 THB"
+    edit_rich_mock.assert_awaited_once()
 
 
 async def test_country_sets_buy_currency_and_shows_only_canonical_sell_currencies(
