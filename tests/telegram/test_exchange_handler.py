@@ -417,6 +417,49 @@ async def test_choose_cash_method_refreshes_effective_telegram_quote(monkeypatch
     edit_rich_mock.assert_awaited_once()
 
 
+async def test_choose_cash_method_reports_unavailable_effective_quote(monkeypatch) -> None:
+    """Недоступный cash-курс должен оставить прежний draft и показать нейтральный alert."""
+    fake_db = _FakeDbSession()
+    callback = _FakeCallback(
+        TgUser(id=777000, is_bot=False, first_name="Test", language_code="ru"),
+        data="method:cash",
+    )
+    state = _FakeState(
+        {
+            "currency_sell": "RUB",
+            "currency_buy": "THB",
+            "amount_sell": 25_000,
+            "method": "qrcode",
+            "quote": {"amountBuy": 9_942.5, "rate": 0.3977},
+        }
+    )
+
+    async def _fake_get_db():
+        return fake_db
+
+    async def _fake_get_quote(self, db, payload):
+        assert db is fake_db
+        assert payload.method_get == "cash"
+        raise AntExException("Rate unavailable", code="RATE_UNAVAILABLE", status_code=503)
+
+    monkeypatch.setattr(exchange_handler, "_get_db", _fake_get_db)
+    monkeypatch.setattr(exchange_handler.ExchangeService, "get_quote", _fake_get_quote)
+
+    await exchange_handler.choose_method(callback, state)
+
+    assert state.state is None
+    assert state._data["method"] == "qrcode"
+    assert state._data["quote"] == {"amountBuy": 9_942.5, "rate": 0.3977}
+    assert callback.answers == [
+        {
+            "text": exchange_handler.messages.exchange_rate_unavailable(
+                translator=exchange_handler.get_user_translator(callback.from_user)
+            ),
+            "show_alert": True,
+        }
+    ]
+
+
 async def test_country_sets_buy_currency_and_shows_only_canonical_sell_currencies(
     monkeypatch,
 ) -> None:
