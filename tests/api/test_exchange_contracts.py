@@ -538,6 +538,52 @@ async def test_miniapp_cash_quote_returns_effective_public_contract(
 
 
 @pytest.mark.asyncio
+async def test_miniapp_cash_vnd_quote_uses_effective_rate_without_internal_fields(
+    api_client: tuple[AsyncClient, AsyncSession],
+) -> None:
+    """Котировка наличными во VND не содержит служебных данных."""
+    client, db_session = api_client
+    _, customer = await seed_admin_exchange_data(db_session)
+    db_session.add_all(
+        [
+            Rate(
+                currency="RUBVND",
+                price=298.8190358473305,
+                margin=0.0,
+                country=Country.VIETNAM,
+            ),
+            Rate(
+                currency="USDTVND",
+                price=27334.45652173913,
+                margin=8.0,
+                country=Country.VIETNAM,
+            ),
+        ]
+    )
+    await db_session.commit()
+    token = create_access_token({"sub": str(customer.id), "role": customer.role})
+
+    response = await client.get(
+        "/api/miniapp/exchange/quote",
+        headers={"Authorization": f"Bearer {token}"},
+        params={
+            "currencySell": "RUB",
+            "currencyBuy": "VND",
+            "amountSell": 25_000,
+            "methodGet": "cash",
+        },
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["amountBuy"] == pytest.approx(7_218_998.90)
+    assert payload["rate"] == pytest.approx(288.759956)
+    assert "deliveryRate" not in payload
+    assert "cashDeliveryFee" not in payload
+    assert "conversionRate" not in payload
+
+
+@pytest.mark.asyncio
 async def test_miniapp_quote_without_method_preserves_existing_contract(
     api_client: tuple[AsyncClient, AsyncSession],
 ) -> None:

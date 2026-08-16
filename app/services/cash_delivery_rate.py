@@ -8,7 +8,6 @@ from decimal import ROUND_CEILING, ROUND_HALF_EVEN, Decimal
 from app.enums.order import MethodGet
 from app.exceptions import AntExException
 from app.models.rate import Rate
-from app.services.rate_calculator import apply_margin_to_rate
 
 CASH_DELIVERY_USDT_AMOUNT = Decimal("10")
 CASH_DELIVERY_THRESHOLDS = {"RUB": 100_000, "USDT": 1_200}
@@ -57,7 +56,11 @@ class CashDeliveryRatePolicy:
         if conversion_rate is None:
             raise _rate_unavailable()
 
-        usdt_buy_rate = apply_margin_to_rate(conversion_rate.price, conversion_rate.margin)
+        # `ceil` чувствителен к двоичной погрешности float: маржу применяем
+        # непосредственно к десятичным значениям, доступным из модели курса.
+        usdt_buy_rate = Decimal(str(conversion_rate.price)) * (
+            Decimal("1") - Decimal(str(conversion_rate.margin)) / Decimal("100")
+        )
         if usdt_buy_rate <= 0:
             raise _rate_unavailable()
 
@@ -67,7 +70,7 @@ class CashDeliveryRatePolicy:
             rounding=ROUND_HALF_EVEN,
         )
         internal_equivalent = (
-            CASH_DELIVERY_USDT_AMOUNT * Decimal(str(usdt_buy_rate))
+            CASH_DELIVERY_USDT_AMOUNT * usdt_buy_rate
         ).to_integral_value(rounding=ROUND_CEILING)
         net_amount = gross_amount - internal_equivalent
         if net_amount <= 0:
