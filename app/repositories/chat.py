@@ -113,6 +113,25 @@ class ChatRepository(BaseRepository[ChatConversation]):
         rows.reverse()
         return rows, has_more
 
+    async def latest_messages_by_conversation(
+        self,
+        conversation_ids: list[int],
+    ) -> dict[int, ChatMessage]:
+        """Загрузить последние сообщения страницы бесед одним bulk-запросом."""
+        if not conversation_ids:
+            return {}
+        latest_ids = (
+            select(func.max(ChatMessage.id))
+            .where(ChatMessage.conversation_id.in_(conversation_ids))
+            .group_by(ChatMessage.conversation_id)
+        )
+        result = await self.session.execute(
+            select(ChatMessage)
+            .where(ChatMessage.id.in_(latest_ids))
+            .options(selectinload(ChatMessage.attachments))
+        )
+        return {message.conversation_id: message for message in result.scalars().all()}
+
     async def get_message(self, message_id: int) -> ChatMessage | None:
         result = await self.session.execute(
             select(ChatMessage)

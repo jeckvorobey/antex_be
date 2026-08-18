@@ -257,17 +257,40 @@ class ChatService:
         return conversation
 
     async def conversation_out(self, conversation: ChatConversation) -> ChatConversationOut:
-        messages, _ = await self.repo.list_messages(conversation.id, limit=1)
-        latest_orders = await self.order_repo.get_user_orders(conversation.user_id, limit=1)
-        return ChatConversationOut(
-            id=conversation.id,
-            status=conversation.status,
-            unreadCount=conversation.unread_count,
-            lastMessageAt=conversation.last_message_at,
-            user=self.user_out(conversation.user),
-            lastMessage=self.message_out(messages[-1]) if messages else None,
-            latestOrder=self.order_out(latest_orders[0]) if latest_orders else None,
+        """Сериализовать одну беседу через общий bulk-контракт обогащения."""
+        return (await self.conversations_out([conversation]))[0]
+
+    async def conversations_out(
+        self,
+        conversations: list[ChatConversation],
+    ) -> list[ChatConversationOut]:
+        """Сериализовать страницу бесед без запросов внутри item-loop."""
+        latest_messages = await self.repo.latest_messages_by_conversation(
+            [conversation.id for conversation in conversations]
         )
+        latest_orders = await self.order_repo.latest_by_user_ids(
+            [conversation.user_id for conversation in conversations]
+        )
+        return [
+            ChatConversationOut(
+                id=conversation.id,
+                status=conversation.status,
+                unreadCount=conversation.unread_count,
+                lastMessageAt=conversation.last_message_at,
+                user=self.user_out(conversation.user),
+                lastMessage=(
+                    self.message_out(latest_messages[conversation.id])
+                    if conversation.id in latest_messages
+                    else None
+                ),
+                latestOrder=(
+                    self.order_out(latest_orders[conversation.user_id])
+                    if conversation.user_id in latest_orders
+                    else None
+                ),
+            )
+            for conversation in conversations
+        ]
 
     @staticmethod
     def user_out(user: User) -> ManagerChatUser:

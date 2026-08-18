@@ -67,7 +67,7 @@ async def list_chats(
         limit=limit,
         offset=offset,
     )
-    items = [await service.conversation_out(item) for item in conversations]
+    items = await service.conversations_out(conversations)
     return ChatListResponse(items=items, total=total, unreadTotal=await repo.unread_total())
 
 
