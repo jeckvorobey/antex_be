@@ -1,7 +1,7 @@
 """Добавить постоянные чаты менеджера и аудит сообщений.
 
-Revision ID: 031
-Revises: 030
+Revision ID: 032
+Revises: 031
 """
 
 from __future__ import annotations
@@ -10,8 +10,8 @@ import sqlalchemy as sa
 
 from alembic import op
 
-revision = "031"
-down_revision = "030"
+revision = "032"
+down_revision = "031"
 branch_labels = None
 depends_on = None
 
