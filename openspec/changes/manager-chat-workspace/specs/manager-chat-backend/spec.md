@@ -26,6 +26,10 @@
 - **WHEN** обработка обычного или edited Telegram update завершается transient exception
 - **THEN** polling не запрашивает следующий offset, а webhook не отвечает `2xx`, пока capture не завершится успешно, чтобы Telegram мог доставить update повторно
 
+#### Scenario: Unrelated webhook handler failure
+- **WHEN** handler вне manager chat capture завершается exception
+- **THEN** webhook логирует ошибку и отвечает `2xx`, не запуская повторную доставку update
+
 ### Requirement: Atomic unread state
 Система SHALL увеличивать unread count атомарно в PostgreSQL для каждого входящего сообщения, кроме случая, когда хотя бы одно живое manager connection просматривает эту беседу.
 

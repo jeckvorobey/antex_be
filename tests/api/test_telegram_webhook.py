@@ -184,6 +184,47 @@ async def test_telegram_webhook_returns_error_after_slow_capture_failure(
 
 
 @pytest.mark.asyncio
+async def test_telegram_webhook_acknowledges_unrelated_handler_failure(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Обычная ошибка handler не превращается в бесконечный webhook redelivery."""
+    bot = Bot("123456:test-token")
+    dispatcher = Dispatcher(disable_fsm=True)
+
+    @dispatcher.message()
+    async def fail_unrelated_handler(_message) -> None:
+        raise RuntimeError("unrelated handler failure")
+
+    monkeypatch.setattr(settings, "telegram_mode", "webhook")
+    monkeypatch.setattr(settings, "telegram_webhook_secret", "secret-token")
+    monkeypatch.setattr(telegram_bot, "bot", bot)
+    monkeypatch.setattr(telegram_bot, "dp", dispatcher)
+
+    transport = ASGITransport(app=app, raise_app_exceptions=False)
+    try:
+        async with AsyncClient(transport=transport, base_url="http://test") as client:
+            response = await client.post(
+                "/telegram/webhook",
+                headers={"X-Telegram-Bot-Api-Secret-Token": "secret-token"},
+                json={
+                    "update_id": 503,
+                    "message": {
+                        "message_id": 43,
+                        "date": 1_717_871_000,
+                        "chat": {"id": 779, "type": "private", "first_name": "Tester"},
+                        "from": {"id": 779, "is_bot": False, "first_name": "Tester"},
+                        "text": "/unrelated",
+                    },
+                },
+            )
+    finally:
+        await bot.session.close()
+
+    assert response.status_code == 200
+    assert response.json() == {"ok": True}
+
+
+@pytest.mark.asyncio
 async def test_stop_bot_closes_session_without_deleting_webhook(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
