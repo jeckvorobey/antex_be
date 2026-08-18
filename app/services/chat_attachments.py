@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import logging
+from datetime import UTC, datetime, timedelta
 from io import BytesIO
+from uuid import uuid4
 
 from aiogram.exceptions import TelegramBadRequest, TelegramForbiddenError, TelegramNotFound
 from aiogram.types import BufferedInputFile, Message
@@ -22,6 +24,7 @@ logger = logging.getLogger(__name__)
 
 ALLOWED_ATTACHMENT_KINDS = frozenset({"photo", "document", "voice", "video"})
 MAX_MANAGER_ATTACHMENT_BYTES = 20 * 1024 * 1024
+ATTACHMENT_DELIVERY_LEASE = timedelta(minutes=2)
 
 
 def _sent_file(message: Message, kind: str):
@@ -56,12 +59,11 @@ async def send_manager_attachment(
             raise LookupError("conversation_not_found")
         if existing.delivery_status == "sent":
             return existing, conversation, False
-        retried, _conversation, _attempted = await retry_manager_attachment(
+        return await retry_manager_attachment(
             db,
             conversation_id=conversation_id,
             client_request_id=client_request_id,
         )
-        return retried, conversation, False
 
     if kind not in ALLOWED_ATTACHMENT_KINDS:
         raise ValueError("unsupported_attachment_kind")
@@ -95,8 +97,14 @@ async def send_manager_attachment(
 
     # Bytes и metadata должны стать durable до внешнего Telegram side effect.
     await db.commit()
-    delivered = await _deliver_manager_attachment(db, repo, message, conversation, attachment)
-    return delivered, conversation, True
+    delivered, attempted = await _attempt_manager_attachment_delivery(
+        db,
+        repo,
+        message,
+        conversation,
+        attachment,
+    )
+    return delivered, conversation, attempted
 
 
 async def retry_manager_attachment(
@@ -118,10 +126,47 @@ async def retry_manager_attachment(
     attachment = message.attachments[0] if message.attachments else None
     if attachment is None or attachment.payload is None:
         raise ValueError("attachment_payload_unavailable")
-    message.delivery_status = "pending"
-    await db.flush()
-    delivered = await _deliver_manager_attachment(db, repo, message, conversation, attachment)
-    return delivered, conversation, True
+    delivered, attempted = await _attempt_manager_attachment_delivery(
+        db,
+        repo,
+        message,
+        conversation,
+        attachment,
+    )
+    return delivered, conversation, attempted
+
+
+async def _attempt_manager_attachment_delivery(
+    db: AsyncSession,
+    repo: ChatRepository,
+    message: ChatMessage,
+    conversation: ChatConversation,
+    attachment: ChatAttachment,
+) -> tuple[ChatMessage, bool]:
+    """Получить durable lease и выполнить не более одной Telegram attempt."""
+    claimed_at = datetime.now(UTC)
+    claim_token = uuid4().hex
+    claimed = await repo.claim_attachment_delivery(
+        attachment_id=attachment.id,
+        message_id=message.id,
+        claim_token=claim_token,
+        claimed_at=claimed_at,
+        expired_before=claimed_at - ATTACHMENT_DELIVERY_LEASE,
+    )
+    if not claimed:
+        current = await repo.get_by_client_request_id(message.client_request_id or "")
+        return current or message, False
+
+    await db.refresh(message, attribute_names=["delivery_status"])
+    delivered = await _deliver_manager_attachment(
+        db,
+        repo,
+        message,
+        conversation,
+        attachment,
+        claim_token=claim_token,
+    )
+    return delivered, True
 
 
 async def _deliver_manager_attachment(
@@ -130,12 +175,19 @@ async def _deliver_manager_attachment(
     message: ChatMessage,
     conversation: ChatConversation,
     attachment: ChatAttachment,
+    *,
+    claim_token: str,
 ) -> ChatMessage:
     """Выполнить Telegram delivery ранее сохранённого вложения."""
     user = conversation.user
+    kind = attachment.kind
 
     if user.telegram_id is None:
         message.delivery_status = "failed"
+        await repo.release_attachment_delivery(
+            attachment_id=attachment.id,
+            claim_token=claim_token,
+        )
         await db.flush()
         return message
 
@@ -145,7 +197,6 @@ async def _deliver_manager_attachment(
         if payload is None:
             raise ValueError("attachment_payload_unavailable")
         filename = attachment.filename or "attachment"
-        kind = attachment.kind
         upload = BufferedInputFile(payload, filename=filename)
         async with sender_bot() as bot:
             if kind == "photo":
@@ -187,6 +238,10 @@ async def _deliver_manager_attachment(
         )
 
     reconcile_telegram_write_access(user, outcome, operation="manager_chat_attachment")
+    await repo.release_attachment_delivery(
+        attachment_id=attachment.id,
+        claim_token=claim_token,
+    )
     await db.flush()
     reloaded = await repo.get_message(message.id)
     return reloaded or message

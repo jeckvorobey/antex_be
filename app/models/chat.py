@@ -166,5 +166,9 @@ class ChatAttachment(Base, TimestampMixin):
     storage_key: Mapped[str | None] = mapped_column(Text, nullable=True)
     payload: Mapped[bytes | None] = mapped_column(LargeBinary, nullable=True)
     media_metadata: Mapped[dict[str, object] | None] = mapped_column(JSON, nullable=True)
+    delivery_claim_token: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    delivery_claimed_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
 
     message: Mapped[ChatMessage] = relationship("ChatMessage", back_populates="attachments")

@@ -55,7 +55,7 @@ async def upload_chat_attachment(
         raise HTTPException(status_code=422, detail="Attachment is empty")
 
     try:
-        message, conversation, created = await send_manager_attachment(
+        message, conversation, delivery_attempted = await send_manager_attachment(
             db,
             conversation_id=conversation_id,
             client_request_id=client_request_id,
@@ -71,7 +71,7 @@ async def upload_chat_attachment(
 
     await db.commit()
     service = ChatService(db)
-    if created:
+    if delivery_attempted:
         await service.publish_outbound(message, conversation)
     return service.message_out(message)
 

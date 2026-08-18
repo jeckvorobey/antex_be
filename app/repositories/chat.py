@@ -175,6 +175,62 @@ class ChatRepository(BaseRepository[ChatConversation]):
         await self.session.flush()
         return attachment
 
+    async def claim_attachment_delivery(
+        self,
+        *,
+        attachment_id: int,
+        message_id: int,
+        claim_token: str,
+        claimed_at: datetime,
+        expired_before: datetime,
+    ) -> bool:
+        """Атомарно занять durable payload для одной Telegram delivery attempt."""
+        result = await self.session.execute(
+            update(ChatAttachment)
+            .where(
+                ChatAttachment.id == attachment_id,
+                ChatAttachment.payload.is_not(None),
+                or_(
+                    ChatAttachment.delivery_claim_token.is_(None),
+                    ChatAttachment.delivery_claimed_at.is_(None),
+                    ChatAttachment.delivery_claimed_at <= expired_before,
+                ),
+            )
+            .values(
+                delivery_claim_token=claim_token,
+                delivery_claimed_at=claimed_at,
+            )
+            .execution_options(synchronize_session=False)
+        )
+        claimed = result.rowcount == 1
+        if claimed:
+            await self.session.execute(
+                update(ChatMessage)
+                .where(ChatMessage.id == message_id)
+                .values(delivery_status="pending")
+                .execution_options(synchronize_session=False)
+            )
+        # Claim должен быть видим другим backend instances до внешнего Telegram I/O.
+        await self.session.commit()
+        return claimed
+
+    async def release_attachment_delivery(
+        self,
+        *,
+        attachment_id: int,
+        claim_token: str,
+    ) -> None:
+        """Освободить только claim текущей delivery attempt."""
+        await self.session.execute(
+            update(ChatAttachment)
+            .where(
+                ChatAttachment.id == attachment_id,
+                ChatAttachment.delivery_claim_token == claim_token,
+            )
+            .values(delivery_claim_token=None, delivery_claimed_at=None)
+            .execution_options(synchronize_session=False)
+        )
+
     async def add_revision(
         self,
         message: ChatMessage,
