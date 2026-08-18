@@ -229,12 +229,13 @@ async def update_manager_order_status(
         notify_user=False,
     )
     delivery = await notify_order_status_changed(order, manager_chat_url=None)
-    if reconcile_telegram_write_access(
+    reconcile_telegram_write_access(
         getattr(order, "user", None),
         delivery,
         operation="manager_workspace_order_status",
-    ):
-        await db.commit()
+    )
+    # Доставка может изменить id статусной карточки даже при неизменном write-access.
+    await db.commit()
 
     payload = _manager_order_out(order)
     conversation = await ChatRepository(db).get_conversation_by_user(order.UserId)
