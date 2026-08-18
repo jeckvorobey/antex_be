@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 
-from sqlalchemy import desc, func, or_, select
+from sqlalchemy import desc, func, or_, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import selectinload
 
@@ -181,13 +181,21 @@ class ChatRepository(BaseRepository[ChatConversation]):
         return revision
 
     async def touch_inbound(self, conversation: ChatConversation, *, increment_unread: bool) -> None:
+        """Атомарно обновляет входящую активность и счётчик непрочитанных."""
         now = datetime.now(UTC)
-        conversation.last_message_at = now
-        conversation.last_inbound_at = now
-        conversation.status = "open"
+        values: dict[str, object] = {
+            "last_message_at": now,
+            "last_inbound_at": now,
+            "status": "open",
+        }
         if increment_unread:
-            conversation.unread_count += 1
-        await self.session.flush()
+            values["unread_count"] = ChatConversation.unread_count + 1
+        await self.session.execute(
+            update(ChatConversation)
+            .where(ChatConversation.id == conversation.id)
+            .values(**values)
+        )
+        await self.session.refresh(conversation)
 
     async def touch_outbound(self, conversation: ChatConversation) -> None:
         now = datetime.now(UTC)
