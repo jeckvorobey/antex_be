@@ -76,25 +76,19 @@ class ManagerRealtimeHub:
             sockets.discard(websocket)
             if not sockets:
                 self._connections.pop(manager_id, None)
-        presence_key = f"{PRESENCE_PREFIX}{manager_id}"
-        current = await redis_client.get(presence_key)
-        if current == connection_id:
-            await redis_client.delete(presence_key)
-        viewing_key = f"{VIEWING_PREFIX}{manager_id}"
-        viewing = await redis_client.get(viewing_key)
-        if viewing is not None and viewing.startswith(f"{connection_id}:"):
-            await redis_client.delete(viewing_key)
+        await redis_client.delete(f"{PRESENCE_PREFIX}{manager_id}:{connection_id}")
+        await redis_client.delete(f"{VIEWING_PREFIX}{manager_id}:{connection_id}")
 
     async def refresh_presence(self, manager_id: int, connection_id: str) -> None:
         await redis_client.set(
-            f"{PRESENCE_PREFIX}{manager_id}",
-            connection_id,
+            f"{PRESENCE_PREFIX}{manager_id}:{connection_id}",
+            "1",
             ex=PRESENCE_TTL_SECONDS,
         )
-        viewing_key = f"{VIEWING_PREFIX}{manager_id}"
-        viewing = await redis_client.get(viewing_key)
-        if viewing is not None and viewing.startswith(f"{connection_id}:"):
-            await redis_client.expire(viewing_key, PRESENCE_TTL_SECONDS)
+        await redis_client.expire(
+            f"{VIEWING_PREFIX}{manager_id}:{connection_id}",
+            PRESENCE_TTL_SECONDS,
+        )
 
     async def set_viewing(
         self,
@@ -102,30 +96,30 @@ class ManagerRealtimeHub:
         connection_id: str,
         conversation_id: int | None,
     ) -> None:
-        key = f"{VIEWING_PREFIX}{manager_id}"
+        key = f"{VIEWING_PREFIX}{manager_id}:{connection_id}"
         if conversation_id is None:
-            current = await redis_client.get(key)
-            if current is not None and current.startswith(f"{connection_id}:"):
-                await redis_client.delete(key)
+            await redis_client.delete(key)
             return
         await redis_client.set(
             key,
-            f"{connection_id}:{conversation_id}",
+            str(conversation_id),
             ex=PRESENCE_TTL_SECONDS,
         )
 
     async def is_viewing(self, manager_id: int, conversation_id: int) -> bool:
-        value = await redis_client.get(f"{VIEWING_PREFIX}{manager_id}")
-        if value is None:
-            return False
-        try:
-            _connection_id, raw_conversation_id = value.rsplit(":", 1)
-            return int(raw_conversation_id) == conversation_id
-        except (TypeError, ValueError):
-            return False
+        async for key in redis_client.scan_iter(match=f"{VIEWING_PREFIX}{manager_id}:*"):
+            value = await redis_client.get(key)
+            try:
+                if value is not None and int(value) == conversation_id:
+                    return True
+            except (TypeError, ValueError):
+                continue
+        return False
 
     async def is_online(self, manager_id: int) -> bool:
-        return bool(await redis_client.exists(f"{PRESENCE_PREFIX}{manager_id}"))
+        async for _key in redis_client.scan_iter(match=f"{PRESENCE_PREFIX}{manager_id}:*"):
+            return True
+        return False
 
     async def publish(
         self,
