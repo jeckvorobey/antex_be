@@ -520,9 +520,7 @@ def manager_order_close(
             ],
         ]
     )
-    return InlineKeyboardMarkup(
-        inline_keyboard=rows
-    )
+    return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
 def manager_order_cancel_confirm(

@@ -1,4 +1,5 @@
 """Обработчики менеджера для жизненного цикла заявки."""
+
 from __future__ import annotations
 
 import logging
