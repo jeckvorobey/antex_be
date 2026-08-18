@@ -44,6 +44,7 @@ class InboundAttachment:
     filename: str | None = None
     mime_type: str | None = None
     size: int | None = None
+    metadata: dict[str, object] | None = None
 
 
 class ChatService:
@@ -110,6 +111,7 @@ class ChatService:
                 filename=attachment.filename,
                 mime_type=attachment.mime_type,
                 size=attachment.size,
+                media_metadata=attachment.metadata,
             )
 
         increment_unread = True
@@ -327,6 +329,7 @@ class ChatService:
                     filename=attachment.filename,
                     mimeType=attachment.mime_type,
                     size=attachment.size,
+                    metadata=attachment.media_metadata or {},
                 )
                 for attachment in message.__dict__.get("attachments", [])
             ],

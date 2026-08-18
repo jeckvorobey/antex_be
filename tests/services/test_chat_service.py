@@ -7,7 +7,7 @@ from sqlalchemy import func, select
 
 from app.models.chat import ChatMessage, ChatMessageRevision
 from app.models.user import User
-from app.services.chat import ChatService
+from app.services.chat import ChatService, InboundAttachment
 
 
 async def test_capture_inbound_is_idempotent(db_session) -> None:
@@ -153,3 +153,37 @@ async def test_manager_reply_forwards_telegram_message_id(db_session, monkeypatc
     assert created is True
     assert reply.delivery_status == "sent"
     assert reply.telegram_message_id == 778
+
+
+async def test_inbound_media_metadata_is_exposed_to_manager(db_session) -> None:
+    """Сохранённые Telegram metadata возвращаются manager API serializer."""
+    customer = User(telegram_id=810005)
+    db_session.add(customer)
+    await db_session.flush()
+    service = ChatService(db_session)
+
+    stored, _conversation, _created = await service.capture_inbound(
+        user=customer,
+        telegram_chat_id=810005,
+        telegram_message_id=457,
+        message_type="video_note",
+        text=None,
+        caption=None,
+        attachments=[
+            InboundAttachment(
+                kind="video_note",
+                file_id="note-file",
+                file_unique_id="note-unique",
+                filename="video-note.mp4",
+                mime_type="video/mp4",
+                size=444,
+                metadata={"duration": 7, "length": 240},
+            )
+        ],
+    )
+    reloaded = await service.repo.get_message(stored.id)
+
+    assert reloaded is not None
+    payload = service.message_out(reloaded)
+    assert payload.messageType == "video_note"
+    assert payload.attachments[0].metadata == {"duration": 7, "length": 240}

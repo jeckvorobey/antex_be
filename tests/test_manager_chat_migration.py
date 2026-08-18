@@ -21,3 +21,11 @@ def test_attachment_payload_migration_follows_manager_chat_revision() -> None:
     assert 'down_revision = "032"' in migration
     assert '"payload"' in migration
     assert '"telegram_file_id"' in migration
+
+
+def test_attachment_metadata_migration_follows_payload_revision() -> None:
+    migration = Path("alembic/versions/034_add_chat_attachment_metadata.py").read_text()
+
+    assert 'revision = "034"' in migration
+    assert 'down_revision = "033"' in migration
+    assert '"media_metadata"' in migration

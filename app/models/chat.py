@@ -6,6 +6,7 @@ from datetime import datetime
 from typing import TYPE_CHECKING
 
 from sqlalchemy import (
+    JSON,
     BigInteger,
     DateTime,
     ForeignKey,
@@ -164,5 +165,6 @@ class ChatAttachment(Base, TimestampMixin):
     size: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
     storage_key: Mapped[str | None] = mapped_column(Text, nullable=True)
     payload: Mapped[bytes | None] = mapped_column(LargeBinary, nullable=True)
+    media_metadata: Mapped[dict[str, object] | None] = mapped_column(JSON, nullable=True)
 
     message: Mapped[ChatMessage] = relationship("ChatMessage", back_populates="attachments")

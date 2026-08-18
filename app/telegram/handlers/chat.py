@@ -18,6 +18,7 @@ router = Router(name="manager-chat-capture")
 
 
 def _normalize_message(message: Message) -> tuple[str, list[InboundAttachment]]:
+    """Преобразовать Telegram media в единый durable attachment contract."""
     attachments: list[InboundAttachment] = []
     if message.photo:
         photo = message.photo[-1]
@@ -68,6 +69,89 @@ def _normalize_message(message: Message) -> tuple[str, list[InboundAttachment]]:
             )
         )
         return "video", attachments
+    if message.sticker:
+        sticker = message.sticker
+        if sticker.is_animated:
+            filename, mime_type = "sticker.tgs", "application/x-tgsticker"
+        elif sticker.is_video:
+            filename, mime_type = "sticker.webm", "video/webm"
+        else:
+            filename, mime_type = "sticker.webp", "image/webp"
+        attachments.append(
+            InboundAttachment(
+                kind="sticker",
+                file_id=sticker.file_id,
+                file_unique_id=sticker.file_unique_id,
+                filename=filename,
+                mime_type=mime_type,
+                size=sticker.file_size,
+                metadata={
+                    "width": sticker.width,
+                    "height": sticker.height,
+                    "isAnimated": sticker.is_animated,
+                    "isVideo": sticker.is_video,
+                    "type": sticker.type,
+                    "emoji": sticker.emoji,
+                    "setName": sticker.set_name,
+                    "customEmojiId": sticker.custom_emoji_id,
+                    "needsRepainting": sticker.needs_repainting,
+                },
+            )
+        )
+        return "sticker", attachments
+    if message.animation:
+        animation = message.animation
+        attachments.append(
+            InboundAttachment(
+                kind="animation",
+                file_id=animation.file_id,
+                file_unique_id=animation.file_unique_id,
+                filename=animation.file_name or "animation.mp4",
+                mime_type=animation.mime_type or "video/mp4",
+                size=animation.file_size,
+                metadata={
+                    "width": animation.width,
+                    "height": animation.height,
+                    "duration": animation.duration,
+                },
+            )
+        )
+        return "animation", attachments
+    if message.audio:
+        audio = message.audio
+        attachments.append(
+            InboundAttachment(
+                kind="audio",
+                file_id=audio.file_id,
+                file_unique_id=audio.file_unique_id,
+                filename=audio.file_name or "audio",
+                mime_type=audio.mime_type or "audio/mpeg",
+                size=audio.file_size,
+                metadata={
+                    "duration": audio.duration,
+                    "performer": audio.performer,
+                    "title": audio.title,
+                },
+            )
+        )
+        return "audio", attachments
+    if message.video_note:
+        video_note = message.video_note
+        attachments.append(
+            InboundAttachment(
+                kind="video_note",
+                file_id=video_note.file_id,
+                file_unique_id=video_note.file_unique_id,
+                filename="video-note.mp4",
+                mime_type="video/mp4",
+                size=video_note.file_size,
+                metadata={
+                    "duration": video_note.duration,
+                    "length": video_note.length,
+                },
+            )
+        )
+        return "video_note", attachments
     if message.text is not None:
         return "text", attachments
     return "other", attachments

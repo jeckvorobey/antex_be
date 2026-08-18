@@ -39,6 +39,7 @@ class ChatAttachmentOut(BaseModel):
     filename: str | None
     mimeType: str | None
     size: int | None
+    metadata: dict[str, object] = Field(default_factory=dict)
 
 
 class ChatMessageOut(BaseModel):
