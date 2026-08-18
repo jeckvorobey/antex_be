@@ -8,7 +8,7 @@ from dataclasses import dataclass
 from datetime import datetime
 
 from aiogram.exceptions import TelegramBadRequest, TelegramForbiddenError, TelegramNotFound
-from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup, WebAppInfo
+from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup, ReplyParameters, WebAppInfo
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
@@ -179,10 +179,12 @@ class ChatService:
         if conversation is None:
             raise LookupError("conversation_not_found")
         user = conversation.user
+        telegram_reply_message_id: int | None = None
         if reply_to_message_id is not None:
             replied = await self.repo.get_message(reply_to_message_id)
             if replied is None or replied.conversation_id != conversation.id:
                 raise LookupError("reply_message_not_found")
+            telegram_reply_message_id = replied.telegram_message_id
 
         message = await self.repo.create_message(
             conversation_id=conversation.id,
@@ -204,7 +206,14 @@ class ChatService:
         outcome = DeliveryOutcome.FAILED
         try:
             async with sender_bot() as bot:
-                sent = await bot.send_message(chat_id=user.telegram_id, text=text)
+                if telegram_reply_message_id is None:
+                    sent = await bot.send_message(chat_id=user.telegram_id, text=text)
+                else:
+                    sent = await bot.send_message(
+                        chat_id=user.telegram_id,
+                        text=text,
+                        reply_parameters=ReplyParameters(message_id=telegram_reply_message_id),
+                    )
             message.telegram_message_id = sent.message_id
             message.delivery_status = "sent"
             outcome = DeliveryOutcome.SENT

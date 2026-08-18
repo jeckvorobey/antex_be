@@ -113,3 +113,43 @@ async def test_manager_send_is_idempotent(db_session, monkeypatch) -> None:
     assert first.delivery_status == "sent"
     assert first.telegram_message_id == 777
     assert calls == 1
+
+
+async def test_manager_reply_forwards_telegram_message_id(db_session, monkeypatch) -> None:
+    """Внутренний reply target преобразуется в Telegram reply parameters."""
+    customer = User(telegram_id=810004, telegram_write_access=True)
+    db_session.add(customer)
+    await db_session.flush()
+    service = ChatService(db_session)
+    inbound, conversation, _ = await service.capture_inbound(
+        user=customer,
+        telegram_chat_id=810004,
+        telegram_message_id=456,
+        message_type="text",
+        text="Исходное сообщение",
+        caption=None,
+    )
+
+    class FakeBot:
+        async def send_message(self, *, chat_id: int, text: str, reply_parameters):
+            assert chat_id == 810004
+            assert text == "Ответ на сообщение"
+            assert reply_parameters.message_id == 456
+            return SimpleNamespace(message_id=778)
+
+    @asynccontextmanager
+    async def fake_sender_bot():
+        yield FakeBot()
+
+    monkeypatch.setattr("app.services.chat.sender_bot", fake_sender_bot)
+
+    reply, _conversation, created = await service.send_manager_message(
+        conversation_id=conversation.id,
+        client_request_id="request-reply-123",
+        text="Ответ на сообщение",
+        reply_to_message_id=inbound.id,
+    )
+
+    assert created is True
+    assert reply.delivery_status == "sent"
+    assert reply.telegram_message_id == 778
