@@ -47,8 +47,12 @@ REST router вызывает существующий `order_status` flow и not
 При первой загрузке message, metadata и bytes фиксируются отдельным commit до внешнего
 Telegram API side effect. Failed/pending delivery повторяется по тому же `clientRequestId`
 из database payload, включая после restart другого backend instance; sent message повторно
-не отправляется. Payload очищается только после подтверждённой доставки. Локальная файловая
-система отвергнута как multi-instance unsafe, а external object storage остаётся v1 non-goal.
+не отправляется. Перед Telegram I/O instance получает атомарный database lease; конкурентный
+instance не отправляет тот же payload, а crash-pending lease становится доступен после TTL.
+Payload очищается только после подтверждённой доставки. Локальная файловая система отвергнута
+как multi-instance unsafe, а external object storage остаётся v1 non-goal. Расширенные типы
+sticker/animation/audio/video note относятся только к inbound capture/download; outbound v1
+ограничен photo/document/voice/video.
 
 ### Страница бесед обогащается bulk-запросами
 
@@ -77,8 +81,9 @@ count не растёт на пару message/order queries для каждой 
 2. Применить `032_add_manager_chat_workspace` и создать chat tables/indexes/constraints.
 3. Применить `033_add_chat_attachment_payload` для durable bytes и nullable pending Telegram file id.
 4. Применить `034_add_chat_attachment_metadata` для media-specific JSON metadata.
-5. Запустить backend с manager API, Telegram capture и Redis realtime subscriber.
-6. При rollback сначала остановить новый runtime, затем последовательно выполнить `034 -> 033 -> 032 -> 031`; cash-rate schema остаётся установленной.
+5. Применить `035_add_chat_attachment_delivery_claim` для межинстансного delivery lease.
+6. Запустить backend с manager API, Telegram capture и Redis realtime subscriber.
+7. При rollback сначала остановить новый runtime, затем последовательно выполнить `035 -> 034 -> 033 -> 032 -> 031`; cash-rate schema остаётся установленной.
 
 ## Open Questions
 

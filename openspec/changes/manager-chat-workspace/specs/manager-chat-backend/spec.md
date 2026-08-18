@@ -71,7 +71,7 @@
 - **THEN** Telegram delivery использует Telegram message ID связанного сообщения как reply target
 
 ### Requirement: Durable chat attachments
-Система SHALL поддерживать входящие и исходящие photo, document, voice, video, sticker, animation, audio и video note с Telegram file metadata. Bytes исходящего вложения SHALL оставаться в durable storage до подтверждённой доставки или явного удаления.
+Система SHALL поддерживать входящие photo, document, voice, video, sticker, animation, audio и video note с Telegram file metadata. Исходящая manager upload API SHALL поддерживать только photo, document, voice и video. Bytes исходящего вложения SHALL оставаться в durable storage до подтверждённой доставки или явного удаления.
 
 #### Scenario: Первая отправка вложения завершается transient failure
 - **WHEN** bytes и metadata вложения сохранены, а Telegram send завершается transient exception
@@ -80,6 +80,10 @@
 #### Scenario: Backend перезапущен после неуспешной доставки вложения
 - **WHEN** новый backend instance повторяет delivery по сохранённому `clientRequestId`
 - **THEN** система использует PostgreSQL payload, обновляет то же сообщение и не создаёт duplicate
+
+#### Scenario: Два backend instance одновременно повторяют delivery
+- **WHEN** две сессии конкурируют за failed или crash-pending payload
+- **THEN** атомарный database lease разрешает Telegram delivery только одной сессии, а истёкший lease может быть занят после crash
 
 #### Scenario: Повтор уже доставленного вложения
 - **WHEN** retry использует `clientRequestId` сообщения в sent state

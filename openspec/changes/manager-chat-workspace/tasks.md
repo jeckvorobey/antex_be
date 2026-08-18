@@ -27,6 +27,7 @@
 - [x] 4.7 Retain failed outbound attachment bytes for idempotent retry and add durable-storage coverage.
 - [x] 4.8 Support sticker, animation, audio and video note metadata in Telegram capture.
 - [x] 4.9 Remove personal manager Telegram URLs from operational flows without breaking FSM routing.
+- [x] 4.10 Serialize attachment retry across backend instances with an expiring database lease and publish replay delivery results.
 
 ## 5. Verification
 
