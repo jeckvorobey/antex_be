@@ -15,6 +15,7 @@ from app.services.chat_attachments import (
     ALLOWED_ATTACHMENT_KINDS,
     MAX_MANAGER_ATTACHMENT_BYTES,
     download_manager_attachment,
+    retry_manager_attachment,
     send_manager_attachment,
 )
 
@@ -71,6 +72,36 @@ async def upload_chat_attachment(
     await db.commit()
     service = ChatService(db)
     if created:
+        await service.publish_outbound(message, conversation)
+    return service.message_out(message)
+
+
+@router.post(
+    "/chats/{conversation_id}/attachments/{client_request_id}/retry",
+    response_model=ChatMessageOut,
+)
+async def retry_chat_attachment(
+    conversation_id: int,
+    client_request_id: str,
+    db: DbDep,
+    manager: ManagerUser,
+) -> ChatMessageOut:
+    """Повторить Telegram delivery без повторной загрузки bytes клиентом."""
+    del manager
+    try:
+        message, conversation, attempted = await retry_manager_attachment(
+            db,
+            conversation_id=conversation_id,
+            client_request_id=client_request_id,
+        )
+    except LookupError as exc:
+        raise HTTPException(status_code=404, detail="Attachment not found") from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+    await db.commit()
+    service = ChatService(db)
+    if attempted:
         await service.publish_outbound(message, conversation)
     return service.message_out(message)
 

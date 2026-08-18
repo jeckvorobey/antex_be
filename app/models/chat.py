@@ -11,6 +11,7 @@ from sqlalchemy import (
     ForeignKey,
     Index,
     Integer,
+    LargeBinary,
     String,
     Text,
     UniqueConstraint,
@@ -156,11 +157,12 @@ class ChatAttachment(Base, TimestampMixin):
         nullable=False,
     )
     kind: Mapped[str] = mapped_column(String(24), nullable=False)
-    telegram_file_id: Mapped[str] = mapped_column(Text, nullable=False)
+    telegram_file_id: Mapped[str | None] = mapped_column(Text, nullable=True)
     telegram_file_unique_id: Mapped[str | None] = mapped_column(Text, nullable=True)
     filename: Mapped[str | None] = mapped_column(Text, nullable=True)
     mime_type: Mapped[str | None] = mapped_column(String(255), nullable=True)
     size: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
     storage_key: Mapped[str | None] = mapped_column(Text, nullable=True)
+    payload: Mapped[bytes | None] = mapped_column(LargeBinary, nullable=True)
 
     message: Mapped[ChatMessage] = relationship("ChatMessage", back_populates="attachments")

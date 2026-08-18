@@ -34,7 +34,7 @@ class ManagerOrderSummary(BaseModel):
 class ChatAttachmentOut(BaseModel):
     id: int
     kind: str
-    fileId: str
+    fileId: str | None
     fileUniqueId: str | None
     filename: str | None
     mimeType: str | None
