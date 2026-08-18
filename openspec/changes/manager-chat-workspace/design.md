@@ -42,6 +42,27 @@ Repository выполняет `unread_count = unread_count + 1` в БД и об�
 
 REST router вызывает существующий `order_status` flow и notification helpers. Дублирование status transitions в chat service запрещено.
 
+### Исходящие вложения сохраняются в PostgreSQL до Telegram delivery
+
+При первой загрузке message, metadata и bytes фиксируются отдельным commit до внешнего
+Telegram API side effect. Failed/pending delivery повторяется по тому же `clientRequestId`
+из database payload, включая после restart другого backend instance; sent message повторно
+не отправляется. Payload очищается только после подтверждённой доставки. Локальная файловая
+система отвергнута как multi-instance unsafe, а external object storage остаётся v1 non-goal.
+
+### Страница бесед обогащается bulk-запросами
+
+Repository загружает последние сообщения страницы и последние заявки пользователей двумя
+ограниченными bulk-контрактами. Serializer не выполняет SQL внутри item-loop, поэтому query
+count не растёт на пару message/order queries для каждой беседы.
+
+### Operational communication использует только official surfaces
+
+Клиент начинает диалог callback-кнопкой в текущем официальном bot chat; callback очищает
+активный exchange FSM, после чего catch-all сохраняет сообщение. Менеджер открывает заявки и
+чаты только через Manager Mini App `web_app`. Персональные `t.me/<manager>` и `tg://user`
+не используются в operational notifications, status cards или keyboards.
+
 ## Risks / Trade-offs
 
 - [Redis outage] → persistence не блокируется; publish логируется, клиент восстанавливает состояние через REST.
@@ -54,9 +75,11 @@ REST router вызывает существующий `order_status` flow и not
 
 1. Применить `031_add_order_delivery_rate` из актуального `dev`.
 2. Применить `032_add_manager_chat_workspace` и создать chat tables/indexes/constraints.
-3. Запустить backend с manager API, Telegram capture и Redis realtime subscriber.
-4. При rollback сначала остановить новый runtime, затем downgrade `032 -> 031`; cash-rate schema остаётся установленной.
+3. Применить `033_add_chat_attachment_payload` для durable bytes и nullable pending Telegram file id.
+4. Применить `034_add_chat_attachment_metadata` для media-specific JSON metadata.
+5. Запустить backend с manager API, Telegram capture и Redis realtime subscriber.
+6. При rollback сначала остановить новый runtime, затем последовательно выполнить `034 -> 033 -> 032 -> 031`; cash-rate schema остаётся установленной.
 
 ## Open Questions
 
-- Durable storage и retry policy для исходящих вложений уточняются в оставшихся remediation tasks.
+Нет.

@@ -21,16 +21,16 @@
 - [x] 4.1 Delay polling offset and webhook `2xx` acknowledgement until ordinary or edited Telegram capture succeeds, with real Dispatcher RED/GREEN tests.
 - [x] 4.2 Replace unread read-modify-write with an atomic database increment and concurrency regression test.
 - [x] 4.3 Store presence/viewing per `connection_id` across backend instances and preserve other live connections on disconnect.
-- [ ] 4.4 Persist new order notification message ID independently of cached write-access changes.
-- [ ] 4.5 Forward reply target using the stored Telegram message ID.
-- [ ] 4.6 Bulk-enrich conversation lists without per-conversation message/order queries.
-- [ ] 4.7 Retain failed outbound attachment bytes for idempotent retry and add durable-storage coverage.
-- [ ] 4.8 Support sticker, animation, audio and video note metadata in Telegram capture.
-- [ ] 4.9 Remove personal manager Telegram URLs from operational flows without breaking FSM routing.
+- [x] 4.4 Persist new order notification message ID independently of cached write-access changes.
+- [x] 4.5 Forward reply target using the stored Telegram message ID.
+- [x] 4.6 Bulk-enrich conversation lists without per-conversation message/order queries.
+- [x] 4.7 Retain failed outbound attachment bytes for idempotent retry and add durable-storage coverage.
+- [x] 4.8 Support sticker, animation, audio and video note metadata in Telegram capture.
+- [x] 4.9 Remove personal manager Telegram URLs from operational flows without breaking FSM routing.
 
 ## 5. Verification
 
 - [x] 5.1 Run focused RED/GREEN tests for update redelivery, concurrent unread and multi-connection Redis state.
 - [x] 5.2 Run Ruff and the full backend test suite.
-- [ ] 5.3 Verify migration upgrade/downgrade on a clean database and generate offline SQL.
-- [ ] 5.4 Run `openspec validate --strict --all` after all remediation tasks are complete.
+- [x] 5.3 Verify migration upgrade/downgrade on a clean database and generate offline SQL.
+- [x] 5.4 Run `openspec validate --strict --all` after all remediation tasks are complete; this change validates strictly, while the global command reports the pre-existing empty `referral-code-null-generation` delta.

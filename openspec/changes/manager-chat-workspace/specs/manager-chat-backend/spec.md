@@ -77,9 +77,21 @@
 - **WHEN** bytes и metadata вложения сохранены, а Telegram send завершается transient exception
 - **THEN** сообщение остаётся в failed state и повторная попытка может использовать те же сохранённые bytes без повторной загрузки клиентом
 
+#### Scenario: Backend перезапущен после неуспешной доставки вложения
+- **WHEN** новый backend instance повторяет delivery по сохранённому `clientRequestId`
+- **THEN** система использует PostgreSQL payload, обновляет то же сообщение и не создаёт duplicate
+
+#### Scenario: Повтор уже доставленного вложения
+- **WHEN** retry использует `clientRequestId` сообщения в sent state
+- **THEN** система возвращает сохранённый результат без повторной Telegram send
+
 #### Scenario: Telegram присылает поддерживаемый media update
 - **WHEN** catch-all handler получает один из поддерживаемых media types
 - **THEN** система сохраняет корректный message type и полные Telegram file metadata
+
+#### Scenario: Manager скачивает частый Telegram media type
+- **WHEN** manager запрашивает protected attachment для sticker, animation, audio или video note
+- **THEN** система использует сохранённые file metadata и возвращает bytes через единый download endpoint
 
 ### Requirement: Offline manager fallback
 Система SHALL отправлять компактное Telegram fallback уведомление manager только при отсутствии живого realtime presence.
@@ -112,3 +124,7 @@
 #### Scenario: Клиент получает operational notification
 - **WHEN** bot отправляет сообщение о заявке или контакте с менеджером
 - **THEN** доступные действия ведут в bot conversation или Manager Mini App без личной ссылки менеджера
+
+#### Scenario: Клиент начинает официальный чат из активного workflow
+- **WHEN** клиент нажимает кнопку начала диалога при активном exchange FSM
+- **THEN** система очищает FSM перед следующим сообщением и сохраняет его через manager chat catch-all
