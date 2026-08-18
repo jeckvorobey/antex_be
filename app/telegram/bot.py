@@ -7,18 +7,23 @@ import logging
 import os
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager, suppress
+from typing import Any
 from urllib.parse import quote
 
 from aiogram import Bot, Dispatcher
 from aiogram.client.default import DefaultBotProperties
 from aiogram.client.session.aiohttp import AiohttpSession
+from aiogram.dispatcher.event.bases import UNHANDLED
 from aiogram.enums import ParseMode
 from aiogram.exceptions import TelegramConflictError, TelegramNetworkError
 from aiogram.fsm.storage.redis import RedisStorage
+from aiogram.methods import TelegramMethod
+from aiogram.types import Update
 from aiohttp import ClientError
 
 from app.core.config import settings
 from app.core.redis import redis_client
+from app.telegram.exceptions import TelegramCaptureRetryError
 from app.telegram.handlers import exchange, operator, start
 from app.telegram.middlewares.logging import LoggingMiddleware
 
@@ -35,6 +40,32 @@ dp: Dispatcher | None = None
 polling_task: asyncio.Task[None] | None = None
 _bot_identity_cache: dict[str, int | str | None] | None = None
 _polling_lock_lost: asyncio.Event | None = None
+
+
+class DurableDispatcher(Dispatcher):
+    """Диспетчер удерживает polling update, пока manager chat capture требует retry."""
+
+    async def _process_update(
+        self,
+        bot: Bot,
+        update: Update,
+        call_answer: bool = True,
+        **kwargs: Any,
+    ) -> bool:
+        """Пробрасывает retry-маркер до polling loop вместо успешного ack."""
+        try:
+            response = await self.feed_update(bot, update, **kwargs)
+            if call_answer and isinstance(response, TelegramMethod):
+                await self.silent_call_request(bot=bot, result=response)
+        except TelegramCaptureRetryError:
+            raise
+        except Exception:
+            logger.exception(
+                "Telegram update processing failed and was acknowledged: update_id=%s",
+                update.update_id,
+            )
+            return True
+        return response is not UNHANDLED
 
 
 def parse_proxy_value(value: str) -> str:
@@ -74,7 +105,7 @@ def _create_bot() -> Bot:
 
 
 def _create_dispatcher() -> Dispatcher:
-    dispatcher = Dispatcher(storage=storage)
+    dispatcher = DurableDispatcher(storage=storage)
     dispatcher.message.middleware(LoggingMiddleware())
     dispatcher.callback_query.middleware(LoggingMiddleware())
     dispatcher.include_router(start.router)
@@ -223,6 +254,7 @@ async def _run_polling_with_retry() -> None:
             await dp.start_polling(
                 bot,
                 allowed_updates=allowed_updates,
+                handle_as_tasks=False,
                 handle_signals=False,
                 close_bot_session=False,
             )
@@ -243,6 +275,16 @@ async def _run_polling_with_retry() -> None:
                 identity.get("username"),
                 attempt,
                 delay,
+                exc,
+            )
+            await asyncio.sleep(delay)
+            delay = min(delay * 2, MAX_POLLING_RETRY_DELAY)
+        except TelegramCaptureRetryError as exc:
+            if _polling_lock_lost is not None and _polling_lock_lost.is_set():
+                logger.info("Telegram polling exiting: lock ownership lost during capture retry")
+                return
+            logger.warning(
+                "Telegram capture failed before polling acknowledgement; retrying update: error=%s",
                 exc,
             )
             await asyncio.sleep(delay)

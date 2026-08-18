@@ -14,7 +14,6 @@ from app.telegram import bot as telegram_bot
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/telegram", tags=["telegram"])
-WEBHOOK_DISPATCH_TIMEOUT_SECONDS = 1.0
 
 
 @router.post("/webhook")
@@ -42,10 +41,9 @@ async def telegram_webhook(
     logger.info("Telegram webhook received: update_id=%s", update_id)
     update = Update.model_validate(body)
     dispatch_started_at = time.perf_counter()
-    await telegram_bot.dp.feed_webhook_update(
+    await telegram_bot.dp.feed_update(
         bot=telegram_bot.bot,
         update=update,
-        _timeout=WEBHOOK_DISPATCH_TIMEOUT_SECONDS,
     )
     dispatch_duration_ms = (time.perf_counter() - dispatch_started_at) * 1000
     ack_duration_ms = (time.perf_counter() - received_at) * 1000

@@ -28,7 +28,7 @@ Conversation, message, revision и attachment metadata сохраняются д
 
 ### Telegram update подтверждается только после успешного capture
 
-Catch-all handlers регистрируются после доменных routers. Исключение persistence/capture логируется и пробрасывается aiogram, чтобы transport мог повторно доставить update; dedupe по Telegram chat/message identity делает повтор безопасным. Альтернатива с подавлением исключения теряет update навсегда.
+Catch-all handlers регистрируются после доменных routers. Ошибка persistence/capture оборачивается в отдельный retry-маркер. В polling custom Dispatcher обрабатывает updates последовательно и пробрасывает этот маркер до цикла до следующего запроса `getUpdates`, поэтому offset не сдвигается. Webhook синхронно ожидает `feed_update` и при retry-маркере возвращает non-2xx. Dedupe по Telegram chat/message identity делает повтор безопасным. Простого повторного `raise` внутри handler недостаточно: стандартный polling Dispatcher aiogram проглатывает exception как обработанный, а webhook timeout переводит handler в фон и отвечает `200`.
 
 ### Unread увеличивается SQL-выражением
 
@@ -48,6 +48,7 @@ REST router вызывает существующий `order_status` flow и not
 - [Abrupt WebSocket loss] → connection keys могут жить до 45 секунд; TTL ограничивает ложный online/viewing.
 - [Scan cost] → scope содержит одного менеджера и малое число живых sockets; per-connection keys важнее глобального перезаписываемого key.
 - [Повтор Telegram update] → уникальная Telegram identity и `clientRequestId` обеспечивают idempotency.
+- [Детерминированная ошибка capture блокирует polling очередь] → update остаётся неподтверждённым и повторяется с bounded backoff; причина видна в error logs и требует operational исправления вместо потери данных.
 
 ## Migration Plan
 

@@ -10,6 +10,7 @@ from aiogram.types import Message
 from app.core.database import create_db_session
 from app.enums.user import has_operator_access
 from app.services.chat import ChatService, InboundAttachment
+from app.telegram.exceptions import TelegramCaptureRetryError
 from app.telegram.services.user_service import check_user
 
 logger = logging.getLogger(__name__)
@@ -123,23 +124,23 @@ async def capture_unhandled_private_message(message: Message) -> None:
         return
     try:
         await _capture(message)
-    except Exception:
+    except Exception as exc:
         logger.exception(
             "Failed to capture Telegram chat message: chat_id=%s message_id=%s",
             message.chat.id,
             message.message_id,
         )
-        raise
+        raise TelegramCaptureRetryError("Telegram chat capture requires retry") from exc
 
 
 @router.edited_message(F.chat.type == "private")
 async def capture_edited_private_message(message: Message) -> None:
     try:
         await _capture(message, edited=True)
-    except Exception:
+    except Exception as exc:
         logger.exception(
             "Failed to capture edited Telegram chat message: chat_id=%s message_id=%s",
             message.chat.id,
             message.message_id,
         )
-        raise
+        raise TelegramCaptureRetryError("Edited Telegram chat capture requires retry") from exc

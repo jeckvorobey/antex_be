@@ -24,7 +24,7 @@
 
 #### Scenario: Transient capture failure
 - **WHEN** обработка обычного или edited Telegram update завершается transient exception
-- **THEN** handler пробрасывает exception transport-слою, чтобы update мог быть доставлен повторно
+- **THEN** polling не запрашивает следующий offset, а webhook не отвечает `2xx`, пока capture не завершится успешно, чтобы Telegram мог доставить update повторно
 
 ### Requirement: Atomic unread state
 Система SHALL увеличивать unread count атомарно в PostgreSQL для каждого входящего сообщения, кроме случая, когда хотя бы одно живое manager connection просматривает эту беседу.

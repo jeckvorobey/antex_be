@@ -5,10 +5,15 @@ import logging
 from types import SimpleNamespace
 
 import pytest
+from aiogram import Router
 from aiogram.exceptions import TelegramConflictError
+from aiogram.fsm.storage.memory import MemoryStorage
 from aiogram.methods import GetUpdates
+from aiogram.types import Update
 
 from app.telegram import bot as telegram_bot
+from app.telegram.exceptions import TelegramCaptureRetryError
+from app.telegram.handlers import chat as chat_handler
 
 
 class _FakeSession:
@@ -74,6 +79,40 @@ class _IdleDispatcher:
         self.stopped = True
 
 
+class _AckAwareDispatcher:
+    def __init__(self) -> None:
+        self.polling_kwargs: dict[str, object] = {}
+
+    def resolve_used_update_types(self) -> list[str]:
+        return ["message"]
+
+    async def start_polling(self, *_args, **kwargs) -> None:
+        self.polling_kwargs = kwargs
+        raise asyncio.CancelledError
+
+
+class _OffsetAdvanced(BaseException):
+    """Останавливает probe, если polling уже запросил следующий offset."""
+
+
+class _OffsetProbeBot:
+    def __init__(self) -> None:
+        self.id = 123456
+        self.session = SimpleNamespace(timeout=None)
+        self.update: Update | None = None
+        self.requested_offsets: list[int | None] = []
+
+    async def me(self):
+        return SimpleNamespace(username="antex_test_bot", full_name="AntEx Test Bot")
+
+    async def __call__(self, method, **_kwargs):
+        self.requested_offsets.append(method.offset)
+        if len(self.requested_offsets) == 1:
+            assert self.update is not None
+            return [self.update]
+        raise _OffsetAdvanced
+
+
 @pytest.mark.asyncio
 async def test_polling_conflict_logs_rolling_update_reason_and_retries(
     monkeypatch: pytest.MonkeyPatch,
@@ -99,6 +138,65 @@ async def test_polling_conflict_logs_rolling_update_reason_and_retries(
     assert "rolling update" in caplog.text
     assert "another active polling client" in caplog.text
     assert "attempt=1" in caplog.text
+
+
+@pytest.mark.asyncio
+async def test_polling_process_propagates_capture_failure_before_offset_ack(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Polling transport не подтверждает update при ошибке manager chat capture."""
+    memory_storage = MemoryStorage()
+    monkeypatch.setattr(telegram_bot, "storage", memory_storage)
+    monkeypatch.setattr(telegram_bot.start, "router", Router())
+    monkeypatch.setattr(telegram_bot.exchange, "router", Router())
+    monkeypatch.setattr(telegram_bot.operator, "router", Router())
+    dispatcher = telegram_bot._create_dispatcher()
+    dispatcher.message.register(chat_handler.capture_unhandled_private_message)
+    bot = _OffsetProbeBot()
+
+    async def fail_capture(_message, *, edited: bool = False) -> None:
+        assert edited is False
+        raise RuntimeError("temporary capture outage")
+
+    monkeypatch.setattr(chat_handler, "_capture", fail_capture)
+    bot.update = Update.model_validate(
+        {
+            "update_id": 501,
+            "message": {
+                "message_id": 41,
+                "date": 1_717_871_000,
+                "chat": {"id": 777, "type": "private", "first_name": "Tester"},
+                "from": {"id": 777, "is_bot": False, "first_name": "Tester"},
+                "text": "Привет",
+            },
+        },
+        context={"bot": bot},
+    )
+
+    try:
+        with pytest.raises(TelegramCaptureRetryError) as exc_info:
+            await dispatcher._polling(bot, handle_as_tasks=False)
+    finally:
+        await memory_storage.close()
+
+    assert isinstance(exc_info.value.__cause__, RuntimeError)
+    assert bot.requested_offsets == [None]
+
+
+@pytest.mark.asyncio
+async def test_polling_waits_for_processing_before_requesting_next_offset(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Polling обрабатывает update последовательно до подтверждения offset."""
+    fake_bot = _FakeBot()
+    dispatcher = _AckAwareDispatcher()
+    monkeypatch.setattr(telegram_bot, "bot", fake_bot)
+    monkeypatch.setattr(telegram_bot, "dp", dispatcher)
+
+    with pytest.raises(asyncio.CancelledError):
+        await telegram_bot._run_polling_with_retry()
+
+    assert dispatcher.polling_kwargs["handle_as_tasks"] is False
 
 
 @pytest.mark.asyncio

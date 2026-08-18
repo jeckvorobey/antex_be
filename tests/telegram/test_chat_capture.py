@@ -4,6 +4,7 @@ from types import SimpleNamespace
 
 import pytest
 
+from app.telegram.exceptions import TelegramCaptureRetryError
 from app.telegram.handlers.chat import (
     _normalize_message,
     capture_edited_private_message,
@@ -56,8 +57,9 @@ async def test_transient_failure_of_regular_update_is_raised_for_redelivery(monk
     monkeypatch.setattr("app.telegram.handlers.chat._capture", fail_capture)
     message = SimpleNamespace(text="Привет", chat=SimpleNamespace(id=101), message_id=11)
 
-    with pytest.raises(RuntimeError, match="temporary database outage"):
+    with pytest.raises(TelegramCaptureRetryError) as exc_info:
         await capture_unhandled_private_message(message)
+    assert isinstance(exc_info.value.__cause__, RuntimeError)
 
 
 async def test_transient_failure_of_edited_update_is_raised_for_redelivery(monkeypatch) -> None:
@@ -70,5 +72,6 @@ async def test_transient_failure_of_edited_update_is_raised_for_redelivery(monke
     monkeypatch.setattr("app.telegram.handlers.chat._capture", fail_capture)
     message = SimpleNamespace(chat=SimpleNamespace(id=102), message_id=12)
 
-    with pytest.raises(RuntimeError, match="temporary redis outage"):
+    with pytest.raises(TelegramCaptureRetryError) as exc_info:
         await capture_edited_private_message(message)
+    assert isinstance(exc_info.value.__cause__, RuntimeError)

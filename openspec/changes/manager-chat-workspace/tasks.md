@@ -18,7 +18,7 @@
 
 ## 4. Durability remediation
 
-- [x] 4.1 Propagate transient ordinary and edited Telegram capture failures for redelivery with RED/GREEN tests.
+- [x] 4.1 Delay polling offset and webhook `2xx` acknowledgement until ordinary or edited Telegram capture succeeds, with real Dispatcher RED/GREEN tests.
 - [x] 4.2 Replace unread read-modify-write with an atomic database increment and concurrency regression test.
 - [x] 4.3 Store presence/viewing per `connection_id` across backend instances and preserve other live connections on disconnect.
 - [ ] 4.4 Persist new order notification message ID independently of cached write-access changes.
