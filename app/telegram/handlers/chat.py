@@ -5,16 +5,26 @@ from __future__ import annotations
 import logging
 
 from aiogram import F, Router
-from aiogram.types import Message
+from aiogram.fsm.context import FSMContext
+from aiogram.types import CallbackQuery, Message
 
 from app.core.database import create_db_session
 from app.enums.user import has_operator_access
 from app.services.chat import ChatService, InboundAttachment
 from app.telegram.exceptions import TelegramCaptureRetryError
+from app.telegram.i18n import get_translator, normalize_locale
 from app.telegram.services.user_service import check_user
 
 logger = logging.getLogger(__name__)
 router = Router(name="manager-chat-capture")
+
+
+@router.callback_query(F.data == "chat:write")
+async def open_official_manager_chat(callback: CallbackQuery, state: FSMContext) -> None:
+    """Перевести клиента из текущего FSM в официальный bot conversation."""
+    await state.clear()
+    translate = get_translator(normalize_locale(callback.from_user.language_code))
+    await callback.answer(translate("customer-chat-reply-prompt"), show_alert=True)
 
 
 def _normalize_message(message: Message) -> tuple[str, list[InboundAttachment]]:

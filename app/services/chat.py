@@ -11,7 +11,6 @@ from aiogram.exceptions import TelegramBadRequest, TelegramForbiddenError, Teleg
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup, ReplyParameters, WebAppInfo
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.config import settings
 from app.models.chat import ChatConversation, ChatMessage
 from app.models.order import Order
 from app.models.user import User
@@ -28,10 +27,12 @@ from app.schemas.chat import (
 from app.services.chat_realtime import manager_realtime_hub
 from app.services.order_notifications import (
     DeliveryOutcome,
+    build_manager_workspace_url,
     is_permanent_telegram_delivery_error,
     reconcile_telegram_write_access,
 )
 from app.telegram.bot import sender_bot
+from app.telegram.i18n import get_user_translator
 
 logger = logging.getLogger(__name__)
 
@@ -415,26 +416,35 @@ class ChatService:
             logger.exception("Failed to read manager presence; sending Telegram fallback")
 
         customer = conversation.user
+        translate = get_user_translator(manager)
         display_name = (
             " ".join(part for part in [customer.first_name, customer.last_name] if part).strip()
-            or (f"@{customer.username}" if customer.username else f"Клиент #{customer.id}")
+            or (
+                f"@{customer.username}"
+                if customer.username
+                else translate("manager-chat-fallback-anonymous", user_id=customer.id)
+            )
         )
-        preview = message.text or message.caption or f"[{message.message_type}]"
+        preview = message.text or message.caption or translate(
+            "manager-chat-fallback-media",
+            media_type=message.message_type,
+        )
         if len(preview) > 300:
             preview = f"{preview[:297]}…"
         text = (
-            "<b>Новое сообщение клиента</b>\n\n"
+            f"<b>{html.escape(translate('manager-chat-fallback-title'))}</b>\n\n"
             f"<b>{html.escape(display_name)}</b>\n"
             f"{html.escape(preview)}"
         )
         reply_markup: InlineKeyboardMarkup | None = None
-        if settings.frontend_webapp_url:
+        manager_app_url = build_manager_workspace_url(conversation_id=conversation.id)
+        if manager_app_url:
             reply_markup = InlineKeyboardMarkup(
                 inline_keyboard=[
                     [
                         InlineKeyboardButton(
-                            text="Открыть чаты",
-                            web_app=WebAppInfo(url=settings.frontend_webapp_url),
+                            text=translate("manager-chat-fallback-open"),
+                            web_app=WebAppInfo(url=manager_app_url),
                         )
                     ]
                 ]

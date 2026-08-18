@@ -228,7 +228,7 @@ async def update_manager_order_status(
         status=body.status,
         notify_user=False,
     )
-    delivery = await notify_order_status_changed(order, manager_chat_url=None)
+    delivery = await notify_order_status_changed(order)
     reconcile_telegram_write_access(
         getattr(order, "user", None),
         delivery,

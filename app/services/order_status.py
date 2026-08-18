@@ -15,7 +15,6 @@ from app.repositories.order import OrderRepository
 from app.repositories.user import UserRepository
 from app.services.order_notifications import (
     DeliveryOutcome,
-    build_chat_url_for_user,
     is_delivery_success,
     notify_order_status_changed,
     reconcile_telegram_write_access,
@@ -206,14 +205,8 @@ async def update_order_status(
     if not notify_user:
         return hydrated
 
-    manager = await UserRepository(db).get_manager()
-    manager_chat_url = build_chat_url_for_user(manager) if manager is not None else None
-
     try:
-        delivery = await notify_order_status_changed(
-            hydrated,
-            manager_chat_url=manager_chat_url,
-        )
+        delivery = await notify_order_status_changed(hydrated)
         reconcile_telegram_write_access(
             getattr(hydrated, "user", None),
             delivery,

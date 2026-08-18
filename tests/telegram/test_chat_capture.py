@@ -1,10 +1,12 @@
 from __future__ import annotations
 
 from types import SimpleNamespace
+from unittest.mock import AsyncMock
 
 import pytest
 
 from app.telegram.exceptions import TelegramCaptureRetryError
+from app.telegram.handlers import chat as chat_handler
 from app.telegram.handlers.chat import (
     _normalize_message,
     capture_edited_private_message,
@@ -33,6 +35,23 @@ def test_normalize_text_message() -> None:
 
     assert kind == "text"
     assert attachments == []
+
+
+async def test_official_chat_callback_clears_fsm_and_prompts_in_user_locale() -> None:
+    """Переход в bot conversation освобождает сообщение от активного exchange FSM."""
+    callback = SimpleNamespace(
+        from_user=SimpleNamespace(language_code="en"),
+        answer=AsyncMock(),
+    )
+    state = SimpleNamespace(clear=AsyncMock())
+
+    await chat_handler.open_official_manager_chat(callback, state)
+
+    state.clear.assert_awaited_once()
+    callback.answer.assert_awaited_once_with(
+        "Send your message in this bot chat. The manager will reply here.",
+        show_alert=True,
+    )
 
 
 def test_normalize_document_attachment() -> None:

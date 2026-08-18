@@ -11,8 +11,6 @@ from app.services import order_notifications
 from app.services.order_notifications import (
     DeliveryOutcome,
     _build_manager_order_text,
-    build_chat_url_for_user,
-    build_manager_contact_url,
     build_manager_status_text,
     edit_manager_order_card,
     notify_order_created,
@@ -269,9 +267,9 @@ async def test_customer_handoff_uses_rich_message_and_public_number(
     assert "Заявка #2026050008" in bot.rich_sent[0]["rich_message"].html
     assert "10 000 ₮ USDT" in bot.rich_sent[0]["rich_message"].html
     button = bot.rich_sent[0]["reply_markup"].inline_keyboard[0][0]
-    assert button.text == "💬 Написать менеджеру"
-    assert "text=" in button.url
-    assert "%232026050008" in button.url
+    assert button.text == "💬 Написать в этот чат"
+    assert button.url is None
+    assert button.callback_data == "chat:write"
 
 
 @pytest.mark.asyncio
@@ -293,8 +291,7 @@ async def test_customer_handoff_falls_back_once_to_regular_html(
     assert delivery == DeliveryOutcome.FALLBACK
     assert bot.rich_sent == []
     assert len(bot.sent) == 1
-    assert "Напишите менеджеру первым" in bot.sent[0]["text"]
-    assert "поле ввода" not in bot.sent[0]["text"]
+    assert "официальном чате бота" in bot.sent[0]["text"]
 
 
 @pytest.mark.asyncio
@@ -410,7 +407,7 @@ async def test_customer_handoff_falls_back_to_new_regular_notification_and_delet
 
     assert delivery == DeliveryOutcome.FALLBACK
     assert bot.edited == []
-    assert "Напишите менеджеру первым" in bot.sent[0]["text"]
+    assert "официальном чате бота" in bot.sent[0]["text"]
     assert bot.deleted == [(700002, 55)]
     assert bot.rich_sent == []
 
@@ -440,18 +437,16 @@ async def test_customer_handoff_sends_new_fallback_when_rich_method_is_not_found
     assert bot.deleted == [(700002, 55)]
 
 
-def test_manager_contact_url_rejects_invalid_username() -> None:
-    assert build_manager_contact_url(SimpleNamespace(username="manager?start=evil")) is None
+def test_manager_workspace_url_uses_miniapp_order_route(monkeypatch) -> None:
+    monkeypatch.setattr(order_notifications.settings, "frontend_webapp_url", "https://app.test/")
 
-
-def test_client_chat_url_rejects_invalid_username_and_uses_telegram_id() -> None:
-    user = SimpleNamespace(username="customer?text=spoofed", telegram_id=700002)
-
-    assert build_chat_url_for_user(user) == "tg://user?id=700002"
+    assert order_notifications.build_manager_workspace_url(order_id=8) == (
+        "https://app.test/#/manager/orders/8"
+    )
 
 
 @pytest.mark.asyncio
-async def test_customer_handoff_without_manager_username_fails_without_leaking_draft(
+async def test_customer_handoff_without_manager_username_stays_in_official_bot(
     monkeypatch: pytest.MonkeyPatch,
     caplog: pytest.LogCaptureFixture,
 ) -> None:
@@ -465,11 +460,13 @@ async def test_customer_handoff_without_manager_username_fails_without_leaking_d
 
     delivery = await send_customer_handoff(order, SimpleNamespace(username=None))
 
-    assert delivery == DeliveryOutcome.FAILED
-    assert bot.sent == [] and bot.rich_sent == []
-    assert "manager_username_missing" in caplog.text
+    assert delivery == DeliveryOutcome.RICH
+    assert len(bot.rich_sent) == 1
+    button = bot.rich_sent[0]["reply_markup"].inline_keyboard[0][0]
+    assert button.url is None
+    assert button.callback_data == "chat:write"
     assert "Готов продолжить обмен" not in caplog.text
-    assert "https://t.me/" not in caplog.text
+    assert "manager_username_missing" not in caplog.text
 
 
 @pytest.mark.asyncio
@@ -717,7 +714,7 @@ async def test_notify_order_status_changed_adds_summary_for_completed_order(
 
     monkeypatch.setattr(order_notifications, "_get_telegram_bot", lambda: bot)
 
-    await notify_order_status_changed(order, manager_chat_url="https://t.me/manager")
+    await notify_order_status_changed(order)
 
     assert bot.edited == []
     assert bot.deleted == [(700002, 55)]
@@ -766,32 +763,16 @@ async def test_notify_order_status_changed_adds_write_manager_button_for_process
         userNotificationMessageId=55,
     )
 
-    user_button: dict[str, object] = {}
-
-    def _fake_user_order_write_manager(*args, **kwargs):
-        user_button.update(kwargs)
-        return SimpleNamespace(
-            inline_keyboard=[
-                [SimpleNamespace(text="💬 Написать в чат", url="https://t.me/share/url")]
-            ]
-        )
-
     monkeypatch.setattr(order_notifications, "_get_telegram_bot", lambda: bot)
-    monkeypatch.setattr(
-        order_notifications,
-        "user_order_write_manager",
-        _fake_user_order_write_manager,
-    )
 
-    await notify_order_status_changed(order, manager_chat_url="https://t.me/manager")
+    await notify_order_status_changed(order)
 
     assert bot.edited[0]["chat_id"] == 700002
     assert "принята в работу" in bot.edited[0]["text"]
     reply_markup = cast(Any, bot.edited[0]["reply_markup"])
-    user_text = str(user_button["message_text"]).replace("\u2068", "").replace("\u2069", "")
-    assert user_text == "Здравствуйте! Я по заявке #2026050008. Готов продолжить обмен."
-    assert reply_markup.inline_keyboard[0][0].text == "💬 Написать в чат"
-    assert reply_markup.inline_keyboard[0][0].url == "https://t.me/share/url"
+    assert reply_markup.inline_keyboard[0][0].text == "💬 Написать в этот чат"
+    assert reply_markup.inline_keyboard[0][0].url is None
+    assert reply_markup.inline_keyboard[0][0].callback_data == "chat:write"
 
 
 def test_notify_order_created_manager_keyboard_has_no_chat_button() -> None:

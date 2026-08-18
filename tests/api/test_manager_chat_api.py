@@ -1,8 +1,12 @@
 from __future__ import annotations
 
+from httpx import ASGITransport, AsyncClient
 from sqlalchemy import event
 
+from app.api import deps
 from app.api.routers.manager import list_chats, update_manager_order_status
+from app.core.config import settings
+from app.core.security import create_access_token
 from app.enums.country import Country
 from app.enums.order import OrderStatus
 from app.enums.user import UserRole
@@ -135,3 +139,41 @@ async def test_chat_list_bulk_enrichment_has_bounded_query_count(db_session) -> 
         f"MC83{index:04d}" for index in range(5)
     }
     assert queries <= 8
+
+
+async def test_manager_chat_endpoint_allows_manager_and_rejects_user(
+    db_session,
+    monkeypatch,
+) -> None:
+    """Реальный manager endpoint возвращает MANAGER 200 и USER 403."""
+    from app.main import app
+
+    manager = User(telegram_id=832001, role=int(UserRole.MANAGER))
+    customer = User(telegram_id=832002, role=int(UserRole.USER))
+    db_session.add_all([manager, customer])
+    await db_session.commit()
+    monkeypatch.setattr(settings, "jwt_secret", "manager-chat-api-test-secret-32-bytes")
+
+    async def override_db_session():
+        yield db_session
+
+    app.dependency_overrides[deps.get_db_session] = override_db_session
+    transport = ASGITransport(app=app)
+    try:
+        async with AsyncClient(transport=transport, base_url="http://test") as client:
+            manager_token = create_access_token({"sub": str(manager.id), "role": manager.role})
+            user_token = create_access_token({"sub": str(customer.id), "role": customer.role})
+            manager_response = await client.get(
+                "/api/manager/chats",
+                headers={"Authorization": f"Bearer {manager_token}"},
+            )
+            user_response = await client.get(
+                "/api/manager/chats",
+                headers={"Authorization": f"Bearer {user_token}"},
+            )
+    finally:
+        app.dependency_overrides.clear()
+
+    assert manager_response.status_code == 200
+    assert manager_response.json() == {"items": [], "total": 0, "unreadTotal": 0}
+    assert user_response.status_code == 403

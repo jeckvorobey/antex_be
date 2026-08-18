@@ -89,7 +89,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator:
 
         logger.info("Starting Telegram bot in %s mode", settings.telegram_mode)
         _, dispatcher = await telegram_bot.init_bot()
-        # Manager chat is deliberately last: start/exchange/operator workflows keep priority.
+        # Manager chat подключается последним, сохраняя приоритет workflow-обработчиков.
         dispatcher.include_router(manager_chat_handler.router)
         if settings.telegram_mode == "polling":
             await telegram_bot.start_polling()
