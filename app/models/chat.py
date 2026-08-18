@@ -52,7 +52,9 @@ class ChatConversation(Base, TimestampMixin):
     )
     last_message_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     last_inbound_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
-    last_outbound_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    last_outbound_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
     last_read_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
     user: Mapped[User] = relationship("User")
@@ -88,7 +90,9 @@ class ChatMessage(Base, TimestampMixin):
     caption: Mapped[str | None] = mapped_column(Text, nullable=True)
     telegram_chat_id: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
     telegram_message_id: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
-    telegram_edit_date: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    telegram_edit_date: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
     delivery_status: Mapped[str] = mapped_column(
         String(16),
         default="received",
@@ -134,7 +138,9 @@ class ChatMessageRevision(Base, TimestampMixin):
     revision: Mapped[int] = mapped_column(Integer, nullable=False)
     old_text: Mapped[str | None] = mapped_column(Text, nullable=True)
     new_text: Mapped[str | None] = mapped_column(Text, nullable=True)
-    telegram_edit_date: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    telegram_edit_date: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
 
     message: Mapped[ChatMessage] = relationship("ChatMessage", back_populates="revisions")
 

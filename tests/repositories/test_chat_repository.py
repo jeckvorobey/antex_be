@@ -74,7 +74,7 @@ async def test_chat_repository_preserves_edit_revision(db_session) -> None:
 
 
 async def test_concurrent_unread_increments_are_not_lost(db_session) -> None:
-    """Два запроса со stale snapshot должны атомарно увеличить unread до двух."""
+    """Два запроса, прочитавшие одно состояние, атомарно увеличивают unread до двух."""
     user = User(telegram_id=700003)
     db_session.add(user)
     await db_session.flush()

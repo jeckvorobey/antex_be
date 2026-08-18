@@ -180,7 +180,9 @@ class ChatRepository(BaseRepository[ChatConversation]):
         await self.session.flush()
         return revision
 
-    async def touch_inbound(self, conversation: ChatConversation, *, increment_unread: bool) -> None:
+    async def touch_inbound(
+        self, conversation: ChatConversation, *, increment_unread: bool
+    ) -> None:
         """Атомарно обновляет входящую активность и счётчик непрочитанных."""
         now = datetime.now(UTC)
         values: dict[str, object] = {
@@ -191,9 +193,7 @@ class ChatRepository(BaseRepository[ChatConversation]):
         if increment_unread:
             values["unread_count"] = ChatConversation.unread_count + 1
         await self.session.execute(
-            update(ChatConversation)
-            .where(ChatConversation.id == conversation.id)
-            .values(**values)
+            update(ChatConversation).where(ChatConversation.id == conversation.id).values(**values)
         )
         await self.session.refresh(conversation)
 

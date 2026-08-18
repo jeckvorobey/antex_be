@@ -27,8 +27,12 @@ def upgrade() -> None:
         sa.Column("last_inbound_at", sa.DateTime(timezone=True), nullable=True),
         sa.Column("last_outbound_at", sa.DateTime(timezone=True), nullable=True),
         sa.Column("last_read_at", sa.DateTime(timezone=True), nullable=True),
-        sa.Column("createdAt", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False),
-        sa.Column("updatedAt", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False),
+        sa.Column(
+            "createdAt", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False
+        ),
+        sa.Column(
+            "updatedAt", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False
+        ),
         sa.ForeignKeyConstraint(["user_id"], ["Users.id"], ondelete="CASCADE"),
         sa.UniqueConstraint("user_id", name="uq_chat_conversations_user_id"),
     )
@@ -54,11 +58,17 @@ def upgrade() -> None:
         sa.Column("telegram_chat_id", sa.BigInteger(), nullable=True),
         sa.Column("telegram_message_id", sa.BigInteger(), nullable=True),
         sa.Column("telegram_edit_date", sa.DateTime(timezone=True), nullable=True),
-        sa.Column("delivery_status", sa.String(length=16), server_default="received", nullable=False),
+        sa.Column(
+            "delivery_status", sa.String(length=16), server_default="received", nullable=False
+        ),
         sa.Column("client_request_id", sa.String(length=64), nullable=True),
         sa.Column("reply_to_message_id", sa.Integer(), nullable=True),
-        sa.Column("createdAt", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False),
-        sa.Column("updatedAt", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False),
+        sa.Column(
+            "createdAt", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False
+        ),
+        sa.Column(
+            "updatedAt", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False
+        ),
         sa.ForeignKeyConstraint(
             ["conversation_id"],
             ["ChatConversations.id"],
@@ -91,8 +101,12 @@ def upgrade() -> None:
         sa.Column("old_text", sa.Text(), nullable=True),
         sa.Column("new_text", sa.Text(), nullable=True),
         sa.Column("telegram_edit_date", sa.DateTime(timezone=True), nullable=True),
-        sa.Column("createdAt", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False),
-        sa.Column("updatedAt", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False),
+        sa.Column(
+            "createdAt", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False
+        ),
+        sa.Column(
+            "updatedAt", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False
+        ),
         sa.ForeignKeyConstraint(["message_id"], ["ChatMessages.id"], ondelete="CASCADE"),
         sa.UniqueConstraint(
             "message_id",
@@ -112,8 +126,12 @@ def upgrade() -> None:
         sa.Column("mime_type", sa.String(length=255), nullable=True),
         sa.Column("size", sa.BigInteger(), nullable=True),
         sa.Column("storage_key", sa.Text(), nullable=True),
-        sa.Column("createdAt", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False),
-        sa.Column("updatedAt", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False),
+        sa.Column(
+            "createdAt", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False
+        ),
+        sa.Column(
+            "updatedAt", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False
+        ),
         sa.ForeignKeyConstraint(["message_id"], ["ChatMessages.id"], ondelete="CASCADE"),
     )
     op.create_index("ix_chat_attachments_message_id", "ChatAttachments", ["message_id"])
