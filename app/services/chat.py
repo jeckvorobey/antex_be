@@ -417,17 +417,20 @@ class ChatService:
 
         customer = conversation.user
         translate = get_user_translator(manager)
-        display_name = (
-            " ".join(part for part in [customer.first_name, customer.last_name] if part).strip()
-            or (
-                f"@{customer.username}"
-                if customer.username
-                else translate("manager-chat-fallback-anonymous", user_id=customer.id)
-            )
+        display_name = " ".join(
+            part for part in [customer.first_name, customer.last_name] if part
+        ).strip() or (
+            f"@{customer.username}"
+            if customer.username
+            else translate("manager-chat-fallback-anonymous", user_id=customer.id)
         )
-        preview = message.text or message.caption or translate(
-            "manager-chat-fallback-media",
-            media_type=message.message_type,
+        preview = (
+            message.text
+            or message.caption
+            or translate(
+                "manager-chat-fallback-media",
+                media_type=message.message_type,
+            )
         )
         if len(preview) > 300:
             preview = f"{preview[:297]}…"
