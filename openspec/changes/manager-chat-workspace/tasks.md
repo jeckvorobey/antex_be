@@ -31,6 +31,6 @@
 ## 5. Verification
 
 - [x] 5.1 Run focused RED/GREEN tests for update redelivery, concurrent unread and multi-connection Redis state.
-- [ ] 5.2 Run Ruff and the full backend test suite.
+- [x] 5.2 Run Ruff and the full backend test suite.
 - [ ] 5.3 Verify migration upgrade/downgrade on a clean database and generate offline SQL.
 - [ ] 5.4 Run `openspec validate --strict --all` after all remediation tasks are complete.
