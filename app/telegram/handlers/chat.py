@@ -129,6 +129,7 @@ async def capture_unhandled_private_message(message: Message) -> None:
             message.chat.id,
             message.message_id,
         )
+        raise
 
 
 @router.edited_message(F.chat.type == "private")
@@ -141,3 +142,4 @@ async def capture_edited_private_message(message: Message) -> None:
             message.chat.id,
             message.message_id,
         )
+        raise

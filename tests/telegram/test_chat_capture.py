@@ -2,7 +2,13 @@ from __future__ import annotations
 
 from types import SimpleNamespace
 
-from app.telegram.handlers.chat import _normalize_message
+import pytest
+
+from app.telegram.handlers.chat import (
+    _normalize_message,
+    capture_edited_private_message,
+    capture_unhandled_private_message,
+)
 
 
 def _message(**values):
@@ -38,3 +44,31 @@ def test_normalize_document_attachment() -> None:
     assert len(attachments) == 1
     assert attachments[0].file_id == "file-1"
     assert attachments[0].filename == "receipt.pdf"
+
+
+async def test_transient_failure_of_regular_update_is_raised_for_redelivery(monkeypatch) -> None:
+    """Временная ошибка capture должна оставить обычный Telegram update неподтверждённым."""
+
+    async def fail_capture(_message, *, edited: bool = False) -> None:
+        assert edited is False
+        raise RuntimeError("temporary database outage")
+
+    monkeypatch.setattr("app.telegram.handlers.chat._capture", fail_capture)
+    message = SimpleNamespace(text="Привет", chat=SimpleNamespace(id=101), message_id=11)
+
+    with pytest.raises(RuntimeError, match="temporary database outage"):
+        await capture_unhandled_private_message(message)
+
+
+async def test_transient_failure_of_edited_update_is_raised_for_redelivery(monkeypatch) -> None:
+    """Временная ошибка capture должна оставить edited Telegram update неподтверждённым."""
+
+    async def fail_capture(_message, *, edited: bool = False) -> None:
+        assert edited is True
+        raise RuntimeError("temporary redis outage")
+
+    monkeypatch.setattr("app.telegram.handlers.chat._capture", fail_capture)
+    message = SimpleNamespace(chat=SimpleNamespace(id=102), message_id=12)
+
+    with pytest.raises(RuntimeError, match="temporary redis outage"):
+        await capture_edited_private_message(message)
