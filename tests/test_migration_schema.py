@@ -47,6 +47,7 @@ EXPECTED_ORDER_COLUMNS = {
     "currencyBuy",
     "amountBuy",
     "rate",
+    "deliveryRate",
     "status",
     "contactTelegram",
     "methodGet",
@@ -171,6 +172,8 @@ def test_model_metadata_contains_required_migration_columns() -> None:
     assert {"id", "slug", "name"} <= set(Base.metadata.tables["MarketingPlatforms"].columns.keys())
     assert {"id", "code", "name"} <= set(Base.metadata.tables["MarketingCurrencies"].columns.keys())
     assert "address" not in Base.metadata.tables["Orders"].columns
+    assert "cashDeliveryFee" not in Base.metadata.tables["Orders"].columns
+    assert Base.metadata.tables["Orders"].columns["deliveryRate"].nullable is True
     assert Base.metadata.tables["Orders"].columns["CityId"].nullable is True
     assert Base.metadata.tables["Orders"].columns["country"].nullable is False
     write_access = Base.metadata.tables["Users"].columns["telegram_write_access"]

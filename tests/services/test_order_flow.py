@@ -24,6 +24,11 @@ from app.services import order_flow
 from app.services.order_notifications import DeliveryOutcome, OrderCreatedDelivery
 
 
+def _usdt_thb_rate() -> Rate:
+    """Полная cash-фикстура для тестов, не проверяющих валютную политику."""
+    return Rate(currency="USDTTHB", price=36.2, margin=3.0, country=Country.THAILAND)
+
+
 @pytest.mark.asyncio
 async def test_create_order_for_user_passes_global_manager_to_notification(
     db_session: AsyncSession,
@@ -44,7 +49,7 @@ async def test_create_order_for_user_passes_global_manager_to_notification(
     )
     rate = Rate(currency="RUBTHB", price=0.41, margin=3.0, country=Country.THAILAND)
 
-    db_session.add_all([city, manager, customer, rate])
+    db_session.add_all([city, manager, customer, rate, _usdt_thb_rate()])
     await db_session.flush()
 
     customer.city_id = city.id
@@ -87,7 +92,13 @@ async def test_create_order_persists_server_quote_and_display_snapshot(
         country=Country.GEORGIA,
         display_reversed=True,
     )
-    db_session.add_all([city, manager, customer, rate])
+    conversion_rate = Rate(
+        currency="USDTGEL",
+        price=2.7,
+        margin=3.0,
+        country=Country.GEORGIA,
+    )
+    db_session.add_all([city, manager, customer, rate, conversion_rate])
     await db_session.flush()
     customer.city_id = city.id
     await db_session.commit()
@@ -109,10 +120,213 @@ async def test_create_order_persists_server_quote_and_display_snapshot(
     )
 
     assert created.rate == pytest.approx(0.0291)
-    assert created.amountBuy == pytest.approx(873)
-    assert created.displayRate == pytest.approx(34.3642611684)
+    assert created.deliveryRate == pytest.approx(0.0282)
+    assert created.amountBuy == pytest.approx(846)
+    assert created.displayRate == pytest.approx(35.4609929078)
     assert created.displayCurrencySell == "GEL"
     assert created.displayCurrencyBuy == "RUB"
+
+
+@pytest.mark.asyncio
+async def test_cash_order_persists_original_and_effective_vnd_rates(
+    db_session: AsyncSession,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Cash Order хранит базовый rate отдельно от эффективного deliveryRate."""
+    city = City(name="Ho Chi Minh", country=Country.VIETNAM)
+    customer = User(telegram_id=700013, username="customer-vnd")
+    db_session.add_all(
+        [
+            city,
+            customer,
+            Rate(
+                currency="RUBVND",
+                price=298.8190358473305,
+                margin=0.0,
+                country=Country.VIETNAM,
+            ),
+            Rate(
+                currency="USDTVND",
+                price=27334.45652173913,
+                margin=8.0,
+                country=Country.VIETNAM,
+            ),
+        ]
+    )
+    await db_session.flush()
+    customer.city_id = city.id
+    await db_session.commit()
+    monkeypatch.setattr(order_flow, "notify_order_created", AsyncMock())
+
+    created = await order_flow.create_order_for_user(
+        db_session,
+        customer,
+        MiniappOrderCreate(
+            country=Country.VIETNAM,
+            cityId=city.id,
+            currencySell="RUB",
+            amountSell=25_000,
+            currencyBuy="VND",
+            amountBuy=1,
+            rate=1,
+            methodGet="cash",
+        ),
+    )
+
+    assert created.rate == pytest.approx(298.8190358473305)
+    assert created.deliveryRate == pytest.approx(288.759956)
+    assert created.amountBuy == pytest.approx(7_218_998.90)
+    assert created.displayRate == pytest.approx(288.759956)
+    assert created.displayCurrencySell == "RUB"
+    assert created.displayCurrencyBuy == "VND"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("method_get", "amount_sell", "expected_delivery_rate"),
+    [
+        ("cash", 100_000, 0.4),
+        ("qrcode", 30_000, None),
+    ],
+)
+async def test_create_order_persists_delivery_rate_only_for_cash(
+    db_session: AsyncSession,
+    monkeypatch: pytest.MonkeyPatch,
+    method_get: str,
+    amount_sell: int,
+    expected_delivery_rate: float | None,
+) -> None:
+    """Неверная ветка persistence заполнит deliveryRate для другого метода или обнулит cash."""
+    city = City(name=f"Bangkok-{method_get}", country=Country.THAILAND)
+    customer = User(telegram_id=700020 + amount_sell, username=f"customer-{method_get}")
+    rate = Rate(currency="RUBTHB", price=0.4, margin=0.0, country=Country.THAILAND)
+    db_session.add_all([city, customer, rate])
+    await db_session.flush()
+    customer.city_id = city.id
+    await db_session.commit()
+    monkeypatch.setattr(order_flow, "notify_order_created", AsyncMock())
+
+    created = await order_flow.create_order_for_user(
+        db_session,
+        customer,
+        MiniappOrderCreate(
+            country=Country.THAILAND,
+            cityId=city.id,
+            currencySell="RUB",
+            amountSell=amount_sell,
+            currencyBuy="THB",
+            amountBuy=1,
+            rate=99,
+            methodGet=method_get,
+        ),
+    )
+
+    if expected_delivery_rate is None:
+        assert created.deliveryRate is None
+    else:
+        assert created.deliveryRate == pytest.approx(expected_delivery_rate)
+    assert created.rate == pytest.approx(0.4)
+    assert created.amountBuy == pytest.approx(amount_sell * 0.4)
+
+
+@pytest.mark.asyncio
+async def test_create_order_recalculates_latest_rate_instead_of_client_quote(
+    db_session: AsyncSession,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Изменение Rates до submit должно заменить устаревшие клиентские значения."""
+    city = City(name="Bangkok-latest", country=Country.THAILAND)
+    customer = User(telegram_id=700099, username="customer-latest")
+    rate = Rate(currency="RUBTHB", price=0.5, margin=0.0, country=Country.THAILAND)
+    db_session.add_all([city, customer, rate])
+    await db_session.flush()
+    customer.city_id = city.id
+    await db_session.commit()
+    monkeypatch.setattr(order_flow, "notify_order_created", AsyncMock())
+
+    created = await order_flow.create_order_for_user(
+        db_session,
+        customer,
+        MiniappOrderCreate(
+            country=Country.THAILAND,
+            cityId=city.id,
+            currencySell="RUB",
+            amountSell=30_000,
+            currencyBuy="THB",
+            amountBuy=12_000,
+            rate=0.4,
+            methodGet="qrcode",
+        ),
+    )
+
+    assert created.rate == pytest.approx(0.5)
+    assert created.amountBuy == pytest.approx(15_000)
+    assert created.deliveryRate is None
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("currency_buy", "country", "conversion_price", "conversion_margin"),
+    [
+        ("THB", Country.THAILAND, None, None),
+        ("THB", Country.THAILAND, 0.0, 0.0),
+        ("THB", Country.THAILAND, -1.0, 0.0),
+        ("THB", Country.THAILAND, 2.5, 100.0),
+        ("GEL", Country.GEORGIA, None, None),
+        ("GEL", Country.GEORGIA, 0.0, 0.0),
+        ("GEL", Country.GEORGIA, -1.0, 0.0),
+        ("GEL", Country.GEORGIA, 2.5, 100.0),
+        ("VND", Country.VIETNAM, None, None),
+        ("VND", Country.VIETNAM, 0.0, 0.0),
+        ("VND", Country.VIETNAM, -1.0, 0.0),
+        ("VND", Country.VIETNAM, 2.5, 100.0),
+    ],
+)
+async def test_invalid_cash_conversion_rate_does_not_create_partial_order(
+    db_session: AsyncSession,
+    monkeypatch: pytest.MonkeyPatch,
+    currency_buy: str,
+    country: Country,
+    conversion_price: float | None,
+    conversion_margin: float | None,
+) -> None:
+    """Некорректная conversion-пара любой RUB-валюты останавливает flow до Order."""
+    city = City(name=f"{currency_buy}-no-conversion", country=country)
+    customer = User(telegram_id=700100, username=f"customer-no-conversion-{currency_buy}")
+    rates = [Rate(currency=f"RUB{currency_buy}", price=1.0, margin=0.0, country=country)]
+    if conversion_price is not None and conversion_margin is not None:
+        rates.append(
+            Rate(
+                currency=f"USDT{currency_buy}",
+                price=conversion_price,
+                margin=conversion_margin,
+                country=country,
+            )
+        )
+    db_session.add_all([city, customer, *rates])
+    await db_session.flush()
+    customer.city_id = city.id
+    await db_session.commit()
+    monkeypatch.setattr(order_flow, "notify_order_created", AsyncMock())
+
+    with pytest.raises(AntExException) as error:
+        await order_flow.create_order_for_user(
+            db_session,
+            customer,
+            MiniappOrderCreate(
+                country=country,
+                cityId=city.id,
+                currencySell="RUB",
+                amountSell=30_000,
+                currencyBuy=currency_buy,
+                amountBuy=12_000,
+                rate=0.4,
+                methodGet="cash",
+            ),
+        )
+
+    assert error.value.code == "RATE_UNAVAILABLE"
+    assert await db_session.scalar(select(Order)) is None
 
 
 @pytest.mark.asyncio
@@ -143,7 +357,7 @@ async def test_create_order_syncs_write_access_from_actual_user_delivery(
         telegram_write_access=initial_access,
     )
     rate = Rate(currency="RUBTHB", price=0.41, margin=3.0, country=Country.THAILAND)
-    db_session.add_all([city, manager, customer, rate])
+    db_session.add_all([city, manager, customer, rate, _usdt_thb_rate()])
     await db_session.flush()
     customer.city_id = city.id
     await db_session.commit()
@@ -183,7 +397,7 @@ async def test_create_order_persists_customer_notification_message_id(
     )
     customer = User(telegram_id=700002, username="customer", first_name="Happy")
     rate = Rate(currency="RUBTHB", price=0.41, margin=3.0, country=Country.THAILAND)
-    db_session.add_all([city, manager, customer, rate])
+    db_session.add_all([city, manager, customer, rate, _usdt_thb_rate()])
     await db_session.flush()
     customer.city_id = city.id
     await db_session.commit()
@@ -225,7 +439,7 @@ async def test_create_order_returns_reloaded_order_when_notification_id_commit_f
     manager = User(telegram_id=700001, username="manager", role=int(UserRole.MANAGER))
     customer = User(telegram_id=700002, username="customer", first_name="Happy")
     rate = Rate(currency="RUBTHB", price=0.41, margin=3.0, country=Country.THAILAND)
-    db_session.add_all([city, manager, customer, rate])
+    db_session.add_all([city, manager, customer, rate, _usdt_thb_rate()])
     await db_session.flush()
     customer.city_id = city.id
     await db_session.commit()
@@ -274,7 +488,7 @@ async def test_create_order_snapshots_latest_marketing_touch_and_window(
     rate = Rate(currency="RUBTHB", price=0.41, margin=3.0, country=Country.THAILAND)
     platform = MarketingPlatform(slug="snapshot_ads", name="Snapshot Ads")
     currency = MarketingCurrency(code="TST", name="Test")
-    db_session.add_all([city, customer, rate, platform, currency])
+    db_session.add_all([city, customer, rate, platform, currency, _usdt_thb_rate()])
     await db_session.flush()
     campaign = MarketingCampaign(
         code="SNAPSHOT01",

@@ -75,6 +75,7 @@ def build_order_out(order) -> OrderOut:
     from app.services.order_rate import build_order_rate_presentation
 
     rate_presentation = build_order_rate_presentation(order)
+    delivery_rate = getattr(order, "deliveryRate", None)
 
     return OrderOut(
         id=order.id,
@@ -86,7 +87,7 @@ def build_order_out(order) -> OrderOut:
         amountSell=order.amountSell,
         currencyBuy=order.currencyBuy,
         amountBuy=order.amountBuy,
-        rate=order.rate,
+        rate=delivery_rate if delivery_rate is not None else order.rate,
         rateDisplay=rate_presentation.value_display if rate_presentation else None,
         rateText=rate_presentation.text if rate_presentation else None,
         status=order.status,
