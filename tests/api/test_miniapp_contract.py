@@ -2339,3 +2339,35 @@ def test_admin_summary_today_start_uses_configured_timezone() -> None:
     )
 
     assert today_start == datetime(2026, 5, 7, 0, 0, tzinfo=UTC)
+
+
+@pytest.mark.asyncio
+async def test_miniapp_navigation_by_role(
+    api_client: tuple[AsyncClient, AsyncSession],
+) -> None:
+    client, db_session = api_client
+    _, manager, customer = await seed_exchange_data(db_session)
+
+    customer_token = create_access_token({"sub": str(customer.id), "type": "user"})
+    manager_token = create_access_token({"sub": str(manager.id), "type": "user"})
+
+    customer_res = await client.get(
+        "/api/miniapp/navigation",
+        headers={"Authorization": f"Bearer {customer_token}"},
+    )
+    assert customer_res.status_code == 200
+    customer_nav = customer_res.json()
+    assert [item["name"] for item in customer_nav] == ["home", "exchange", "history", "profile"]
+
+    manager_res = await client.get(
+        "/api/miniapp/navigation",
+        headers={"Authorization": f"Bearer {manager_token}"},
+    )
+    assert manager_res.status_code == 200
+    manager_nav = manager_res.json()
+    assert [item["name"] for item in manager_nav] == [
+        "managerChats",
+        "managerOrders",
+        "managerProfile",
+    ]
+    assert manager_nav[0]["badge_key"] == "unread_chats"
