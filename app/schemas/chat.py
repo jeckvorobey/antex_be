@@ -36,6 +36,9 @@ class ManagerOrderSummary(BaseModel):
     amountSell: int
     currencyBuy: str
     amountBuy: float | None
+    rate: float | None
+    rateDisplay: str | None
+    rateText: str | None
     country: Country
     city: ManagerOrderCity | None = None
     status: int

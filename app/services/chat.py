@@ -339,7 +339,10 @@ class ChatService:
 
     @staticmethod
     def order_out(order: Order) -> ManagerOrderSummary:
+        from app.services.order_rate import build_order_rate_presentation
+
         city = getattr(order, "city", None)
+        rate_presentation = build_order_rate_presentation(order)
         return ManagerOrderSummary(
             id=order.id,
             publicNumber=order.publicNumber,
@@ -347,6 +350,9 @@ class ChatService:
             amountSell=order.amountSell,
             currencyBuy=order.currencyBuy,
             amountBuy=order.amountBuy,
+            rate=rate_presentation.value if rate_presentation else None,
+            rateDisplay=rate_presentation.value_display if rate_presentation else None,
+            rateText=rate_presentation.text if rate_presentation else None,
             country=order.country,
             city=(
                 ManagerOrderCity(

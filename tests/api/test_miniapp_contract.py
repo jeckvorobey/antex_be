@@ -2366,8 +2366,15 @@ async def test_miniapp_navigation_by_role(
     assert manager_res.status_code == 200
     manager_nav = manager_res.json()
     assert [item["name"] for item in manager_nav] == [
-        "managerChats",
+        "managerDashboard",
         "managerOrders",
+        "managerChats",
+        "managerSettings",
+    ]
+    assert [item["route"] for item in manager_nav] == [
+        "managerDashboard",
+        "managerOrders",
+        "managerChats",
         "managerProfile",
     ]
-    assert manager_nav[0]["badge_key"] == "unread_chats"
+    assert manager_nav[2]["badge_key"] == "unread_chats"

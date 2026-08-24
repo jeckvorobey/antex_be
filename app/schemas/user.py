@@ -28,11 +28,11 @@ def get_role_navigation(role: int | UserRole) -> list[UserNavigationItem]:
     if normalized_role == int(UserRole.MANAGER):
         return [
             UserNavigationItem(
-                name="managerChats",
-                label="Чаты",
-                icon="chat_bubble_outline",
-                route="managerChats",
-                badge_key="unread_chats",
+                name="managerDashboard",
+                label="Дашборд",
+                icon="space_dashboard",
+                route="managerDashboard",
+                badge_key=None,
             ),
             UserNavigationItem(
                 name="managerOrders",
@@ -42,9 +42,16 @@ def get_role_navigation(role: int | UserRole) -> list[UserNavigationItem]:
                 badge_key=None,
             ),
             UserNavigationItem(
-                name="managerProfile",
-                label="Профиль",
-                icon="person_outline",
+                name="managerChats",
+                label="Чаты",
+                icon="chat_bubble_outline",
+                route="managerChats",
+                badge_key="unread_chats",
+            ),
+            UserNavigationItem(
+                name="managerSettings",
+                label="Настройки",
+                icon="settings",
                 route="managerProfile",
                 badge_key=None,
             ),
