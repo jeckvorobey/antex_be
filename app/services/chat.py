@@ -22,6 +22,7 @@ from app.schemas.chat import (
     ChatConversationOut,
     ChatMessageOut,
     ManagerChatUser,
+    ManagerOrderCity,
     ManagerOrderSummary,
 )
 from app.services.chat_realtime import manager_realtime_hub
@@ -338,6 +339,7 @@ class ChatService:
 
     @staticmethod
     def order_out(order: Order) -> ManagerOrderSummary:
+        city = getattr(order, "city", None)
         return ManagerOrderSummary(
             id=order.id,
             publicNumber=order.publicNumber,
@@ -345,6 +347,19 @@ class ChatService:
             amountSell=order.amountSell,
             currencyBuy=order.currencyBuy,
             amountBuy=order.amountBuy,
+            country=order.country,
+            city=(
+                ManagerOrderCity(
+                    id=city.id,
+                    name=city.name,
+                    country=city.country,
+                    countryRuName=city.country.ru_name,
+                    countryCode=city.country.code,
+                    countryFlag=city.country.flag,
+                )
+                if city is not None
+                else None
+            ),
             status=order.status,
             methodGet=order.methodGet,
             createdAt=order.createdAt,

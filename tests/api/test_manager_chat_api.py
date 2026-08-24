@@ -9,7 +9,7 @@ from sqlalchemy import event
 from starlette.requests import Request
 
 from app.api import deps
-from app.api.routers.manager import list_chats, update_manager_order_status
+from app.api.routers.manager import list_chats, list_manager_orders, update_manager_order_status
 from app.api.routers.manager_attachments import upload_chat_attachment
 from app.core.config import settings
 from app.core.security import create_access_token
@@ -17,12 +17,78 @@ from app.enums.country import Country
 from app.enums.order import OrderStatus
 from app.enums.user import UserRole
 from app.models.chat import ChatConversation, ChatMessage
+from app.models.city import City
 from app.models.order import Order
 from app.models.user import User
 from app.repositories.chat import ChatRepository
 from app.schemas.chat import ManagerOrderStatusRequest
 from app.services.chat_attachments import send_manager_attachment
 from app.services.order_notifications import DeliveryOutcome
+
+
+async def test_manager_orders_include_backend_location_and_customer_name(db_session) -> None:
+    """Manager DTO carries persisted location and customer identity for the card."""
+    manager = User(telegram_id=829900, role=int(UserRole.MANAGER))
+    customer = User(
+        telegram_id=829901,
+        username="not-the-card-title",
+        first_name="Сергей",
+        last_name="Иванов",
+    )
+    city = City(name="Паттайя", country=Country.THAILAND)
+    db_session.add_all([manager, customer, city])
+    await db_session.flush()
+    db_session.add_all(
+        [
+            Order(
+                UserId=customer.id,
+                CityId=city.id,
+                country=Country.THAILAND,
+                currencySell="RUB",
+                amountSell=150_000,
+                currencyBuy="THB",
+                amountBuy=52_350,
+                status=int(OrderStatus.CREATED),
+                methodGet="cash",
+                publicNumber="MC8299001",
+            ),
+            Order(
+                UserId=customer.id,
+                CityId=None,
+                country=Country.VIETNAM,
+                currencySell="RUB",
+                amountSell=20_000,
+                currencyBuy="VND",
+                amountBuy=5_979_619.21,
+                status=int(OrderStatus.PROCESSING),
+                methodGet="qrcode",
+                publicNumber="MC8299002",
+            ),
+        ]
+    )
+    await db_session.commit()
+
+    payload = await list_manager_orders(db=db_session, manager=manager)
+    items = {item.publicNumber: item for item in payload.items}
+
+    with_city = items["MC8299001"]
+    assert with_city.country == "thailand"
+    assert with_city.city is not None
+    assert with_city.city.model_dump() == {
+        "id": city.id,
+        "name": "Паттайя",
+        "country": Country.THAILAND,
+        "countryRuName": "Таиланд",
+        "countryCode": "th",
+        "countryFlag": "🇹🇭",
+    }
+    assert with_city.user is not None
+    assert with_city.user.firstName == "Сергей"
+    assert with_city.user.lastName == "Иванов"
+
+    without_city = items["MC8299002"]
+    assert without_city.country == "vietnam"
+    assert without_city.city is None
 
 
 async def test_status_endpoint_commits_new_notification_id_without_write_access_change(

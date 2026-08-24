@@ -8,6 +8,8 @@ from typing import Literal
 
 from pydantic import BaseModel, Field, field_validator
 
+from app.enums.country import Country
+
 
 class ManagerChatUser(BaseModel):
     id: int
@@ -18,6 +20,15 @@ class ManagerChatUser(BaseModel):
     photoUrl: str | None
 
 
+class ManagerOrderCity(BaseModel):
+    id: int
+    name: str
+    country: Country
+    countryRuName: str
+    countryCode: str
+    countryFlag: str
+
+
 class ManagerOrderSummary(BaseModel):
     id: int
     publicNumber: str
@@ -25,6 +36,8 @@ class ManagerOrderSummary(BaseModel):
     amountSell: int
     currencyBuy: str
     amountBuy: float | None
+    country: Country
+    city: ManagerOrderCity | None = None
     status: int
     methodGet: str
     createdAt: datetime
