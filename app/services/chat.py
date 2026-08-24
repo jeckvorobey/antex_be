@@ -177,6 +177,8 @@ class ChatService:
             conversation = await self.repo.get_conversation(existing.conversation_id)
             if conversation is None:
                 raise RuntimeError("Chat conversation disappeared for idempotent message")
+            if conversation.id != conversation_id:
+                raise LookupError("conversation_not_found")
             return existing, conversation, False
 
         conversation = await self.repo.get_conversation(conversation_id)
@@ -201,6 +203,11 @@ class ChatService:
             reply_to_message_id=reply_to_message_id,
         )
         await self.repo.touch_outbound(conversation)
+
+        # Idempotency key должен стать durable до внешнего Telegram side effect.
+        # После успешной доставки повтор запроса увидит pending-запись и не
+        # отправит тот же текст второй раз при остановке процесса до финального commit.
+        await self.db.commit()
 
         if user.telegram_id is None:
             message.delivery_status = "failed"

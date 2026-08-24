@@ -22,8 +22,77 @@ from app.models.order import Order
 from app.models.user import User
 from app.repositories.chat import ChatRepository
 from app.schemas.chat import ManagerOrderStatusRequest
+from app.services.chat import ChatService
 from app.services.chat_attachments import send_manager_attachment
 from app.services.order_notifications import DeliveryOutcome
+
+
+async def test_manager_text_idempotency_is_scoped_to_conversation(db_session) -> None:
+    first_customer = User(telegram_id=829801)
+    second_customer = User(telegram_id=829802)
+    db_session.add_all([first_customer, second_customer])
+    await db_session.flush()
+    first = ChatConversation(user_id=first_customer.id)
+    second = ChatConversation(user_id=second_customer.id)
+    db_session.add_all([first, second])
+    await db_session.flush()
+    db_session.add(
+        ChatMessage(
+            conversation_id=first.id,
+            direction="outbound",
+            message_type="text",
+            text="Первое сообщение",
+            telegram_chat_id=first_customer.telegram_id,
+            delivery_status="sent",
+            client_request_id="shared-request-id",
+        )
+    )
+    await db_session.commit()
+
+    with pytest.raises(LookupError, match="conversation_not_found"):
+        await ChatService(db_session).send_manager_message(
+            conversation_id=second.id,
+            client_request_id="shared-request-id",
+            text="Вторая беседа",
+        )
+
+
+async def test_manager_text_is_committed_before_telegram_delivery(db_session, monkeypatch) -> None:
+    customer = User(telegram_id=829803)
+    db_session.add(customer)
+    await db_session.flush()
+    conversation = ChatConversation(user_id=customer.id)
+    db_session.add(conversation)
+    await db_session.commit()
+
+    commit_completed = False
+    original_commit = db_session.commit
+
+    async def tracked_commit() -> None:
+        nonlocal commit_completed
+        await original_commit()
+        commit_completed = True
+
+    class FakeBot:
+        async def send_message(self, **_kwargs):
+            assert commit_completed
+            return SimpleNamespace(message_id=829804)
+
+    @asynccontextmanager
+    async def fake_sender_bot():
+        yield FakeBot()
+
+    monkeypatch.setattr(db_session, "commit", tracked_commit)
+    monkeypatch.setattr("app.services.chat.sender_bot", fake_sender_bot)
+
+    message, _conversation, created = await ChatService(db_session).send_manager_message(
+        conversation_id=conversation.id,
+        client_request_id="durable-text-request",
+        text="Проверка durable idempotency",
+    )
+
+    assert created is True
+    assert message.delivery_status == "sent"
 
 
 async def test_manager_orders_include_backend_location_and_customer_name(db_session) -> None:
