@@ -102,6 +102,10 @@ class ChatMessage(Base, TimestampMixin):
         nullable=False,
     )
     client_request_id: Mapped[str | None] = mapped_column(String(64), unique=True, nullable=True)
+    delivery_claim_token: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    delivery_claimed_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
     reply_to_message_id: Mapped[int | None] = mapped_column(
         Integer,
         ForeignKey("ChatMessages.id", ondelete="SET NULL"),

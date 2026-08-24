@@ -5,7 +5,8 @@ from __future__ import annotations
 import html
 import logging
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import UTC, datetime, timedelta
+from uuid import uuid4
 
 from aiogram.exceptions import TelegramBadRequest, TelegramForbiddenError, TelegramNotFound
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup, ReplyParameters, WebAppInfo
@@ -36,6 +37,7 @@ from app.telegram.bot import sender_bot
 from app.telegram.i18n import get_user_translator
 
 logger = logging.getLogger(__name__)
+TEXT_DELIVERY_LEASE = timedelta(minutes=2)
 
 
 @dataclass(frozen=True, slots=True)
@@ -179,18 +181,19 @@ class ChatService:
                 raise RuntimeError("Chat conversation disappeared for idempotent message")
             if conversation.id != conversation_id:
                 raise LookupError("conversation_not_found")
-            return existing, conversation, False
+            if existing.delivery_status == "sent":
+                return existing, conversation, False
+            delivered, attempted = await self._attempt_text_delivery(existing, conversation)
+            return delivered, conversation, attempted
 
         conversation = await self.repo.get_conversation(conversation_id)
         if conversation is None:
             raise LookupError("conversation_not_found")
         user = conversation.user
-        telegram_reply_message_id: int | None = None
         if reply_to_message_id is not None:
             replied = await self.repo.get_message(reply_to_message_id)
             if replied is None or replied.conversation_id != conversation.id:
                 raise LookupError("reply_message_not_found")
-            telegram_reply_message_id = replied.telegram_message_id
 
         message = await self.repo.create_message(
             conversation_id=conversation.id,
@@ -209,20 +212,67 @@ class ChatService:
         # отправит тот же текст второй раз при остановке процесса до финального commit.
         await self.db.commit()
 
+        delivered, attempted = await self._attempt_text_delivery(message, conversation)
+        return delivered, conversation, attempted
+
+    async def _attempt_text_delivery(
+        self,
+        message: ChatMessage,
+        conversation: ChatConversation,
+    ) -> tuple[ChatMessage, bool]:
+        claimed_at = datetime.now(UTC)
+        claim_token = uuid4().hex
+        claimed = await self.repo.claim_text_delivery(
+            message_id=message.id,
+            claim_token=claim_token,
+            claimed_at=claimed_at,
+            expired_before=claimed_at - TEXT_DELIVERY_LEASE,
+        )
+        if not claimed:
+            current = await self.repo.get_message(message.id)
+            return current or message, False
+        await self.db.commit()
+        await self.db.refresh(message)
+        delivered = await self._deliver_text_message(
+            message,
+            conversation,
+            claim_token=claim_token,
+        )
+        return delivered, True
+
+    async def _deliver_text_message(
+        self,
+        message: ChatMessage,
+        conversation: ChatConversation,
+        *,
+        claim_token: str,
+    ) -> ChatMessage:
+        user = conversation.user
+
         if user.telegram_id is None:
             message.delivery_status = "failed"
+            await self.repo.release_text_delivery(
+                message_id=message.id,
+                claim_token=claim_token,
+            )
             await self.db.flush()
-            return message, conversation, True
+            return message
+
+        telegram_reply_message_id: int | None = None
+        if message.reply_to_message_id is not None:
+            replied = await self.repo.get_message(message.reply_to_message_id)
+            if replied is not None:
+                telegram_reply_message_id = replied.telegram_message_id
 
         outcome = DeliveryOutcome.FAILED
         try:
             async with sender_bot() as bot:
                 if telegram_reply_message_id is None:
-                    sent = await bot.send_message(chat_id=user.telegram_id, text=text)
+                    sent = await bot.send_message(chat_id=user.telegram_id, text=message.text or "")
                 else:
                     sent = await bot.send_message(
                         chat_id=user.telegram_id,
-                        text=text,
+                        text=message.text or "",
                         reply_parameters=ReplyParameters(message_id=telegram_reply_message_id),
                     )
             message.telegram_message_id = sent.message_id
@@ -250,8 +300,12 @@ class ChatService:
             message.delivery_status = "failed"
 
         reconcile_telegram_write_access(user, outcome, operation="manager_chat_reply")
+        await self.repo.release_text_delivery(
+            message_id=message.id,
+            claim_token=claim_token,
+        )
         await self.db.flush()
-        return message, conversation, True
+        return message
 
     async def mark_read(self, conversation_id: int) -> ChatConversation:
         conversation = await self.repo.get_conversation(conversation_id)

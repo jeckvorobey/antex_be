@@ -155,6 +155,54 @@ async def test_manager_reply_forwards_telegram_message_id(db_session, monkeypatc
     assert reply.telegram_message_id == 778
 
 
+async def test_pending_manager_text_is_retried_from_durable_record(
+    db_session,
+    monkeypatch,
+) -> None:
+    customer = User(telegram_id=810006, telegram_write_access=True)
+    db_session.add(customer)
+    await db_session.flush()
+    service = ChatService(db_session)
+    conversation, _ = await service.repo.get_or_create_conversation(customer.id)
+    pending = await service.repo.create_message(
+        conversation_id=conversation.id,
+        direction="outbound",
+        message_type="text",
+        text="Сообщение после рестарта",
+        telegram_chat_id=customer.telegram_id,
+        delivery_status="pending",
+        client_request_id="request-after-restart",
+    )
+    await db_session.commit()
+
+    calls = 0
+
+    class FakeBot:
+        async def send_message(self, *, chat_id: int, text: str):
+            nonlocal calls
+            calls += 1
+            assert chat_id == customer.telegram_id
+            assert text == pending.text
+            return SimpleNamespace(message_id=779)
+
+    @asynccontextmanager
+    async def fake_sender_bot():
+        yield FakeBot()
+
+    monkeypatch.setattr("app.services.chat.sender_bot", fake_sender_bot)
+
+    retried, _conversation, attempted = await service.send_manager_message(
+        conversation_id=conversation.id,
+        client_request_id="request-after-restart",
+        text="Сообщение после рестарта",
+    )
+
+    assert attempted is True
+    assert retried.delivery_status == "sent"
+    assert retried.telegram_message_id == 779
+    assert calls == 1
+
+
 async def test_inbound_media_metadata_is_exposed_to_manager(db_session) -> None:
     """Сохранённые Telegram metadata возвращаются manager API serializer."""
     customer = User(telegram_id=810005)

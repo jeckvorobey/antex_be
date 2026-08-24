@@ -169,6 +169,46 @@ class ChatRepository(BaseRepository[ChatConversation]):
         await self.session.flush()
         return message
 
+    async def claim_text_delivery(
+        self,
+        *,
+        message_id: int,
+        claim_token: str,
+        claimed_at: datetime,
+        expired_before: datetime,
+    ) -> bool:
+        result = await self.session.execute(
+            update(ChatMessage)
+            .where(
+                ChatMessage.id == message_id,
+                ChatMessage.message_type == "text",
+                ChatMessage.delivery_status != "sent",
+                or_(
+                    ChatMessage.delivery_claim_token.is_(None),
+                    ChatMessage.delivery_claimed_at.is_(None),
+                    ChatMessage.delivery_claimed_at <= expired_before,
+                ),
+            )
+            .values(
+                delivery_status="pending",
+                delivery_claim_token=claim_token,
+                delivery_claimed_at=claimed_at,
+            )
+            .execution_options(synchronize_session=False)
+        )
+        return result.rowcount == 1
+
+    async def release_text_delivery(self, *, message_id: int, claim_token: str) -> None:
+        await self.session.execute(
+            update(ChatMessage)
+            .where(
+                ChatMessage.id == message_id,
+                ChatMessage.delivery_claim_token == claim_token,
+            )
+            .values(delivery_claim_token=None, delivery_claimed_at=None)
+            .execution_options(synchronize_session=False)
+        )
+
     async def add_attachment(self, message: ChatMessage, **values: object) -> ChatAttachment:
         attachment = ChatAttachment(message=message, **values)
         self.session.add(attachment)
