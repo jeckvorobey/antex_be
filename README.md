@@ -109,7 +109,8 @@ token.
 Во время pytest file logging в рабочий `LOG_DIR/api.log` отключается, поэтому
 mock-ошибки тестов не должны попадать в runtime log. Для проверки самого file
 logging тесты используют временный каталог.
-В production Docker image задан `HEALTHCHECK` через `curl` на `/health`.
+В production Docker image задан `HEALTHCHECK` через стандартный Python
+`urllib` на `/health`, без установки дополнительных системных пакетов.
 
 ## Источник курсов
 

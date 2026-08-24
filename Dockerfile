@@ -2,10 +2,6 @@ FROM ghcr.io/astral-sh/uv:python3.13-bookworm-slim
 
 WORKDIR /app
 
-# Coolify healthcheck обычно использует HTTP-проверку.
-RUN apt-get update && apt-get install -y --no-install-recommends curl \
-    && rm -rf /var/lib/apt/lists/*
-
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     UV_COMPILE_BYTECODE=1 \
@@ -18,6 +14,10 @@ COPY . .
 RUN chmod +x /app/entrypoint.sh
 
 EXPOSE 8000
+
+# Проверка использует только стандартную библиотеку Python.
+HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
+    CMD ["python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=3).read()"]
 
 # entrypoint применяет Alembic-миграции перед запуском API.
 ENTRYPOINT ["/app/entrypoint.sh"]
