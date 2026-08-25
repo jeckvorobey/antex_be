@@ -6,10 +6,12 @@ import logging
 import re
 from dataclasses import dataclass, replace
 from enum import StrEnum
+from urllib.parse import urlsplit, urlunsplit
 
 from aiogram.exceptions import TelegramBadRequest, TelegramForbiddenError, TelegramNotFound
 from aiogram.types import InlineKeyboardMarkup, InputRichMessage
 
+from app.core.config import settings
 from app.enums.country import Country
 from app.enums.order import MethodGet, OrderStatus
 from app.telegram import messages
@@ -243,33 +245,49 @@ async def _delete_previous_user_status_message(
         )
 
 
-def build_manager_contact_url(manager) -> str | None:
-    """Вернуть ссылку, способную передать клиенту предварительно заполненный draft."""
-    username = getattr(manager, "username", None)
-    if not isinstance(username, str) or not _TELEGRAM_USERNAME_RE.fullmatch(username):
+def build_official_bot_chat_url() -> str | None:
+    """Вернуть ссылку только на официальный bot conversation."""
+    username = (settings.telegram_bot_username or "").strip().removeprefix("@")
+    if not _TELEGRAM_USERNAME_RE.fullmatch(username):
         return None
     return f"https://t.me/{username}"
 
 
+def build_manager_workspace_url(
+    *,
+    order_id: int | None = None,
+    conversation_id: int | None = None,
+) -> str | None:
+    """Собрать hash-route Manager Mini App без персонального Telegram URL."""
+    base_url = (settings.frontend_webapp_url or "").strip()
+    if not base_url:
+        return None
+    parsed = urlsplit(base_url)
+    if conversation_id is not None:
+        route = f"/manager/chats/{conversation_id}"
+    else:
+        route = "/manager/orders" if order_id is None else f"/manager/orders/{order_id}"
+    return urlunsplit((parsed.scheme, parsed.netloc, parsed.path, parsed.query, route))
+
+
 async def send_customer_handoff(order, manager) -> DeliveryOutcome:
     """Отправить клиенту новую карточку принятой заявки и убрать предыдущее."""
+    del manager
     bot = _get_telegram_bot()
     user = getattr(order, "user", None)
-    manager_url = build_manager_contact_url(manager)
-    if bot is None or user is None or not getattr(user, "telegram_id", None) or not manager_url:
+    if bot is None or user is None or not getattr(user, "telegram_id", None):
         logger.warning(
             "Customer handoff skipped order_id=%s public_number=%s reason=%s",
             getattr(order, "id", None),
             getattr(order, "publicNumber", None),
-            "manager_username_missing" if manager_url is None else "chat_or_bot_unavailable",
+            "chat_or_bot_unavailable",
         )
         return DeliveryOutcome.FAILED
 
     translate = get_user_translator(user)
     locale = normalize_locale(getattr(user, "language_code", None))
     view = OrderMessageView.from_order(order)
-    draft = messages.customer_manager_draft(order.publicNumber, translator=translate)
-    markup = user_order_write_manager(translate, chat_url=manager_url, message_text=draft)
+    markup = user_order_write_manager(translate)
     previous_message_id = getattr(order, "userNotificationMessageId", None)
     delivery, message_id = await _send_rich_or_html(
         bot=bot,
@@ -290,26 +308,22 @@ async def send_customer_handoff(order, manager) -> DeliveryOutcome:
 
 async def send_customer_reminder(order, manager) -> DeliveryOutcome:
     """Отправить новое напоминание по активной заявке через существующего бота."""
+    del manager
     bot = _get_telegram_bot()
     user = getattr(order, "user", None)
-    manager_url = build_manager_contact_url(manager)
-    if bot is None or user is None or not getattr(user, "telegram_id", None) or not manager_url:
+    if bot is None or user is None or not getattr(user, "telegram_id", None):
         logger.warning(
             "Customer reminder skipped order_id=%s public_number=%s reason=%s",
             getattr(order, "id", None),
             getattr(order, "publicNumber", None),
-            "manager_username_missing" if manager_url is None else "chat_or_bot_unavailable",
+            "chat_or_bot_unavailable",
         )
         return DeliveryOutcome.FAILED
 
     translate = get_user_translator(user)
     locale = normalize_locale(getattr(user, "language_code", None))
     view = OrderMessageView.from_order(order)
-    markup = user_order_write_manager(
-        translate,
-        chat_url=manager_url,
-        message_text=messages.customer_manager_draft(order.publicNumber, translator=translate),
-    )
+    markup = user_order_write_manager(translate)
     delivery, _ = await _send_rich_or_html(
         bot=bot,
         chat_id=user.telegram_id,
@@ -589,11 +603,7 @@ async def notify_order_created(
         return OrderCreatedDelivery(user=user_delivery, manager=DeliveryOutcome.INACCESSIBLE)
 
 
-async def notify_order_status_changed(
-    order,
-    *,
-    manager_chat_url: str | None = None,
-) -> DeliveryOutcome:
+async def notify_order_status_changed(order) -> DeliveryOutcome:
     """Доставляет новый статус и возвращает outcome для reconciliation доступа."""
     bot = _get_telegram_bot()
     if bot is None:
@@ -610,12 +620,8 @@ async def notify_order_status_changed(
 
     translate = get_user_translator(user)
     reply_markup = None
-    if order.status == 2 and manager_chat_url:
-        reply_markup = user_order_write_manager(
-            translate,
-            chat_url=manager_chat_url,
-            message_text=messages.customer_manager_draft(order.publicNumber, translator=translate),
-        )
+    if order.status == 2:
+        reply_markup = user_order_write_manager(translate)
     if order.status == 3:
         reply_markup = review_link(translate, REVIEW_URL)
 
@@ -640,23 +646,6 @@ async def notify_order_status_changed(
         reply_markup=reply_markup,
     )
     return delivery
-
-
-def build_chat_url_for_user(user) -> str | None:
-    username = getattr(user, "username", None)
-    telegram_id = getattr(user, "telegram_id", None)
-    if isinstance(username, str) and _TELEGRAM_USERNAME_RE.fullmatch(username):
-        return f"https://t.me/{username}"
-    if isinstance(telegram_id, int) and not isinstance(telegram_id, bool) and telegram_id > 0:
-        return f"tg://user?id={telegram_id}"
-    return None
-
-
-def build_manager_chat_url(order) -> str | None:
-    user = getattr(order, "user", None)
-    if user is None:
-        return None
-    return build_chat_url_for_user(user)
 
 
 def _build_user_status_text(order, *, translate) -> str:

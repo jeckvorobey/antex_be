@@ -9,7 +9,6 @@ import pytest
 from aiogram import Bot, Dispatcher
 from httpx import ASGITransport, AsyncClient
 
-from app.api.routers import telegram as telegram_router
 from app.core.config import settings
 from app.main import app
 from app.telegram import bot as telegram_bot
@@ -62,7 +61,7 @@ async def test_telegram_webhook_rejects_invalid_secret(monkeypatch: pytest.Monke
 async def test_telegram_webhook_feeds_webhook_update_with_valid_secret(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    feed_webhook_update = AsyncMock()
+    feed_update = AsyncMock()
     bot = object()
     monkeypatch.setattr(settings, "telegram_mode", "webhook")
     monkeypatch.setattr(settings, "telegram_webhook_secret", "secret-token")
@@ -70,7 +69,7 @@ async def test_telegram_webhook_feeds_webhook_update_with_valid_secret(
     monkeypatch.setattr(
         telegram_bot,
         "dp",
-        SimpleNamespace(feed_webhook_update=feed_webhook_update),
+        SimpleNamespace(feed_update=feed_update),
     )
 
     transport = ASGITransport(app=app)
@@ -82,15 +81,14 @@ async def test_telegram_webhook_feeds_webhook_update_with_valid_secret(
         )
 
     assert response.status_code == 200
-    feed_webhook_update.assert_awaited_once()
-    assert feed_webhook_update.await_args.kwargs["bot"] is bot
-    assert feed_webhook_update.await_args.kwargs["update"].update_id == 1
-    assert feed_webhook_update.await_args.kwargs["_timeout"] == 1.0
+    feed_update.assert_awaited_once()
+    assert feed_update.await_args.kwargs["bot"] is bot
+    assert feed_update.await_args.kwargs["update"].update_id == 1
 
 
 @pytest.mark.asyncio
 @pytest.mark.filterwarnings("ignore:Detected slow response into webhook.:RuntimeWarning")
-async def test_telegram_webhook_slow_dispatcher_does_not_hold_response(
+async def test_telegram_webhook_waits_for_slow_dispatcher_before_ack(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     handler_started = asyncio.Event()
@@ -104,7 +102,6 @@ async def test_telegram_webhook_slow_dispatcher_does_not_hold_response(
 
     monkeypatch.setattr(settings, "telegram_mode", "webhook")
     monkeypatch.setattr(settings, "telegram_webhook_secret", "secret-token")
-    monkeypatch.setattr(telegram_router, "WEBHOOK_DISPATCH_TIMEOUT_SECONDS", 0.01)
     monkeypatch.setattr(telegram_bot, "bot", bot)
     monkeypatch.setattr(telegram_bot, "dp", dispatcher)
 
@@ -137,7 +134,94 @@ async def test_telegram_webhook_slow_dispatcher_does_not_hold_response(
         await bot.session.close()
 
     assert response.status_code == 200
-    assert duration < 0.15
+    assert duration >= 0.18
+
+
+@pytest.mark.asyncio
+async def test_telegram_webhook_returns_error_after_slow_capture_failure(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Webhook не отвечает 200, пока manager chat capture не завершён успешно."""
+    from app.telegram.handlers import chat as chat_handler
+
+    bot = Bot("123456:test-token")
+    dispatcher = Dispatcher(disable_fsm=True)
+    dispatcher.message.register(chat_handler.capture_unhandled_private_message)
+
+    async def fail_capture(_message, *, edited: bool = False) -> None:
+        assert edited is False
+        await asyncio.sleep(0.02)
+        raise RuntimeError("temporary capture outage")
+
+    monkeypatch.setattr(chat_handler, "_capture", fail_capture)
+    monkeypatch.setattr(settings, "telegram_mode", "webhook")
+    monkeypatch.setattr(settings, "telegram_webhook_secret", "secret-token")
+    monkeypatch.setattr(telegram_bot, "bot", bot)
+    monkeypatch.setattr(telegram_bot, "dp", dispatcher)
+
+    transport = ASGITransport(app=app, raise_app_exceptions=False)
+    try:
+        async with AsyncClient(transport=transport, base_url="http://test") as client:
+            response = await client.post(
+                "/telegram/webhook",
+                headers={"X-Telegram-Bot-Api-Secret-Token": "secret-token"},
+                json={
+                    "update_id": 502,
+                    "message": {
+                        "message_id": 42,
+                        "date": 1_717_871_000,
+                        "chat": {"id": 778, "type": "private", "first_name": "Tester"},
+                        "from": {"id": 778, "is_bot": False, "first_name": "Tester"},
+                        "text": "Привет",
+                    },
+                },
+            )
+            await asyncio.sleep(0.03)
+    finally:
+        await bot.session.close()
+
+    assert response.status_code == 500
+
+
+@pytest.mark.asyncio
+async def test_telegram_webhook_acknowledges_unrelated_handler_failure(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Обычная ошибка handler не превращается в бесконечный webhook redelivery."""
+    bot = Bot("123456:test-token")
+    dispatcher = Dispatcher(disable_fsm=True)
+
+    @dispatcher.message()
+    async def fail_unrelated_handler(_message) -> None:
+        raise RuntimeError("unrelated handler failure")
+
+    monkeypatch.setattr(settings, "telegram_mode", "webhook")
+    monkeypatch.setattr(settings, "telegram_webhook_secret", "secret-token")
+    monkeypatch.setattr(telegram_bot, "bot", bot)
+    monkeypatch.setattr(telegram_bot, "dp", dispatcher)
+
+    transport = ASGITransport(app=app, raise_app_exceptions=False)
+    try:
+        async with AsyncClient(transport=transport, base_url="http://test") as client:
+            response = await client.post(
+                "/telegram/webhook",
+                headers={"X-Telegram-Bot-Api-Secret-Token": "secret-token"},
+                json={
+                    "update_id": 503,
+                    "message": {
+                        "message_id": 43,
+                        "date": 1_717_871_000,
+                        "chat": {"id": 779, "type": "private", "first_name": "Tester"},
+                        "from": {"id": 779, "is_bot": False, "first_name": "Tester"},
+                        "text": "/unrelated",
+                    },
+                },
+            )
+    finally:
+        await bot.session.close()
+
+    assert response.status_code == 200
+    assert response.json() == {"ok": True}
 
 
 @pytest.mark.asyncio

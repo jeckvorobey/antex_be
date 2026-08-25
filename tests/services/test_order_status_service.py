@@ -263,10 +263,7 @@ async def test_update_order_status_persists_and_notifies(monkeypatch) -> None:
 
     assert updated is hydrated_order
     assert commit_mock.await_count == 2
-    notify_mock.assert_awaited_once_with(
-        hydrated_order,
-        manager_chat_url="https://t.me/manager",
-    )
+    notify_mock.assert_awaited_once_with(hydrated_order)
 
 
 @pytest.mark.asyncio
@@ -369,10 +366,7 @@ async def test_update_order_status_keeps_success_when_notification_fails(monkeyp
     assert updated is hydrated_order
     assert commit_mock.await_count == 1
     rollback_mock.assert_awaited_once()
-    notify_mock.assert_awaited_once_with(
-        hydrated_order,
-        manager_chat_url="https://t.me/manager",
-    )
+    notify_mock.assert_awaited_once_with(hydrated_order)
 
 
 @pytest.mark.asyncio
@@ -455,10 +449,7 @@ async def test_update_order_status_passes_public_number_to_referral_notification
         currency_sell="USDT",
         currency_buy="VND",
     )
-    status_notify_mock.assert_awaited_once_with(
-        hydrated_order,
-        manager_chat_url="https://t.me/manager",
-    )
+    status_notify_mock.assert_awaited_once_with(hydrated_order)
 
 
 @pytest.mark.asyncio
@@ -551,10 +542,7 @@ async def test_update_order_status_sends_referral_reversal_notification(monkeypa
         order_public_number="2026070068",
         amount=Decimal("12.345"),
     )
-    status_notify_mock.assert_awaited_once_with(
-        hydrated_order,
-        manager_chat_url="https://t.me/manager",
-    )
+    status_notify_mock.assert_awaited_once_with(hydrated_order)
 
 
 @pytest.mark.asyncio
@@ -649,7 +637,4 @@ async def test_update_order_status_ignores_referral_reversal_notification_failur
         order_public_number="2026070068",
         amount=Decimal("12.345"),
     )
-    status_notify_mock.assert_awaited_once_with(
-        hydrated_order,
-        manager_chat_url="https://t.me/manager",
-    )
+    status_notify_mock.assert_awaited_once_with(hydrated_order)

@@ -12,6 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api import deps
 from app.api.routers.admin import get_today_start_for_timezone
+from app.core.config import settings
 from app.core.security import create_access_token
 from app.enums.country import Country
 from app.enums.order import OrderStatus
@@ -1072,9 +1073,11 @@ async def test_miniapp_stateful_request_without_token_uses_dev_user_from_db(
 @pytest.mark.asyncio
 async def test_miniapp_profile_support_points_to_manager_chat(
     api_client: tuple[AsyncClient, AsyncSession],
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     client, db_session = api_client
-    _, manager, customer = await seed_exchange_data(db_session)
+    _, _manager, customer = await seed_exchange_data(db_session)
+    monkeypatch.setattr(settings, "telegram_bot_username", "antex_test_bot")
     token = create_access_token({"sub": str(customer.id), "role": customer.role})
 
     response = await client.get(
@@ -1087,7 +1090,7 @@ async def test_miniapp_profile_support_points_to_manager_chat(
     assert profile["user"]["photoUrl"] == "https://t.me/i/userpic/320/customer.jpg"
     support = next(item for item in profile["menu"] if item["id"] == "support")
     assert support["action"] == "link"
-    assert support["href"] == f"https://t.me/{manager.username}"
+    assert support["href"] == "https://t.me/antex_test_bot"
 
 
 @pytest.mark.asyncio
@@ -2336,3 +2339,42 @@ def test_admin_summary_today_start_uses_configured_timezone() -> None:
     )
 
     assert today_start == datetime(2026, 5, 7, 0, 0, tzinfo=UTC)
+
+
+@pytest.mark.asyncio
+async def test_miniapp_navigation_by_role(
+    api_client: tuple[AsyncClient, AsyncSession],
+) -> None:
+    client, db_session = api_client
+    _, manager, customer = await seed_exchange_data(db_session)
+
+    customer_token = create_access_token({"sub": str(customer.id), "type": "user"})
+    manager_token = create_access_token({"sub": str(manager.id), "type": "user"})
+
+    customer_res = await client.get(
+        "/api/miniapp/navigation",
+        headers={"Authorization": f"Bearer {customer_token}"},
+    )
+    assert customer_res.status_code == 200
+    customer_nav = customer_res.json()
+    assert [item["name"] for item in customer_nav] == ["home", "exchange", "history", "profile"]
+
+    manager_res = await client.get(
+        "/api/miniapp/navigation",
+        headers={"Authorization": f"Bearer {manager_token}"},
+    )
+    assert manager_res.status_code == 200
+    manager_nav = manager_res.json()
+    assert [item["name"] for item in manager_nav] == [
+        "managerDashboard",
+        "managerOrders",
+        "managerChats",
+        "managerSettings",
+    ]
+    assert [item["route"] for item in manager_nav] == [
+        "managerDashboard",
+        "managerOrders",
+        "managerChats",
+        "managerProfile",
+    ]
+    assert manager_nav[2]["badge_key"] == "unread_chats"

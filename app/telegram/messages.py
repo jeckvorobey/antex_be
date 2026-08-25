@@ -508,23 +508,6 @@ def manager_order_summary(
     return "\n".join([summary, "", f"👤 {translate('manager-summary-user')}: {username}"])
 
 
-def manager_chat_open_text(
-    *,
-    order_id: int | str,
-    amount_sell: int | float,
-    currency_sell: str,
-    translator: Translate | None = None,
-    locale: str | None = None,
-) -> str:
-    translate = cast(Any, _resolve_translator(translator, locale))
-    return translate(
-        "manager-chat-open-text",
-        id=order_id,
-        amount=_format_number(amount_sell),
-        currency=currency_sell,
-    )
-
-
 def referral_bonus_credited(
     *,
     amount: Decimal | int | float | str,
@@ -554,35 +537,6 @@ def referral_bonus_reversed(
         "referral-bonus-reversed",
         amount=_format_aex_amount(amount),
         order_id=order_id,
-    )
-
-
-def user_chat_open_text(
-    *,
-    order_id: int | str,
-    amount_sell: int | float,
-    currency_sell: str,
-    translator: Translate | None = None,
-    locale: str | None = None,
-) -> str:
-    translate = cast(Any, _resolve_translator(translator, locale))
-    return translate(
-        "user-chat-open-text",
-        id=order_id,
-        amount=_format_number(amount_sell),
-        currency=currency_sell,
-    )
-
-
-def customer_manager_draft(
-    order_id: int | str,
-    *,
-    translator: Translate | None = None,
-    locale: str | None = None,
-) -> str:
-    """Подготовленный клиенту текст для первого сообщения менеджеру."""
-    return _strip_fluent_isolates(
-        _resolve_translator(translator, locale)("customer-manager-draft", id=order_id)
     )
 
 

@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING
 from sqlalchemy import BigInteger, Boolean, DateTime, ForeignKey, Integer, String, Text, false
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from app.enums.user import UserRole
+from app.enums.user import UserRole, has_operator_access
 from app.models.base import Base, TimestampMixin
 
 if TYPE_CHECKING:
@@ -74,3 +74,7 @@ class User(Base, TimestampMixin):
         back_populates="user",
         uselist=False,
     )
+
+    def isManager(self) -> bool:  # noqa: N802
+        """Определяет, имеет ли пользователь доступ к manager Mini App."""
+        return has_operator_access(self.role)

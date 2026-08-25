@@ -8,6 +8,7 @@ from app.models.attribution import (
     OrderAttribution,
     UserAcquisition,
 )
+from app.models.chat import ChatAttachment, ChatConversation, ChatMessage, ChatMessageRevision
 from app.models.city import City
 from app.models.config import Config
 from app.models.marketing import (
@@ -33,6 +34,10 @@ __all__ = [
     "AexWallet",
     "AttributionAuditEvent",
     "Broadcast",
+    "ChatAttachment",
+    "ChatConversation",
+    "ChatMessage",
+    "ChatMessageRevision",
     "City",
     "Config",
     "MarketingAttribution",

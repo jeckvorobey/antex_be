@@ -114,7 +114,7 @@ btn-confirm-cancel-order = ❌ Confirm cancel
 btn-keep-order = ✅ Keep order
 btn-take-order = ✅ Take order
 btn-open-chat = 💬 Open chat
-btn-write-manager = 💬 Write manager
+btn-write-manager = 💬 Write in this chat
 btn-close-order = ✅ Close order
 btn-leave-review = ⭐ Leave a review
 menu-open-site = 🚀 Open app
@@ -149,7 +149,6 @@ order-creation-failed = Could not create the order right now. Please try again i
 order-created-notification-failed = Order #{ $id } was created, but the confirmation could not be sent. Open “My orders” to check its status.
 order-creation-limit-reached = You already have too many active orders. Please wait for the current ones to be processed.
 order-confirmed = ✅ Order #{ $id } is now being processed by the manager.
-customer-manager-draft = Hello! I’m contacting you about order #{ $id }. I’m ready to continue the exchange.
 order-details-caption = Order details
 order-country-thailand = Thailand
 order-country-vietnam = Vietnam
@@ -163,10 +162,10 @@ order-handoff-rich =
     { $summary }
     <h2>What to do</h2>
     <ol>
-      <li>💬 Open the chat and tap “Message the manager”.</li>
-      <li>📝 Send the pre-filled message.</li>
+      <li>💬 Tap “Write in this chat”.</li>
+      <li>📝 Send your message in the official bot chat.</li>
     </ol>
-    <aside>⚠️ Important. Message the manager first to open the conversation. The manager can then reply and confirm the exchange details.</aside>
+    <aside>The manager will reply here through the official bot and confirm the exchange details.</aside>
 order-handoff-html =
     <b>✅ Order #{ $id } is being processed</b>
 
@@ -175,10 +174,10 @@ order-handoff-html =
     { $summary }
 
     <b>What to do</b>
-    1. 💬 Open the chat and tap “Message the manager”.
-    2. 📝 Send the pre-filled message.
+    1. 💬 Tap “Write in this chat”.
+    2. 📝 Send your message in the official bot chat.
 
-    ⚠️ Important. Message the manager first to open the conversation. The manager can then reply and confirm the exchange details.
+    The manager will reply here through the official bot and confirm the exchange details.
 order-reminder-rich =
     <footer>Order reminder</footer>
     <h2>🔔 The manager is waiting for your message about order #{ $id }</h2>
@@ -187,10 +186,10 @@ order-reminder-rich =
     { $summary }
     <h2>What to do</h2>
     <ol>
-      <li>💬 Open the chat and tap “Message the manager”.</li>
-      <li>📝 Send the pre-filled message.</li>
+      <li>💬 Tap “Write in this chat”.</li>
+      <li>📝 Send your message in the official bot chat.</li>
     </ol>
-    <aside>⚠️ Important. Message the manager first to open the conversation. The manager can then reply and confirm the exchange details.</aside>
+    <aside>The manager will reply here through the official bot and confirm the exchange details.</aside>
 order-reminder-html =
     <b>🔔 The manager is waiting for your message about order #{ $id }</b>
 
@@ -199,10 +198,10 @@ order-reminder-html =
     { $summary }
 
     <b>What to do</b>
-    1. 💬 Open the chat and tap “Message the manager”.
-    2. 📝 Send the pre-filled message.
+    1. 💬 Tap “Write in this chat”.
+    2. 📝 Send your message in the official bot chat.
 
-    ⚠️ Important. Message the manager first to open the conversation. The manager can then reply and confirm the exchange details.
+    The manager will reply here through the official bot and confirm the exchange details.
 manager-order-card-footer = Order status
 manager-order-created-title = 🆕 New order #{ $id }
 manager-order-created-lead = Waiting for a manager decision.
@@ -236,11 +235,23 @@ order-completed-bottom-rich =
     <aside>💰 Send a video review (a video note) and receive a <b>$5 bonus for your next exchange 💰</b></aside>
     <p>⭐ <b>We’d be glad to receive your review!</b><br/>It helps us improve.</p>
 order-cancelled = ❌ Order #{ $id } cancelled.
-manager-chat-open-text = Hello! You had left order #{ $id } for exchanging { $amount } { $currency }. Are you ready to continue?
-user-chat-open-text = Hello! For order #{ $id } in the amount of { $amount } { $currency }, I confirm I’m ready to exchange.
-btn-write-manager = 💬 Message the manager
-btn-open-client-chat = 💬 Open chat with client
+btn-write-manager = 💬 Write in this chat
+btn-open-client-chat = 💬 Open chat in Mini App
 btn-remind-client = 🔔 Remind client
+customer-chat-reply-prompt = Send your message in this bot chat. The manager will reply here.
+manager-chat-fallback-title = New customer message
+manager-chat-fallback-anonymous = Customer #{ $user_id }
+manager-chat-fallback-media = Attachment: { $media_type }
+manager-chat-fallback-open = Open chat in Mini App
+operator-order-not-found = Order not found
+operator-order-status-changed = The order status has already changed
+operator-card-update-failed = Could not update the order card
+operator-handoff-delivery-failed = The order was accepted, but the instruction could not be delivered. Check the official bot chat and send the reminder again.
+operator-reminder-processing-only = Reminders are available only while the order is in progress
+operator-reminder-failed = Could not send the reminder. Please try again.
+operator-reminder-sent = 🔔 Reminder sent to the customer
+operator-order-cancelled = Order cancelled
+operator-chat-button-obsolete = Open the chat in Manager Mini App
 referral-bonus-credited =
     🎁 Referral program reward: +{ $amount } ATXG
     For completed order #{ $order_id }.

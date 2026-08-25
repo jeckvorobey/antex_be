@@ -11,6 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.config import settings
 from app.core.database import get_db_session
 from app.core.security import decode_access_token
+from app.enums.user import has_operator_access
 from app.models.admin import Admin
 from app.models.user import User
 from app.repositories.admin import AdminRepository
@@ -108,3 +109,13 @@ CurrentUser = Annotated[User, Depends(get_current_user)]
 MiniappUser = Annotated[User, Depends(get_miniapp_user)]
 AdminUser = Annotated[Admin, Depends(get_admin)]
 RefreshAdminUser = Annotated[Admin, Depends(get_refresh_admin)]
+
+
+async def get_manager_user(user: CurrentUser) -> User:
+    """Разрешает операционный manager API только Telegram-пользователю менеджера."""
+    if not has_operator_access(user.role):
+        raise HTTPException(status_code=403, detail="Manager access required")
+    return user
+
+
+ManagerUser = Annotated[User, Depends(get_manager_user)]

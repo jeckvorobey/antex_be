@@ -116,9 +116,9 @@ async def test_operator_take_moves_order_to_processing(monkeypatch) -> None:
         callback.message.edits[0]["reply_markup"].inline_keyboard[2][1].callback_data
         == "op:close:5"
     )
-    chat_url = callback.message.edits[0]["reply_markup"].inline_keyboard[0][0].url
-    assert chat_url is not None
-    assert chat_url.startswith("https://t.me/customer?text=")
+    chat_button = callback.message.edits[0]["reply_markup"].inline_keyboard[0][0]
+    assert chat_button.url is None
+    assert chat_button.web_app.url.endswith("#/manager/orders/5")
     rich_html = callback.message.edits[0]["rich_message"].html
     assert "✅ Заявка #2026050001 принята в работу" in rich_html
     assert "Клиенту отправлена просьба начать диалог" in rich_html
@@ -211,7 +211,11 @@ async def test_operator_take_preserves_operator_access_control(monkeypatch) -> N
     await operator_handler.operator_take(callback)
 
     assert callback.message.edits == []
-    assert callback.answers[-1] == {"text": "Нет прав", "show_alert": True, "url": None}
+    assert callback.answers[-1] == {
+        "text": "Недостаточно прав.",
+        "show_alert": True,
+        "url": None,
+    }
 
 
 @pytest.mark.parametrize(
@@ -230,7 +234,6 @@ async def test_operator_remind_reports_actual_delivery(
 ) -> None:
     callback = _FakeCallback("op:remind:5")
     order = SimpleNamespace(id=5, status=int(OrderStatus.PROCESSING))
-    manager = SimpleNamespace(id=7, username="manager")
     reminder = AsyncMock(return_value=delivery)
 
     class _FakeOrderRepository:
@@ -239,13 +242,6 @@ async def test_operator_remind_reports_actual_delivery(
 
         async def get_one(self, order_id: int):
             return order
-
-    class _FakeUserRepository:
-        def __init__(self, session) -> None:
-            self.session = session
-
-        async def get_manager(self):
-            return manager
 
     async def _fake_get_db():
         return _FakeDbSession()
@@ -256,12 +252,11 @@ async def test_operator_remind_reports_actual_delivery(
     monkeypatch.setattr(operator_handler, "_get_db", _fake_get_db)
     monkeypatch.setattr(operator_handler, "check_user", _fake_check_user)
     monkeypatch.setattr(operator_handler, "OrderRepository", _FakeOrderRepository)
-    monkeypatch.setattr(operator_handler, "UserRepository", _FakeUserRepository)
     monkeypatch.setattr(operator_handler, "send_customer_reminder", reminder)
 
     await operator_handler.operator_remind(callback)
 
-    reminder.assert_awaited_once_with(order, manager)
+    reminder.assert_awaited_once_with(order, None)
     assert callback.answers[-1] == {"text": answer, "show_alert": show_alert, "url": None}
 
 
@@ -286,13 +281,6 @@ async def test_operator_remind_reconciles_inaccessible_customer_chat(monkeypatch
         async def get_one(self, order_id: int):
             return order
 
-    class _FakeUserRepository:
-        def __init__(self, session) -> None:
-            self.session = session
-
-        async def get_manager(self):
-            return SimpleNamespace(id=7, username="manager")
-
     async def _fake_get_db():
         return _ReminderDb()
 
@@ -302,7 +290,6 @@ async def test_operator_remind_reconciles_inaccessible_customer_chat(monkeypatch
     monkeypatch.setattr(operator_handler, "_get_db", _fake_get_db)
     monkeypatch.setattr(operator_handler, "check_user", _fake_check_user)
     monkeypatch.setattr(operator_handler, "OrderRepository", _FakeOrderRepository)
-    monkeypatch.setattr(operator_handler, "UserRepository", _FakeUserRepository)
     monkeypatch.setattr(
         operator_handler,
         "send_customer_reminder",
@@ -373,7 +360,7 @@ async def test_operator_open_chat_handler_is_no_longer_used(monkeypatch) -> None
     await operator_handler.operator_open_chat(callback)
 
     assert callback.answers[-1] == {
-        "text": "Кнопка чата устарела",
+        "text": "Откройте чат в Manager Mini App",
         "show_alert": True,
         "url": None,
     }
@@ -438,10 +425,9 @@ async def test_operator_cancel_confirm_marks_order_cancelled(monkeypatch) -> Non
     await operator_handler.operator_cancel_confirm(callback)
 
     assert callback.answers[-1] == {"text": "Заявка отменена", "show_alert": True, "url": None}
-    assert (
-        callback.message.edits[0]["reply_markup"].inline_keyboard[0][0].url
-        == "https://t.me/customer"
-    )
+    chat_button = callback.message.edits[0]["reply_markup"].inline_keyboard[0][0]
+    assert chat_button.url is None
+    assert chat_button.web_app.url.endswith("#/manager/orders/9")
     rich_html = callback.message.edits[0]["rich_message"].html
     assert "❌ Заявка #2026050002 отменена" in rich_html
     assert "Работа по заявке остановлена" in rich_html
@@ -483,9 +469,9 @@ async def test_operator_cancel_keep_restores_processing_keyboard(monkeypatch) ->
     markup = callback.message.edits[0]["reply_markup"]
     assert markup.inline_keyboard[2][0].callback_data == "op:cancel:9"
     assert markup.inline_keyboard[2][1].callback_data == "op:close:9"
-    chat_url = markup.inline_keyboard[0][0].url
-    assert chat_url is not None
-    assert chat_url.startswith("https://t.me/customer?text=")
+    chat_button = markup.inline_keyboard[0][0]
+    assert chat_button.url is None
+    assert chat_button.web_app.url.endswith("#/manager/orders/9")
 
 
 async def test_operator_close_marks_order_completed(monkeypatch) -> None:
@@ -524,10 +510,9 @@ async def test_operator_close_marks_order_completed(monkeypatch) -> None:
     await operator_handler.operator_close(callback)
 
     assert callback.answers[-1] == {"text": None, "show_alert": False, "url": None}
-    assert (
-        callback.message.edits[0]["reply_markup"].inline_keyboard[0][0].url
-        == "https://t.me/customer"
-    )
+    chat_button = callback.message.edits[0]["reply_markup"].inline_keyboard[0][0]
+    assert chat_button.url is None
+    assert chat_button.web_app.url.endswith("#/manager/orders/9")
     text = str(callback.message.edits[0]["rich_message"].html)
     assert "✅ Заявка #2026050002 завершена" in text
     assert "Страна</td><td><b>Грузия" in text

@@ -18,6 +18,7 @@ from app.repositories.rate import RateRepository
 from app.repositories.user import UserRepository
 from app.schemas.miniapp import MiniappOrderCreate
 from app.services.aex import AexService
+from app.services.chat_realtime import trigger_manager_refresh
 from app.services.exchange import (
     CANONICAL_BUY_CURRENCIES,
     ExchangeQuoteInput,
@@ -190,6 +191,8 @@ async def create_order_for_user(
         getattr(user, "id", None),
         getattr(order, "status", None),
     )
+
+    await trigger_manager_refresh(manager, "order.created")
 
     if defer_notifications:
         return hydrated

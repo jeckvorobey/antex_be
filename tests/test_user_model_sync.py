@@ -1,11 +1,13 @@
 from __future__ import annotations
 
-from datetime import UTC
+from datetime import UTC, datetime
+from types import SimpleNamespace
 
 from aiogram.types import User as TgUser
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 
+from app.enums.country import Country
 from app.enums.user import UserRole, get_role_title, has_admin_access, has_operator_access
 from app.models.attribution import AttributionAuditEvent, MarketingTouch, UserAcquisition
 from app.models.marketing import (
@@ -19,6 +21,7 @@ from app.repositories.user import UserRepository
 from app.schemas.user import build_user_out
 from app.services.attribution import AttributionService
 from app.services.auth import resolve_trusted_contact, telegram_auth
+from app.services.chat import ChatService
 from app.telegram.services.user_service import check_user
 
 
@@ -488,13 +491,53 @@ def test_user_role_helpers_and_serializer() -> None:
     assert user_out.role_name == "Пользователь"
     assert user_out.language_code_app == "ru"
     assert user_out.telegram_write_access is False
+    assert [item.name for item in user_out.navigation] == ["home", "exchange", "history", "profile"]
 
     fake_user.role = 1
     legacy_manager_out = build_user_out(fake_user)
     assert legacy_manager_out.role == 2
     assert legacy_manager_out.role_name == "Менеджер"
+    assert [item.name for item in legacy_manager_out.navigation] == [
+        "managerDashboard",
+        "managerOrders",
+        "managerChats",
+        "managerSettings",
+    ]
+    assert [item.route for item in legacy_manager_out.navigation] == [
+        "managerDashboard",
+        "managerOrders",
+        "managerChats",
+        "managerProfile",
+    ]
+    assert legacy_manager_out.navigation[2].badge_key == "unread_chats"
     assert user_out.photo_url == "https://t.me/i/userpic/320/user.jpg"
     assert user_out.phone == "+79991234567"
     assert user_out.trusted_contact == "user"
     assert user_out.trusted_contact_source == "username"
     assert user_out.trusted_contact_ready is True
+
+
+def test_manager_order_summary_reuses_stored_rate_presentation() -> None:
+    order = SimpleNamespace(
+        id=17,
+        publicNumber="2026080127",
+        currencySell="RUB",
+        amountSell=20_000,
+        currencyBuy="VND",
+        amountBuy=5_979_619.21,
+        country=Country.VIETNAM,
+        city=None,
+        status=2,
+        methodGet="cash",
+        createdAt=datetime(2026, 8, 19, 17, 8, tzinfo=UTC),
+        displayRate=271.6,
+        rate=270.0,
+        displayCurrencySell="RUB",
+        displayCurrencyBuy="VND",
+    )
+
+    payload = ChatService.order_out(order)
+
+    assert payload.rate == 271.6
+    assert payload.rateDisplay == "271.60"
+    assert payload.rateText == "1 RUB = 271.60 VND"

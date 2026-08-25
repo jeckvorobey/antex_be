@@ -17,6 +17,8 @@ from app.api.routers import (
     aex,
     auth,
     broadcasts,
+    manager,
+    manager_attachments,
     marketing,
     miniapp,
     orders,
@@ -29,6 +31,7 @@ from app.core.config import settings
 from app.core.logging import configure_logging
 from app.core.security_headers import SecurityHeadersMiddleware
 from app.exceptions import AntExException
+from app.services.chat_realtime import manager_realtime_hub
 
 configure_logging(
     log_dir=settings.log_dir,
@@ -78,11 +81,16 @@ async def lifespan(app: FastAPI) -> AsyncGenerator:
     logger.info("Starting AntEx...")
     bot_started = False
 
+    await manager_realtime_hub.start()
+
     if settings.telegram_bot_token:
         from app.telegram import bot as telegram_bot
+        from app.telegram.handlers import chat as manager_chat_handler
 
         logger.info("Starting Telegram bot in %s mode", settings.telegram_mode)
-        await telegram_bot.init_bot()
+        _, dispatcher = await telegram_bot.init_bot()
+        # Manager chat подключается последним, сохраняя приоритет workflow-обработчиков.
+        dispatcher.include_router(manager_chat_handler.router)
         if settings.telegram_mode == "polling":
             await telegram_bot.start_polling()
         else:
@@ -110,6 +118,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator:
     finally:
         rate_task.cancel()
         logger.info("Shutting down AntEx...")
+        await manager_realtime_hub.stop()
         if bot_started:
             from app.telegram import bot as telegram_bot
 
@@ -127,13 +136,11 @@ app = FastAPI(
     redoc_url="/redoc" if settings.app_env != "production" else None,
 )
 
-# Security headers
 app.add_middleware(
     SecurityHeadersMiddleware,
     enable_hsts=settings.app_env == "production",
 )
 
-# CORS
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.backend_cors_origins,
@@ -143,7 +150,6 @@ app.add_middleware(
 )
 
 
-# Exception handler
 @app.exception_handler(AntExException)
 async def antex_exception_handler(request: Request, exc: AntExException) -> JSONResponse:
     return JSONResponse(
@@ -152,11 +158,12 @@ async def antex_exception_handler(request: Request, exc: AntExException) -> JSON
     )
 
 
-# Routers
 app.include_router(auth.router)
 app.include_router(users.router)
 app.include_router(orders.router)
 app.include_router(miniapp.router)
+app.include_router(manager.router)
+app.include_router(manager_attachments.router)
 app.include_router(admin.router)
 app.include_router(aex.router)
 app.include_router(aex.admin_router)

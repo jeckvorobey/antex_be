@@ -126,6 +126,31 @@ class OrderRepository(BaseRepository[Order]):
         )
         return list(result.scalars().all())
 
+    async def latest_by_user_ids(self, user_ids: list[int]) -> dict[int, Order]:
+        """Загрузить последнюю заявку для каждого клиента одним bulk-запросом."""
+        if not user_ids:
+            return {}
+        ranked = (
+            select(
+                Order.id.label("order_id"),
+                func.row_number()
+                .over(
+                    partition_by=Order.UserId,
+                    order_by=(Order.createdAt.desc(), Order.id.desc()),
+                )
+                .label("position"),
+            )
+            .where(Order.UserId.in_(user_ids), Order.destroyTime.is_(None))
+            .subquery()
+        )
+        result = await self.session.execute(
+            select(Order)
+            .join(ranked, ranked.c.order_id == Order.id)
+            .where(ranked.c.position == 1)
+            .options(selectinload(Order.city))
+        )
+        return {order.UserId: order for order in result.scalars().all()}
+
     async def list_by_status(self, status: int, *, limit: int = 10) -> list[Order]:
         result = await self.session.execute(
             select(Order)
