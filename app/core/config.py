@@ -36,6 +36,7 @@ class Settings(BaseSettings):
     # Redis
     redis_url: str = "redis://localhost:6379/0"
     proxy: str | None = None
+    manager_realtime_keepalive_seconds: int = 15
 
     # Telegram
     telegram_bot_token: str | None = None
@@ -56,6 +57,8 @@ class Settings(BaseSettings):
 
     @model_validator(mode="after")
     def validate_runtime_config(self) -> Settings:
+        if not 5 <= self.manager_realtime_keepalive_seconds < 45:
+            raise ValueError("MANAGER_REALTIME_KEEPALIVE_SECONDS must be between 5 and 44")
         if self.app_env == "production" and not self._has_value(self.jwt_secret):
             raise ValueError("JWT_SECRET is required when APP_ENV=production")
 

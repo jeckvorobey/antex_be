@@ -2,18 +2,20 @@
 
 from __future__ import annotations
 
-import secrets
+import asyncio
+import json
 from contextlib import suppress
+from uuid import UUID
 
-from fastapi import APIRouter, HTTPException, Query, WebSocket, WebSocketDisconnect, status
+from fastapi import APIRouter, Header, HTTPException, Query, Response, status
+from fastapi.responses import StreamingResponse
 
 from app.api.deps import DbDep, ManagerUser
+from app.core.config import settings
 from app.core.database import create_db_session
 from app.enums.order import OrderStatus
-from app.enums.user import has_operator_access
 from app.repositories.chat import ChatRepository
 from app.repositories.order import OrderRepository
-from app.repositories.user import UserRepository
 from app.schemas.chat import (
     ChatConversationOut,
     ChatListResponse,
@@ -24,10 +26,10 @@ from app.schemas.chat import (
     ManagerOrderListResponse,
     ManagerOrderStatusRequest,
     ManagerOrderSummary,
-    SocketTicketResponse,
+    ManagerRealtimeViewingRequest,
 )
 from app.services.chat import ChatService
-from app.services.chat_realtime import SOCKET_TICKET_TTL_SECONDS, manager_realtime_hub
+from app.services.chat_realtime import manager_realtime_hub, trigger_manager_refresh
 from app.services.order_notifications import (
     notify_order_status_changed,
     reconcile_telegram_write_access,
@@ -189,7 +191,6 @@ async def get_manager_order(
     db: DbDep,
     manager: ManagerUser,
 ) -> ManagerOrderSummary:
-    del manager
     order = await OrderRepository(db).get_one(order_id)
     if order is None:
         raise _not_found("Order not found")
@@ -221,7 +222,6 @@ async def update_manager_order_status(
     db: DbDep,
     manager: ManagerUser,
 ) -> ManagerOrderSummary:
-    del manager
     order = await update_order_status(
         db,
         order_id=order_id,
@@ -238,77 +238,68 @@ async def update_manager_order_status(
     await db.commit()
 
     payload = _manager_order_out(order)
-    conversation = await ChatRepository(db).get_conversation_by_user(order.UserId)
-    await manager_realtime_hub.publish(
-        "chat.order.updated",
-        {
-            "order": payload.model_dump(mode="json"),
-            "conversationId": conversation.id if conversation is not None else None,
-        },
-    )
+    await trigger_manager_refresh(manager, "order.status.updated")
     return payload
 
 
-@router.post("/realtime/ticket", response_model=SocketTicketResponse)
-async def create_realtime_ticket(manager: ManagerUser) -> SocketTicketResponse:
-    ticket = await manager_realtime_hub.issue_ticket(manager.id)
-    return SocketTicketResponse(ticket=ticket, expiresInSeconds=SOCKET_TICKET_TTL_SECONDS)
+def _sse_event(envelope: dict[str, object]) -> str:
+    return f"event: {envelope['type']}\ndata: {json.dumps(envelope, default=str)}\n\n"
 
 
-@router.websocket("/realtime/ws")
-async def manager_realtime_socket(
-    websocket: WebSocket,
-    ticket: str = Query(..., min_length=20, max_length=128),
-) -> None:
+@router.get("/realtime/stream")
+async def manager_realtime_stream(
+    manager: ManagerUser,
+    connection_id: str = Header(..., alias="X-Manager-Realtime-Connection-Id"),
+) -> StreamingResponse:
     try:
-        manager_id = await manager_realtime_hub.consume_ticket(ticket)
-    except Exception:
-        await websocket.close(code=1011)
-        return
-    if manager_id is None:
-        await websocket.close(code=4401)
-        return
-
+        UUID(connection_id)
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid connection id"
+        ) from exc
     async with create_db_session() as db:
-        manager = await UserRepository(db).get_one(manager_id)
-        if manager is None or not has_operator_access(manager.role):
-            await websocket.close(code=4403)
-            return
         unread_total = await ChatRepository(db).unread_total()
 
-    connection_id = secrets.token_hex(12)
-    await websocket.accept()
-    try:
-        await manager_realtime_hub.register(manager_id, websocket, connection_id)
-        await websocket.send_json(
-            {
-                "type": "realtime.ready",
-                "payload": {"unreadTotal": unread_total},
-                "managerId": manager_id,
-            }
+    async def events():
+        connection = await manager_realtime_hub.register(manager.id, connection_id)
+        try:
+            yield _sse_event(
+                {
+                    "type": "realtime.ready",
+                    "payload": {"unreadTotal": unread_total},
+                    "managerId": manager.id,
+                }
+            )
+            while True:
+                try:
+                    envelope = await asyncio.wait_for(
+                        connection.events.get(), timeout=settings.manager_realtime_keepalive_seconds
+                    )
+                except TimeoutError:
+                    await manager_realtime_hub.refresh_presence(manager.id, connection_id)
+                    yield ": keepalive\n\n"
+                else:
+                    yield _sse_event(envelope)
+        finally:
+            with suppress(Exception):
+                await manager_realtime_hub.unregister(manager.id, connection_id)
+
+    return StreamingResponse(
+        events(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache, no-transform", "X-Accel-Buffering": "no"},
+    )
+
+
+@router.put("/realtime/viewing", status_code=status.HTTP_204_NO_CONTENT)
+async def update_realtime_viewing(
+    body: ManagerRealtimeViewingRequest,
+    manager: ManagerUser,
+) -> Response:
+    if not await manager_realtime_hub.set_viewing(
+        manager.id, body.connectionId, body.conversationId
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT, detail="Realtime connection is not active"
         )
-        while True:
-            data = await websocket.receive_json()
-            await manager_realtime_hub.refresh_presence(manager_id, connection_id)
-            event_type = data.get("type")
-            if event_type == "ping":
-                await websocket.send_json({"type": "realtime.pong", "payload": {}})
-                continue
-            if event_type == "viewing":
-                raw_conversation_id = data.get("conversationId")
-                conversation_id = (
-                    int(raw_conversation_id) if raw_conversation_id is not None else None
-                )
-                await manager_realtime_hub.set_viewing(
-                    manager_id,
-                    connection_id,
-                    conversation_id,
-                )
-    except WebSocketDisconnect:
-        pass
-    except Exception:
-        with suppress(Exception):
-            await websocket.close(code=1011)
-    finally:
-        with suppress(Exception):
-            await manager_realtime_hub.unregister(manager_id, websocket, connection_id)
+    return Response(status_code=status.HTTP_204_NO_CONTENT)

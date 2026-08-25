@@ -115,9 +115,9 @@ class ChatReadResponse(BaseModel):
     unreadTotal: int
 
 
-class SocketTicketResponse(BaseModel):
-    ticket: str
-    expiresInSeconds: int
+class ManagerRealtimeViewingRequest(BaseModel):
+    connectionId: str = Field(min_length=1, max_length=64)
+    conversationId: int | None = Field(default=None, ge=1)
 
 
 class ManagerOrderListResponse(BaseModel):

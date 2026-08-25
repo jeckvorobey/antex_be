@@ -323,10 +323,10 @@ async def test_manager_chat_endpoint_allows_manager_and_rejects_user(
 
 
 @pytest.mark.parametrize(
-    ("retry_succeeds", "expected_status", "expected_event"),
+    ("retry_succeeds", "expected_status"),
     [
-        (True, "sent", "chat.message.sent"),
-        (False, "failed", "chat.message.failed"),
+        (True, "sent"),
+        (False, "failed"),
     ],
 )
 async def test_upload_replay_publishes_retry_delivery_result(
@@ -334,7 +334,6 @@ async def test_upload_replay_publishes_retry_delivery_result(
     monkeypatch,
     retry_succeeds: bool,
     expected_status: str,
-    expected_event: str,
 ) -> None:
     """Replay исходного upload публикует новый delivery result в manager realtime."""
     customer = User(telegram_id=833001, telegram_write_access=True)
@@ -377,12 +376,13 @@ async def test_upload_replay_publishes_retry_delivery_result(
     assert attempted is True
     assert failed.delivery_status == "failed"
 
-    published: list[tuple[str, dict[str, object]]] = []
+    refreshes: list[tuple[int, str]] = []
 
-    async def capture_publish(event: str, payload: dict[str, object]) -> None:
-        published.append((event, payload))
+    async def capture_refresh(target_manager, reason: str) -> bool:
+        refreshes.append((target_manager.id, reason))
+        return True
 
-    monkeypatch.setattr("app.services.chat.manager_realtime_hub.publish", capture_publish)
+    monkeypatch.setattr("app.services.chat.trigger_manager_refresh", capture_refresh)
 
     body_sent = False
 
@@ -411,6 +411,4 @@ async def test_upload_replay_publishes_retry_delivery_result(
     assert sends == 2
     assert response.id == failed.id
     assert response.deliveryStatus == expected_status
-    assert len(published) == 1
-    assert published[0][0] == expected_event
-    assert published[0][1]["message"]["id"] == failed.id
+    assert refreshes == [(manager.id, "chat.message.updated")]

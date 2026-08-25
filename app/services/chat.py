@@ -26,7 +26,7 @@ from app.schemas.chat import (
     ManagerOrderCity,
     ManagerOrderSummary,
 )
-from app.services.chat_realtime import manager_realtime_hub
+from app.services.chat_realtime import manager_realtime_hub, trigger_manager_refresh
 from app.services.order_notifications import (
     DeliveryOutcome,
     build_manager_workspace_url,
@@ -437,41 +437,15 @@ class ChatService:
         message: ChatMessage,
         conversation: ChatConversation,
     ) -> None:
-        conversation_payload = await self.conversation_out(conversation)
-        unread_total = await self.repo.unread_total()
-        await manager_realtime_hub.publish(
-            "chat.message.created",
-            {
-                "message": self.message_out(message).model_dump(mode="json"),
-                "conversation": conversation_payload.model_dump(mode="json"),
-                "unreadTotal": unread_total,
-            },
-        )
-        await manager_realtime_hub.publish(
-            "chat.unread.updated",
-            {
-                "conversationId": conversation.id,
-                "unreadCount": conversation.unread_count,
-                "unreadTotal": unread_total,
-            },
-        )
+        await trigger_manager_refresh(await self.user_repo.get_manager(), "chat.message.created")
         await self._notify_manager_if_offline(message, conversation)
 
     async def publish_message_updated(self, message: ChatMessage) -> None:
-        await manager_realtime_hub.publish(
-            "chat.message.updated",
-            {"message": self.message_out(message).model_dump(mode="json")},
-        )
+        await trigger_manager_refresh(await self.user_repo.get_manager(), "chat.message.updated")
 
     async def publish_outbound(self, message: ChatMessage, conversation: ChatConversation) -> None:
-        event = "chat.message.sent" if message.delivery_status == "sent" else "chat.message.failed"
-        await manager_realtime_hub.publish(
-            event,
-            {
-                "message": self.message_out(message).model_dump(mode="json"),
-                "conversationId": conversation.id,
-            },
-        )
+        del message, conversation
+        await trigger_manager_refresh(await self.user_repo.get_manager(), "chat.message.updated")
 
     async def publish_read(self, conversation: ChatConversation) -> None:
         unread_total = await self.repo.unread_total()
