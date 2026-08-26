@@ -76,10 +76,55 @@ async def test_stream_returns_ready_headers_keepalive_and_cleans_up(
     }
     assert await anext(iterator) == ": keepalive\n\n"
     assert hub.registered == [(manager.id, connection_id)]
-    assert hub.refreshed == [(manager.id, connection_id)]
+    await asyncio.sleep(0.003)
+    assert hub.refreshed
+    assert set(hub.refreshed) == {(manager.id, connection_id)}
 
     await iterator.aclose()
     assert hub.unregistered == [(manager.id, connection_id)]
+
+
+async def test_stream_refreshes_presence_while_events_keep_flowing(
+    db_session,
+    monkeypatch,
+) -> None:
+    """Presence TTL продлевается независимо от keepalive timeout очереди."""
+    manager = User(telegram_id=834004, role=int(UserRole.MANAGER))
+    db_session.add(manager)
+    await db_session.commit()
+    hub = FakeRealtimeHub()
+
+    @asynccontextmanager
+    async def fake_create_db_session():
+        yield db_session
+
+    monkeypatch.setattr(manager_router, "create_db_session", fake_create_db_session)
+    monkeypatch.setattr(manager_router, "manager_realtime_hub", hub)
+    monkeypatch.setattr(settings, "manager_realtime_keepalive_seconds", 0.001)
+    connection_id = str(uuid4())
+    response = await manager_router.manager_realtime_stream(manager, connection_id)
+    iterator = response.body_iterator
+
+    await anext(iterator)
+    hub.events.put_nowait(
+        {
+            "type": "manager.refresh",
+            "payload": {"reason": "chat.message.created"},
+            "managerId": manager.id,
+        }
+    )
+    assert "event: manager.refresh" in await anext(iterator)
+
+    # Generator приостановлен на yield события, но отдельный heartbeat обязан
+    # продолжать TTL presence/viewing без зависимости от timeout очереди.
+    await asyncio.sleep(0.005)
+    assert hub.refreshed
+
+    refresh_count = len(hub.refreshed)
+    await iterator.aclose()
+    assert hub.unregistered == [(manager.id, connection_id)]
+    await asyncio.sleep(0.003)
+    assert len(hub.refreshed) == refresh_count
 
 
 async def test_stream_rejects_missing_auth_and_non_manager(db_session, monkeypatch) -> None:
