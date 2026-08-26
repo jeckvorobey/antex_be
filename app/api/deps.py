@@ -9,7 +9,7 @@ from fastapi import Depends, Header, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
-from app.core.database import get_db_session
+from app.core.database import create_db_session, get_db_session
 from app.core.security import decode_access_token
 from app.enums.user import has_operator_access
 from app.models.admin import Admin
@@ -119,3 +119,15 @@ async def get_manager_user(user: CurrentUser) -> User:
 
 
 ManagerUser = Annotated[User, Depends(get_manager_user)]
+
+
+async def get_manager_stream_user(
+    authorization: Annotated[str | None, Header()] = None,
+) -> User:
+    """Авторизует долгий stream, закрывая DB session до начала отправки body."""
+    async with create_db_session() as db:
+        user = await get_current_user(db, authorization)
+    return await get_manager_user(user)
+
+
+ManagerStreamUser = Annotated[User, Depends(get_manager_stream_user)]

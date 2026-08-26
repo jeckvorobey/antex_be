@@ -1,4 +1,4 @@
-"""Operational API and WebSocket for the Mini App manager workspace."""
+"""Operational API and SSE for the Mini App manager workspace."""
 
 from __future__ import annotations
 
@@ -10,7 +10,7 @@ from uuid import UUID
 from fastapi import APIRouter, Header, HTTPException, Query, Response, status
 from fastapi.responses import StreamingResponse
 
-from app.api.deps import DbDep, ManagerUser
+from app.api.deps import DbDep, ManagerStreamUser, ManagerUser
 from app.core.config import settings
 from app.core.database import create_db_session
 from app.enums.order import OrderStatus
@@ -248,7 +248,7 @@ def _sse_event(envelope: dict[str, object]) -> str:
 
 @router.get("/realtime/stream")
 async def manager_realtime_stream(
-    manager: ManagerUser,
+    manager: ManagerStreamUser,
     connection_id: str = Header(..., alias="X-Manager-Realtime-Connection-Id"),
 ) -> StreamingResponse:
     try:
