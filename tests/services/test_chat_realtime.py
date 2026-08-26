@@ -1,11 +1,32 @@
 from __future__ import annotations
 
+import asyncio
+
 from app.services.chat_realtime import ManagerRealtimeHub
+
+
+class FakePubSub:
+    def __init__(self, redis: FakeRedis) -> None:
+        self.redis = redis
+        self.messages: asyncio.Queue[dict[str, object]] = asyncio.Queue()
+
+    async def subscribe(self, _channel: str) -> None:
+        self.redis.subscribers.add(self)
+        self.redis.subscribers_changed.set()
+
+    async def listen(self):
+        while True:
+            yield await self.messages.get()
+
+    async def aclose(self) -> None:
+        self.redis.subscribers.discard(self)
 
 
 class FakeRedis:
     def __init__(self) -> None:
         self.values: dict[str, str] = {}
+        self.subscribers: set[FakePubSub] = set()
+        self.subscribers_changed = asyncio.Event()
 
     async def set(self, key: str, value: str, **_kwargs) -> bool:
         self.values[key] = value
@@ -13,9 +34,6 @@ class FakeRedis:
 
     async def get(self, key: str) -> str | None:
         return self.values.get(key)
-
-    async def getdel(self, key: str) -> str | None:
-        return self.values.pop(key, None)
 
     async def delete(self, key: str) -> int:
         return int(self.values.pop(key, None) is not None)
@@ -32,6 +50,19 @@ class FakeRedis:
             if key.startswith(prefix):
                 yield key
 
+    def pubsub(self) -> FakePubSub:
+        return FakePubSub(self)
+
+    async def publish(self, _channel: str, data: str) -> int:
+        for subscriber in list(self.subscribers):
+            subscriber.messages.put_nowait({"type": "message", "data": data})
+        return len(self.subscribers)
+
+    async def wait_for_subscribers(self, count: int) -> None:
+        while len(self.subscribers) < count:
+            self.subscribers_changed.clear()
+            await asyncio.wait_for(self.subscribers_changed.wait(), timeout=1)
+
 
 async def test_sse_connection_receives_published_event(monkeypatch) -> None:
     fake = FakeRedis()
@@ -44,6 +75,59 @@ async def test_sse_connection_receives_published_event(monkeypatch) -> None:
     assert await connection.events.get() == {
         "type": "chat.unread.updated",
         "payload": {"unreadTotal": 2},
+    }
+
+
+async def test_redis_pubsub_fans_out_event_between_backend_instances(monkeypatch) -> None:
+    fake = FakeRedis()
+    monkeypatch.setattr("app.services.chat_realtime.redis_client", fake)
+    first_hub = ManagerRealtimeHub()
+    second_hub = ManagerRealtimeHub()
+    first_connection = await first_hub.register(42, "connection-a")
+    second_connection = await second_hub.register(42, "connection-b")
+
+    await first_hub.start()
+    await second_hub.start()
+    try:
+        await fake.wait_for_subscribers(2)
+        await first_hub.publish(
+            "manager.refresh",
+            {"reason": "chat.message.created"},
+            manager_id=42,
+        )
+
+        expected = {
+            "type": "manager.refresh",
+            "payload": {"reason": "chat.message.created"},
+            "managerId": 42,
+        }
+        assert await asyncio.wait_for(first_connection.events.get(), timeout=1) == expected
+        assert await asyncio.wait_for(second_connection.events.get(), timeout=1) == expected
+    finally:
+        await first_hub.stop()
+        await second_hub.stop()
+
+
+async def test_slow_sse_connection_has_bounded_buffer_and_reconciles(monkeypatch) -> None:
+    fake = FakeRedis()
+    monkeypatch.setattr("app.services.chat_realtime.redis_client", fake)
+    hub = ManagerRealtimeHub()
+    connection = await hub.register(42, "connection-a")
+
+    for sequence in range(300):
+        await hub._broadcast_local(
+            {
+                "type": "chat.message.updated",
+                "payload": {"sequence": sequence},
+                "managerId": 42,
+            }
+        )
+
+    assert connection.events.qsize() <= 100
+    assert await connection.events.get() == {
+        "type": "manager.refresh",
+        "payload": {"reason": "realtime.buffer.overflow"},
+        "managerId": 42,
     }
 
 
@@ -64,7 +148,7 @@ async def test_presence_and_viewing_are_separate(monkeypatch) -> None:
 
 
 async def test_presence_is_independent_per_connection_across_instances(monkeypatch) -> None:
-    """Disconnect одного backend socket не удаляет presence второго экземпляра."""
+    """Disconnect одного SSE stream не удаляет presence второго экземпляра."""
     fake = FakeRedis()
     monkeypatch.setattr("app.services.chat_realtime.redis_client", fake)
     first_hub = ManagerRealtimeHub()
@@ -80,7 +164,7 @@ async def test_presence_is_independent_per_connection_across_instances(monkeypat
 
 
 async def test_viewing_is_independent_per_connection_across_instances(monkeypatch) -> None:
-    """Каждый backend socket хранит собственную открытую беседу в Redis."""
+    """Каждый SSE stream хранит собственную открытую беседу в Redis."""
     fake = FakeRedis()
     monkeypatch.setattr("app.services.chat_realtime.redis_client", fake)
     first_hub = ManagerRealtimeHub()

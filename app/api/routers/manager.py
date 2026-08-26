@@ -1,16 +1,17 @@
-"""Operational API and WebSocket for the Mini App manager workspace."""
+"""Operational API and SSE for the Mini App manager workspace."""
 
 from __future__ import annotations
 
 import asyncio
 import json
+import logging
 from contextlib import suppress
 from uuid import UUID
 
 from fastapi import APIRouter, Header, HTTPException, Query, Response, status
 from fastapi.responses import StreamingResponse
 
-from app.api.deps import DbDep, ManagerUser
+from app.api.deps import DbDep, ManagerStreamUser, ManagerUser
 from app.core.config import settings
 from app.core.database import create_db_session
 from app.enums.order import OrderStatus
@@ -37,6 +38,7 @@ from app.services.order_notifications import (
 from app.services.order_status import update_order_status
 
 router = APIRouter(prefix="/api/manager", tags=["manager"])
+logger = logging.getLogger(__name__)
 
 
 def _not_found(detail: str) -> HTTPException:
@@ -246,9 +248,25 @@ def _sse_event(envelope: dict[str, object]) -> str:
     return f"event: {envelope['type']}\ndata: {json.dumps(envelope, default=str)}\n\n"
 
 
+async def _refresh_manager_presence(manager_id: int, connection_id: str) -> None:
+    """Продлевает Redis presence независимо от частоты SSE-событий."""
+    while True:
+        await asyncio.sleep(settings.manager_realtime_keepalive_seconds)
+        try:
+            await manager_realtime_hub.refresh_presence(manager_id, connection_id)
+        except asyncio.CancelledError:
+            raise
+        except Exception:
+            logger.exception(
+                "Manager realtime presence refresh failed: manager_id=%s connection_id=%s",
+                manager_id,
+                connection_id,
+            )
+
+
 @router.get("/realtime/stream")
 async def manager_realtime_stream(
-    manager: ManagerUser,
+    manager: ManagerStreamUser,
     connection_id: str = Header(..., alias="X-Manager-Realtime-Connection-Id"),
 ) -> StreamingResponse:
     try:
@@ -262,6 +280,10 @@ async def manager_realtime_stream(
 
     async def events():
         connection = await manager_realtime_hub.register(manager.id, connection_id)
+        presence_task = asyncio.create_task(
+            _refresh_manager_presence(manager.id, connection_id),
+            name=f"manager-realtime-presence-{manager.id}",
+        )
         try:
             yield _sse_event(
                 {
@@ -276,11 +298,13 @@ async def manager_realtime_stream(
                         connection.events.get(), timeout=settings.manager_realtime_keepalive_seconds
                     )
                 except TimeoutError:
-                    await manager_realtime_hub.refresh_presence(manager.id, connection_id)
                     yield ": keepalive\n\n"
                 else:
                     yield _sse_event(envelope)
         finally:
+            presence_task.cancel()
+            with suppress(asyncio.CancelledError):
+                await presence_task
             with suppress(Exception):
                 await manager_realtime_hub.unregister(manager.id, connection_id)
 

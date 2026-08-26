@@ -159,13 +159,16 @@ uv run python app/databases/seed.py
   предупреждение и сможет повторить напоминание после исправления настройки.
 - Клиентский handoff и напоминание сначала используют Telegram Rich Message, а при отказе
   совместимости Bot API однократно отправляются как эквивалентный HTML. Общие правила проекта
-  остаются в `../antex_rules.md` (SSOT), а контракт карточек и Tone of Voice описаны в
+  остаются в [`../antex_product/antex_rules.md`](../antex_product/antex_rules.md) (SSOT), а контракт карточек и Tone of Voice описаны в
   [`docs/telegram-order-messages.md`](docs/telegram-order-messages.md).
 - В dev-режиме приложение поднимает Telegram bot в режиме `polling`, поэтому без корректного `TELEGRAM_BOT_TOKEN` запуск может завершиться ошибкой.
 - `PROXY` поддерживает форматы `host:port:user:pass` и `http://user:pass@host:port`.
 - При временной сетевой ошибке Telegram polling в dev-режиме не падает безвозвратно, а переподключается с backoff.
 - Если меняете схему базы, повторно запустите `uv run alembic upgrade head`.
 - Актуальный контракт miniapp/admin API описан в `docs/api-contract.md`.
+- Требования, OpenSpec и общая документация AntEx находятся в
+  [`../antex_product/`](../antex_product/); локальный `openspec/` в backend не
+  создаётся.
 - Если обновление курсов падает из-за провайдера, сейчас backend только логирует ошибку и повторяет попытку по TTL без fallback на последний сохранённый курс.
 - Если нужны проверки перед коммитом:
 
