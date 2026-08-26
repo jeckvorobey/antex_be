@@ -18,16 +18,13 @@ REALTIME_CHANNEL = "antex:manager:chat:events"
 PRESENCE_PREFIX = "antex:manager:chat:presence:"
 VIEWING_PREFIX = "antex:manager:chat:viewing:"
 PRESENCE_TTL_SECONDS = 45
-REALTIME_QUEUE_MAXSIZE = 100
 
 
 @dataclass(slots=True)
 class ManagerRealtimeConnection:
     manager_id: int
     connection_id: str
-    events: asyncio.Queue[dict[str, Any]] = field(
-        default_factory=lambda: asyncio.Queue(maxsize=REALTIME_QUEUE_MAXSIZE)
-    )
+    events: asyncio.Queue[dict[str, Any]] = field(default_factory=asyncio.Queue)
 
 
 class ManagerRealtimeHub:
@@ -144,17 +141,7 @@ class ManagerRealtimeHub:
         else:
             connections = list(self._connections.get(int(manager_id), {}).values())
         for connection in connections:
-            try:
-                connection.events.put_nowait(envelope)
-            except asyncio.QueueFull:
-                connection.events = asyncio.Queue(maxsize=REALTIME_QUEUE_MAXSIZE)
-                connection.events.put_nowait(
-                    {
-                        "type": "manager.refresh",
-                        "payload": {"reason": "realtime.buffer.overflow"},
-                        "managerId": connection.manager_id,
-                    }
-                )
+            connection.events.put_nowait(envelope)
 
 
 manager_realtime_hub = ManagerRealtimeHub()
