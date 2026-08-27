@@ -120,6 +120,13 @@ async def test_list_conversations_searches_by_order_public_number(db_session) ->
     assert old_items == []
     assert old_total == 0
 
+    prefix_only_items, prefix_only_total = await ChatRepository(db_session).list_conversations(
+        query="#"
+    )
+
+    assert prefix_only_items == []
+    assert prefix_only_total == 0
+
 
 async def test_concurrent_unread_increments_are_not_lost(db_session) -> None:
     """Два запроса, прочитавшие одно состояние, атомарно увеличивают unread до двух."""
