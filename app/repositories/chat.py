@@ -9,6 +9,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import selectinload
 
 from app.models.chat import ChatAttachment, ChatConversation, ChatMessage, ChatMessageRevision
+from app.models.order import Order
 from app.models.user import User
 from app.repositories.base import BaseRepository
 
@@ -67,12 +68,25 @@ class ChatRepository(BaseRepository[ChatConversation]):
             statement = statement.where(ChatConversation.unread_count > 0)
             count_statement = count_statement.where(ChatConversation.unread_count > 0)
         if query:
-            pattern = f"%{query.strip()}%"
-            conditions = or_(
+            normalized_query = query.strip()
+            pattern = f"%{normalized_query}%"
+            order_query = normalized_query.removeprefix("#")
+            search_conditions = [
                 User.username.ilike(pattern),
                 User.first_name.ilike(pattern),
                 User.last_name.ilike(pattern),
-            )
+            ]
+            if order_query:
+                latest_order_public_number = (
+                    select(Order.publicNumber)
+                    .where(Order.UserId == User.id, Order.destroyTime.is_(None))
+                    .order_by(desc(Order.createdAt), desc(Order.id))
+                    .limit(1)
+                    .correlate(User)
+                    .scalar_subquery()
+                )
+                search_conditions.append(latest_order_public_number.ilike(f"%{order_query}%"))
+            conditions = or_(*search_conditions)
             statement = statement.where(conditions)
             count_statement = count_statement.where(conditions)
 
