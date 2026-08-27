@@ -3,7 +3,9 @@ from __future__ import annotations
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import async_sessionmaker
 
+from app.enums.country import Country
 from app.models.chat import ChatMessageRevision
+from app.models.order import Order
 from app.models.user import User
 from app.repositories.chat import ChatRepository
 
@@ -71,6 +73,31 @@ async def test_chat_repository_preserves_edit_revision(db_session) -> None:
     assert revision.old_text == "before"
     assert revision.new_text == "after"
     assert count == 1
+
+
+async def test_list_conversations_searches_by_order_public_number(db_session) -> None:
+    user = User(telegram_id=700004, first_name="Пётр")
+    db_session.add(user)
+    await db_session.flush()
+    conversation, _ = await ChatRepository(db_session).get_or_create_conversation(user.id)
+    db_session.add(
+        Order(
+            UserId=user.id,
+            country=Country.THAILAND,
+            currencySell="RUB",
+            amountSell=10_000,
+            currencyBuy="THB",
+            status=1,
+            methodGet="cash",
+            publicNumber="2026080128",
+        )
+    )
+    await db_session.flush()
+
+    items, total = await ChatRepository(db_session).list_conversations(query="#2026080128")
+
+    assert [item.id for item in items] == [conversation.id]
+    assert total == 1
 
 
 async def test_concurrent_unread_increments_are_not_lost(db_session) -> None:
