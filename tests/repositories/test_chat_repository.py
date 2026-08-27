@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from datetime import UTC, datetime
+
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import async_sessionmaker
 
@@ -80,17 +82,31 @@ async def test_list_conversations_searches_by_order_public_number(db_session) ->
     db_session.add(user)
     await db_session.flush()
     conversation, _ = await ChatRepository(db_session).get_or_create_conversation(user.id)
-    db_session.add(
-        Order(
-            UserId=user.id,
-            country=Country.THAILAND,
-            currencySell="RUB",
-            amountSell=10_000,
-            currencyBuy="THB",
-            status=1,
-            methodGet="cash",
-            publicNumber="2026080128",
-        )
+    db_session.add_all(
+        [
+            Order(
+                UserId=user.id,
+                country=Country.THAILAND,
+                currencySell="RUB",
+                amountSell=10_000,
+                currencyBuy="THB",
+                status=1,
+                methodGet="cash",
+                publicNumber="2026080127",
+                createdAt=datetime(2026, 8, 26, tzinfo=UTC),
+            ),
+            Order(
+                UserId=user.id,
+                country=Country.THAILAND,
+                currencySell="RUB",
+                amountSell=20_000,
+                currencyBuy="THB",
+                status=1,
+                methodGet="cash",
+                publicNumber="2026080128",
+                createdAt=datetime(2026, 8, 27, tzinfo=UTC),
+            ),
+        ]
     )
     await db_session.flush()
 
@@ -98,6 +114,11 @@ async def test_list_conversations_searches_by_order_public_number(db_session) ->
 
     assert [item.id for item in items] == [conversation.id]
     assert total == 1
+
+    old_items, old_total = await ChatRepository(db_session).list_conversations(query="2026080127")
+
+    assert old_items == []
+    assert old_total == 0
 
 
 async def test_concurrent_unread_increments_are_not_lost(db_session) -> None:

@@ -71,16 +71,19 @@ class ChatRepository(BaseRepository[ChatConversation]):
             normalized_query = query.strip()
             pattern = f"%{normalized_query}%"
             order_pattern = f"%{normalized_query.removeprefix('#')}%"
+            latest_order_public_number = (
+                select(Order.publicNumber)
+                .where(Order.UserId == User.id, Order.destroyTime.is_(None))
+                .order_by(desc(Order.createdAt), desc(Order.id))
+                .limit(1)
+                .correlate(User)
+                .scalar_subquery()
+            )
             conditions = or_(
                 User.username.ilike(pattern),
                 User.first_name.ilike(pattern),
                 User.last_name.ilike(pattern),
-                select(Order.id)
-                .where(
-                    Order.UserId == User.id,
-                    Order.publicNumber.ilike(order_pattern),
-                )
-                .exists(),
+                latest_order_public_number.ilike(order_pattern),
             )
             statement = statement.where(conditions)
             count_statement = count_statement.where(conditions)
