@@ -33,6 +33,7 @@ async def create_broadcast_row(
         format="html",
         button_text=None,
         button_url=None,
+        button_type="url",
         speed_mode_requested="free",
         speed_mode_effective="free",
         target_rps=28,
@@ -89,6 +90,8 @@ async def test_admin_can_create_and_list_broadcasts(
         json={
             "text": "Новости AntEx",
             "format": "plain",
+            "button_text": "Открыть",
+            "button_url": "https://example.test",
             "speed_mode": "free",
         },
     )
@@ -97,6 +100,8 @@ async def test_admin_can_create_and_list_broadcasts(
     created = create_response.json()
     assert created["status"] == "pending"
     assert created["target_rps"] == 28
+    assert created["button_type"] == "url"
+    assert created["button_url"] == "https://example.test"
     schedule_mock.assert_awaited_once_with(broadcast_id=created["id"])
 
     list_response = await client.get(
@@ -108,6 +113,32 @@ async def test_admin_can_create_and_list_broadcasts(
     payload = list_response.json()
     assert payload["total"] == 1
     assert payload["items"][0]["text"] == "Новости AntEx"
+
+
+@pytest.mark.asyncio
+async def test_admin_can_create_web_app_broadcast(
+    api_client: tuple[AsyncClient, AsyncSession, AsyncMock],
+) -> None:
+    """API сохраняет тип и прямой маршрут Telegram Mini App кнопки."""
+    client, db_session, schedule_mock = api_client
+    token = await create_admin_with_token(db_session)
+
+    response = await client.post(
+        "/api/admin/broadcasts",
+        headers={"Authorization": f"Bearer {token}"},
+        json={
+            "text": "Реферальная программа",
+            "button_text": "Реферальная программа",
+            "button_url": "https://app.example.test/#/referral",
+            "button_type": "web_app",
+        },
+    )
+
+    assert response.status_code == 201
+    created = response.json()
+    assert created["button_type"] == "web_app"
+    assert created["button_url"] == "https://app.example.test/#/referral"
+    schedule_mock.assert_awaited_once_with(broadcast_id=created["id"])
 
 
 @pytest.mark.asyncio

@@ -29,6 +29,7 @@ EXPECTED_BROADCAST_COLUMNS = {
     "audience_type",
     "text",
     "format",
+    "button_type",
     "speed_mode_requested",
     "speed_mode_effective",
     "target_rps",
@@ -179,6 +180,26 @@ def test_model_metadata_contains_required_migration_columns() -> None:
     write_access = Base.metadata.tables["Users"].columns["telegram_write_access"]
     assert write_access.nullable is False
     assert write_access.server_default is not None
+
+
+def test_broadcast_button_type_migration_is_safe_for_existing_rows() -> None:
+    """Новая колонка должна помечать старые рассылки как обычные URL-кнопки."""
+    env = os.environ.copy()
+    env["DATABASE_URL"] = "postgresql+asyncpg://antex:antex@localhost:5432/antex"
+
+    result = subprocess.run(
+        [sys.executable, "-m", "alembic", "upgrade", "head", "--sql"],
+        cwd=BACK_ROOT,
+        env=env,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert (
+        "ALTER TABLE \"Broadcasts\" ADD COLUMN button_type VARCHAR(16) DEFAULT 'url' NOT NULL"
+    ) in result.stdout
 
 
 def test_write_access_migration_adds_non_nullable_false_default() -> None:

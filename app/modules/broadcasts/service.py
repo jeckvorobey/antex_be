@@ -45,6 +45,7 @@ async def create_broadcast(
             format=payload.format,
             button_text=payload.button_text,
             button_url=payload.button_url,
+            button_type=payload.button_type,
             speed_mode_requested=payload.speed_mode,
             speed_mode_effective=speed.effective_mode,
             target_rps=speed.target_rps,

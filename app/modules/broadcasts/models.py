@@ -68,6 +68,13 @@ class Broadcast(Base, TimestampMixin):
         nullable=True,
         comment="Ссылка URL или WebApp, которая открывается по кнопке",
     )
+    button_type: Mapped[str] = mapped_column(
+        String(16),
+        nullable=False,
+        default="url",
+        server_default="url",
+        comment="Тип кнопки рассылки: обычная URL-ссылка или Telegram web_app",
+    )
     speed_mode_requested: Mapped[str] = mapped_column(
         String(16),
         nullable=False,
