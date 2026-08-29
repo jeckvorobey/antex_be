@@ -10,10 +10,13 @@ from pydantic import BaseModel, Field, model_validator
 
 
 class BroadcastCreate(BaseModel):
+    """Данные для запуска рассылки из административной панели."""
+
     text: str = Field(min_length=1)
     format: Literal["plain", "html"] = "plain"
     button_text: str | None = None
     button_url: str | None = None
+    button_type: Literal["url", "web_app"] = "url"
     speed_mode: Literal["free", "paid"] = "free"
 
     @model_validator(mode="after")
@@ -24,6 +27,10 @@ class BroadcastCreate(BaseModel):
             raise ValueError("button_text и button_url должны быть заполнены вместе")
         if self.button_url:
             parsed = urlparse(self.button_url)
+            if self.button_type == "web_app":
+                if parsed.scheme != "https" or not parsed.netloc:
+                    raise ValueError("button_url для web_app должен быть абсолютным https URL")
+                return self
             if parsed.scheme not in {"http", "https", "tg"}:
                 raise ValueError("button_url должен использовать схему http, https или tg")
             if parsed.scheme in {"http", "https"} and not parsed.netloc:
@@ -34,6 +41,8 @@ class BroadcastCreate(BaseModel):
 
 
 class BroadcastOut(BaseModel):
+    """Сохранённая рассылка, возвращаемая административному API."""
+
     id: int
     status: str
     audience_type: str
@@ -41,6 +50,7 @@ class BroadcastOut(BaseModel):
     format: str
     button_text: str | None
     button_url: str | None
+    button_type: str
     speed_mode_requested: str
     speed_mode_effective: str
     target_rps: int

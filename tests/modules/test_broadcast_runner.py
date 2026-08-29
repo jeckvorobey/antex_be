@@ -19,9 +19,10 @@ class FakeBroadcastSender:
         text: str,
         button_text: str | None,
         button_url: str | None,
+        button_type: str,
         allow_paid_broadcast: bool,
     ) -> None:
-        del text, button_text, button_url, allow_paid_broadcast
+        del text, button_text, button_url, button_type, allow_paid_broadcast
         self.chat_ids.append(chat_id)
 
 
@@ -46,6 +47,7 @@ async def test_deliver_recipients_sends_all_recipients_with_multiple_workers() -
             text_format="plain",
             button_text=None,
             button_url=None,
+            button_type="url",
             allow_paid_broadcast=False,
             target_rps=28,
             worker_count=8,
@@ -75,6 +77,7 @@ async def test_deliver_recipients_accepts_async_iterable() -> None:
             text_format="plain",
             button_text=None,
             button_url=None,
+            button_type="url",
             allow_paid_broadcast=False,
             target_rps=28,
             worker_count=2,
