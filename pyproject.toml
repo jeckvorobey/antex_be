@@ -22,6 +22,7 @@ dependencies = [
     "uvloop>=0.22.0",
     "cryptography>=46.0.0",
     "slowapi>=0.1.9",
+    "altcha==2.1.0",
 ]
 
 [project.optional-dependencies]
