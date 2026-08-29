@@ -15,6 +15,7 @@ class SiteLeadCreate(BaseModel):
     topic: str | None = Field(default=None, max_length=255)
     message: str = Field(min_length=1, max_length=20_000)
     source: str = Field(default="antex-landing", min_length=1, max_length=100)
+    altcha: str = Field(min_length=1, max_length=10_000)
 
     @field_validator("messenger", "contact", "topic", "message", "source", mode="before")
     @classmethod

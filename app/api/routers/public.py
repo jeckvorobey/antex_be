@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from fastapi import APIRouter, status
+from fastapi import APIRouter, Request, status
 
 from app.api.deps import DbDep
 from app.repositories.city import CityRepository
@@ -10,6 +10,7 @@ from app.repositories.rate import RateRepository
 from app.schemas.city import CityOut, build_city_out
 from app.schemas.rate import RateOut, build_rate_out
 from app.schemas.site_lead import SiteLeadCreate, SiteLeadOut, build_site_lead_out
+from app.services.site_lead_captcha import create_site_lead_challenge
 from app.services.site_leads import create_site_lead as create_site_lead_service
 
 router = APIRouter(prefix="/public", tags=["public"])
@@ -26,6 +27,11 @@ async def public_rates(db: DbDep) -> list[RateOut]:
 
 
 @router.post("/site-leads", response_model=SiteLeadOut, status_code=status.HTTP_201_CREATED)
-async def create_site_lead(body: SiteLeadCreate, db: DbDep) -> SiteLeadOut:
-    lead = await create_site_lead_service(db, body)
+async def create_site_lead(request: Request, body: SiteLeadCreate, db: DbDep) -> SiteLeadOut:
+    lead = await create_site_lead_service(db, body, request)
     return build_site_lead_out(lead)
+
+
+@router.get("/site-leads/challenge")
+async def site_lead_challenge() -> dict[str, object]:
+    return create_site_lead_challenge()
