@@ -26,6 +26,25 @@ class _FakeBot:
         self.sent.append({"chat_id": chat_id, "text": text, "reply_markup": reply_markup})
 
 
+class _FakeRedis:
+    def __init__(self) -> None:
+        self.values: dict[str, int] = {}
+        self.set_values: set[str] = set()
+
+    async def incr(self, key: str) -> int:
+        self.values[key] = self.values.get(key, 0) + 1
+        return self.values[key]
+
+    async def expire(self, key: str, seconds: int) -> bool:
+        return True
+
+    async def set(self, key: str, value: str, *, ex: int, nx: bool = False) -> bool:
+        if nx and key in self.set_values:
+            return False
+        self.set_values.add(key)
+        return True
+
+
 @pytest.fixture
 async def site_leads_api_client(
     db_session: AsyncSession,
@@ -90,6 +109,51 @@ async def test_public_site_lead_post_requires_contact_and_message(
     )
 
     assert response.status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_public_site_lead_post_is_rate_limited_before_database_write(
+    site_leads_api_client: tuple[AsyncClient, AsyncSession],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from app.core import redis as redis_module
+
+    client, _ = site_leads_api_client
+    fake_redis = _FakeRedis()
+    monkeypatch.setattr(redis_module, "redis_client", fake_redis)
+
+    for index in range(3):
+        response = await client.post(
+            "/public/site-leads",
+            json={"contact": "@client", "message": f"Нужен обмен {index}"},
+        )
+        assert response.status_code == 201
+
+    response = await client.post(
+        "/public/site-leads",
+        json={"contact": "@client", "message": "Нужен обмен 3"},
+    )
+
+    assert response.status_code == 429
+    assert response.json()["detail"] == "Слишком много заявок"
+
+
+@pytest.mark.asyncio
+async def test_public_site_lead_post_deduplicates_exact_payload(
+    site_leads_api_client: tuple[AsyncClient, AsyncSession],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from app.core import redis as redis_module
+
+    client, _ = site_leads_api_client
+    monkeypatch.setattr(redis_module, "redis_client", _FakeRedis())
+    payload = {"contact": "@client", "message": "Нужен обмен"}
+
+    first = await client.post("/public/site-leads", json=payload)
+    second = await client.post("/public/site-leads", json=payload)
+
+    assert first.status_code == 201
+    assert second.status_code == 409
 
 
 @pytest.mark.asyncio

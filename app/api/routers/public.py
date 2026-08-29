@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from fastapi import APIRouter, status
+from fastapi import APIRouter, Request, status
 
 from app.api.deps import DbDep
 from app.repositories.city import CityRepository
@@ -26,6 +26,6 @@ async def public_rates(db: DbDep) -> list[RateOut]:
 
 
 @router.post("/site-leads", response_model=SiteLeadOut, status_code=status.HTTP_201_CREATED)
-async def create_site_lead(body: SiteLeadCreate, db: DbDep) -> SiteLeadOut:
-    lead = await create_site_lead_service(db, body)
+async def create_site_lead(request: Request, body: SiteLeadCreate, db: DbDep) -> SiteLeadOut:
+    lead = await create_site_lead_service(db, body, request)
     return build_site_lead_out(lead)
