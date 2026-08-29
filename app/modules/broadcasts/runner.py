@@ -225,6 +225,7 @@ async def run_broadcast(
             text_format=broadcast.format,
             button_text=broadcast.button_text,
             button_url=broadcast.button_url,
+            button_type=broadcast.button_type,
             allow_paid_broadcast=broadcast.speed_mode_effective == "paid",
             target_rps=broadcast.target_rps,
             worker_count=broadcast.worker_count,
@@ -280,6 +281,7 @@ async def deliver_recipients(
     text_format: str,
     button_text: str | None,
     button_url: str | None,
+    button_type: str,
     allow_paid_broadcast: bool,
     target_rps: int,
     worker_count: int,
@@ -337,6 +339,7 @@ async def deliver_recipients(
                     text=message_text,
                     button_text=button_text,
                     button_url=button_url,
+                    button_type=button_type,
                     allow_paid_broadcast=allow_paid_broadcast,
                 )
                 await mark_success()

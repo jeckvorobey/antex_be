@@ -37,6 +37,7 @@ async def test_broadcast_sender_closes_temporary_bot_session(
         text="Новости AntEx",
         button_text=None,
         button_url=None,
+        button_type="url",
         allow_paid_broadcast=False,
     )
 
@@ -57,8 +58,35 @@ async def test_broadcast_sender_reuses_initialized_bot_without_closing_session(
         text="Новости AntEx",
         button_text="Открыть",
         button_url="https://example.test",
+        button_type="url",
         allow_paid_broadcast=True,
     )
 
     assert fake_bot.sent_messages[0]["chat_id"] == 202
+    button = fake_bot.sent_messages[0]["reply_markup"].inline_keyboard[0][0]
+    assert button.url == "https://example.test"
+    assert button.web_app is None
     assert fake_bot.session.closed is False
+
+
+@pytest.mark.asyncio
+async def test_broadcast_sender_builds_web_app_button(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Проверяет создание настоящей Telegram Mini App кнопки."""
+    fake_bot = _FakeBot()
+    monkeypatch.setattr(telegram_bot, "bot", fake_bot)
+
+    await AiogramBroadcastSender().send_message(
+        chat_id=303,
+        text="Реферальная программа",
+        button_text="Реферальная программа",
+        button_url="https://app.example.test/#/referral",
+        button_type="web_app",
+        allow_paid_broadcast=False,
+    )
+
+    button = fake_bot.sent_messages[0]["reply_markup"].inline_keyboard[0][0]
+    assert button.url is None
+    assert button.web_app is not None
+    assert button.web_app.url == "https://app.example.test/#/referral"
