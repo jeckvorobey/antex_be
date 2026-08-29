@@ -1,6 +1,8 @@
 # ruff: noqa: RUF001
 from __future__ import annotations
 
+import base64
+import json
 import logging
 from collections.abc import AsyncIterator
 
@@ -185,6 +187,34 @@ async def test_public_site_lead_post_rejects_replayed_altcha_payload(
 
     assert first.status_code == 201
     assert second.status_code == 403
+
+
+@pytest.mark.asyncio
+async def test_public_site_lead_post_rejects_reencoded_altcha_replay(
+    site_leads_api_client: tuple[AsyncClient, AsyncSession],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from app.core import redis as redis_module
+
+    client, _ = site_leads_api_client
+    monkeypatch.setattr(redis_module, "redis_client", _FakeRedis())
+    altcha_payload = _valid_altcha_payload()
+    decoded = json.loads(base64.b64decode(altcha_payload))
+    reencoded_payload = base64.b64encode(
+        json.dumps(decoded, sort_keys=True, separators=(",", ":")).encode()
+    ).decode()
+
+    first = await client.post(
+        "/public/site-leads",
+        json={"contact": "@client", "message": "Нужен обмен", "altcha": altcha_payload},
+    )
+    replay = await client.post(
+        "/public/site-leads",
+        json={"contact": "@other", "message": "Другой обмен", "altcha": reencoded_payload},
+    )
+
+    assert first.status_code == 201
+    assert replay.status_code == 403
 
 
 @pytest.mark.asyncio

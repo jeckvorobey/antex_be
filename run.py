@@ -30,6 +30,10 @@ except ImportError:
     print("   uv run python run.py")
     sys.exit(1)
 
+DEFAULT_FORWARDED_ALLOW_IPS = (
+    "127.0.0.1,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16,::1,fc00::/7"
+)
+
 
 def _build_uvicorn_command(config: dict[str, Any]) -> list[str]:
     cmd = [
@@ -43,6 +47,8 @@ def _build_uvicorn_command(config: dict[str, Any]) -> list[str]:
         str(config["port"]),
         "--log-level",
         config["log_level"],
+        "--forwarded-allow-ips",
+        config["forwarded_allow_ips"],
     ]
     if config["reload"]:
         cmd.append("--reload")
@@ -108,7 +114,14 @@ def main() -> None:
         "reload": True,
         "log_level": "info",
         "access_log": True,
+        "forwarded_allow_ips": os.getenv(
+            "FORWARDED_ALLOW_IPS",
+            DEFAULT_FORWARDED_ALLOW_IPS,
+        ),
     }
+
+    if config["forwarded_allow_ips"].strip() == "*":
+        sys.exit("FORWARDED_ALLOW_IPS='*' запрещён; укажите доверенные proxy IP/CIDR")
 
     if "--no-reload" in sys.argv:
         config["reload"] = False

@@ -6,7 +6,7 @@ import hashlib
 import hmac
 from datetime import UTC, datetime, timedelta
 
-from altcha import create_challenge, verify_solution
+from altcha import Payload, create_challenge, verify_solution
 from fastapi import HTTPException, status
 
 from app.core.config import settings
@@ -26,7 +26,12 @@ def create_site_lead_challenge() -> dict[str, object]:
 
 
 async def verify_site_lead_captcha(payload: str) -> None:
-    result = verify_solution(payload, _altcha_secret())
+    try:
+        parsed_payload = Payload.from_base64(payload)
+    except (ValueError, KeyError, TypeError):
+        parsed_payload = None
+
+    result = verify_solution(parsed_payload or payload, _altcha_secret())
     if not result.verified:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
@@ -35,7 +40,13 @@ async def verify_site_lead_captcha(payload: str) -> None:
 
     from app.core import redis as redis_module
 
-    replay_hash = hashlib.sha256(payload.encode()).hexdigest()
+    challenge_signature = parsed_payload.challenge.signature if parsed_payload else None
+    if not challenge_signature:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Проверка защиты от спама не пройдена",
+        )
+    replay_hash = hashlib.sha256(challenge_signature.encode()).hexdigest()
     try:
         accepted = await redis_module.redis_client.set(
             f"site-lead:altcha:{replay_hash}",
