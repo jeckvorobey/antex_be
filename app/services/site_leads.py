@@ -13,6 +13,7 @@ from app.core.config import settings
 from app.repositories.site_lead import SiteLeadRepository
 from app.repositories.user import UserRepository
 from app.schemas.site_lead import SiteLeadCreate
+from app.services.site_lead_captcha import verify_site_lead_captcha
 from app.services.site_lead_notifications import notify_site_lead_created
 
 logger = logging.getLogger(__name__)
@@ -37,7 +38,7 @@ async def create_site_lead(
         getattr(manager, "telegram_id", None),
     )
     repo = SiteLeadRepository(db)
-    lead = await repo.create(**payload.model_dump())
+    lead = await repo.create(**payload.model_dump(exclude={"altcha"}))
     await db.commit()
     logger.info("Site lead saved: lead_id=%s source=%s", lead.id, lead.source)
 
@@ -74,7 +75,11 @@ async def _guard_site_lead_submission(payload: SiteLeadCreate, client_ip: str) -
     redis = redis_module.redis_client
     rate_key = f"site-lead:rate:{client_ip}"
     fingerprint = hashlib.sha256(
-        json.dumps(payload.model_dump(), sort_keys=True, ensure_ascii=False).encode()
+        json.dumps(
+            payload.model_dump(exclude={"altcha"}),
+            sort_keys=True,
+            ensure_ascii=False,
+        ).encode()
     ).hexdigest()
     duplicate_key = f"site-lead:duplicate:{fingerprint}"
 
@@ -87,6 +92,7 @@ async def _guard_site_lead_submission(payload: SiteLeadCreate, client_ip: str) -
                 status_code=status.HTTP_429_TOO_MANY_REQUESTS,
                 detail="Слишком много заявок",
             )
+        await verify_site_lead_captcha(payload.altcha)
         if not await redis.set(duplicate_key, "1", ex=86_400, nx=True):
             raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Заявка уже получена")
     except HTTPException:
