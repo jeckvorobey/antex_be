@@ -26,6 +26,7 @@ from app.core.redis import redis_client
 from app.telegram.exceptions import TelegramCaptureRetryError
 from app.telegram.handlers import exchange, operator, start
 from app.telegram.middlewares.logging import LoggingMiddleware
+from app.telegram.middlewares.network import TelegramNetworkMiddleware
 
 logger = logging.getLogger(__name__)
 DEFAULT_POLLING_RETRY_DELAY = 1.0
@@ -97,11 +98,13 @@ def _create_bot() -> Bot:
     if settings.proxy:
         session = AiohttpSession(proxy=parse_proxy_value(settings.proxy))
 
-    return Bot(
+    created_bot = Bot(
         token=settings.telegram_bot_token,
         default=DefaultBotProperties(parse_mode=ParseMode.HTML),
         session=session,
     )
+    created_bot.session.middleware(TelegramNetworkMiddleware())
+    return created_bot
 
 
 def _create_dispatcher() -> Dispatcher:

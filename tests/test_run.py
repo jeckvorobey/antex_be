@@ -11,7 +11,7 @@ def test_uvicorn_command_trusts_only_configured_proxy_networks() -> None:
             "port": 8000,
             "log_level": "info",
             "reload": False,
-            "access_log": True,
+            "access_log": False,
             "forwarded_allow_ips": "127.0.0.1,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16,::1,fc00::/7",
         }
     )
@@ -21,3 +21,5 @@ def test_uvicorn_command_trusts_only_configured_proxy_networks() -> None:
         "127.0.0.1,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16,::1,fc00::/7"
     )
     assert "*" not in command
+    assert "--no-access-log" in command
+    assert "--access-log" not in command

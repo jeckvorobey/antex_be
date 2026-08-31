@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import logging
 import os
 import sys
@@ -10,6 +11,16 @@ from pathlib import Path
 
 _MANAGED_HANDLER_ATTR = "_antex_managed_handler"
 _LOGGING_CONFIG_ATTR = "_antex_logging_config"
+_NETWORK_LOGGER_NAME = "antex.network"
+
+
+class NetworkJsonFormatter(logging.Formatter):
+    """Форматирует только allowlisted network event как одну JSONL запись."""
+
+    def format(self, record: logging.LogRecord) -> str:
+        event = dict(getattr(record, "network_event", {}))
+        event["timestamp"] = self.formatTime(record, "%Y-%m-%dT%H:%M:%S%z")
+        return json.dumps(event, ensure_ascii=True, separators=(",", ":"))
 
 
 class HealthcheckAccessFilter(logging.Filter):
@@ -67,6 +78,13 @@ def configure_logging(
         )
         if file_handler is not None:
             root_logger.addHandler(file_handler)
+
+    _configure_network_logger(
+        log_dir=log_dir,
+        log_file_max_bytes=log_file_max_bytes,
+        log_file_backup_count=log_file_backup_count,
+        disabled=file_logging_disabled,
+    )
 
     _configure_external_loggers(level)
     setattr(root_logger, _LOGGING_CONFIG_ATTR, config_fingerprint)
@@ -135,7 +153,36 @@ def _configure_external_loggers(level: int) -> None:
     for logger_name in ("uvicorn", "uvicorn.error", "aiogram"):
         logging.getLogger(logger_name).setLevel(level)
 
+    for logger_name in ("httpx", "httpcore"):
+        logging.getLogger(logger_name).setLevel(logging.WARNING)
+
     access_logger = logging.getLogger("uvicorn.access")
     access_logger.setLevel(level)
     if not any(isinstance(filter_, HealthcheckAccessFilter) for filter_ in access_logger.filters):
         access_logger.addFilter(HealthcheckAccessFilter())
+
+
+def _configure_network_logger(
+    *, log_dir: str, log_file_max_bytes: int, log_file_backup_count: int, disabled: bool
+) -> None:
+    logger = logging.getLogger(_NETWORK_LOGGER_NAME)
+    _remove_managed_handlers(logger)
+    logger.setLevel(logging.INFO)
+    logger.propagate = False
+    if disabled:
+        return
+    try:
+        log_path = Path(log_dir)
+        log_path.mkdir(parents=True, exist_ok=True)
+        handler = RotatingFileHandler(
+            log_path / "network.log",
+            maxBytes=log_file_max_bytes,
+            backupCount=log_file_backup_count,
+            encoding="utf-8",
+        )
+    except OSError:
+        return
+    handler.setLevel(logging.INFO)
+    handler.setFormatter(NetworkJsonFormatter())
+    _mark_managed(handler)
+    logger.addHandler(handler)

@@ -113,6 +113,19 @@ class TestFetchRawRates:
             },
         )
 
+    async def test_network_event_does_not_receive_api_key_or_url(
+        self, mock_currencybeacon: AsyncMock
+    ) -> None:
+        with patch("app.services.rate_fetcher.emit_outbound_network_event") as emit:
+            await fetch_raw_rates()
+
+        emit.assert_called_once()
+        event = emit.call_args.kwargs
+        assert event["provider"] == "currencybeacon"
+        assert event["operation"] == "latest"
+        assert "test-api-key" not in repr(event)
+        assert "http" not in repr(event)
+
     async def test_raises_when_api_key_missing(self) -> None:
         original_api_key = getattr(settings, "currencybeacon_api_key", None)
         object.__setattr__(settings, "currencybeacon_api_key", None)

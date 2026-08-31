@@ -12,9 +12,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api import deps
 from app.core.security import create_access_token
+from app.enums.country import Country
+from app.enums.order import OrderStatus
 from app.models.admin import Admin
-from app.models.aex import AexPartnerRate, AexPersonalRate, AexRate
+from app.models.aex import AexLedgerEntry, AexPartnerRate, AexPersonalRate, AexRate
 from app.models.config import Config
+from app.models.order import Order
 from app.models.user import User
 from app.repositories.aex import AexPartnerRateRepository, AexPersonalRateRepository
 
@@ -134,17 +137,71 @@ class TestAexTransferEndpoint:
         from app.services.aex import AexService
 
         await AexService().credit(db, user.id, Decimal("100"))
+        order = Order(
+            UserId=user.id,
+            country=Country.THAILAND,
+            currencySell="RUB",
+            amountSell=1000,
+            currencyBuy="THB",
+            amountBuy=400,
+            rate=0.4,
+            status=int(OrderStatus.COMPLETED),
+            methodGet="qrcode",
+            publicNumber="ATXG0001",
+        )
+        db.add(order)
         await db.commit()
+        await db.refresh(order)
 
         response = await client.post(
             "/api/aex/transfer",
-            json={"amount": "50"},
+            json={"orderId": order.id, "amount": "50"},
             headers={"Authorization": f"Bearer {_user_token(user.id)}"},
         )
 
         assert response.status_code == 200
         data = response.json()
         assert data["ok"] is True
+        entry = await db.scalar(select(AexLedgerEntry).where(AexLedgerEntry.id == data["entry_id"]))
+        assert entry is not None
+        assert entry.reference_type == "transfer"
+        assert entry.reference_id == str(order.id)
+
+    async def test_transfer_rejects_foreign_order_without_ledger_mutation(
+        self, aex_api_client: tuple[AsyncClient, AsyncSession]
+    ) -> None:
+        client, db = aex_api_client
+        owner = User(telegram_id=3001, username="owner")
+        attacker = User(telegram_id=3002, username="attacker")
+        db.add_all([owner, attacker])
+        await db.flush()
+        order = Order(
+            UserId=owner.id,
+            country=Country.THAILAND,
+            currencySell="RUB",
+            amountSell=1000,
+            currencyBuy="THB",
+            amountBuy=400,
+            rate=0.4,
+            status=int(OrderStatus.COMPLETED),
+            methodGet="qrcode",
+            publicNumber="ATXG0002",
+        )
+        db.add(order)
+        from app.services.aex import AexService
+
+        await AexService().credit(db, attacker.id, Decimal("100"))
+        await db.commit()
+
+        response = await client.post(
+            "/api/aex/transfer",
+            json={"orderId": order.id, "amount": "50"},
+            headers={"Authorization": f"Bearer {_user_token(attacker.id)}"},
+        )
+
+        assert response.status_code == 404
+        entries = list((await db.scalars(select(AexLedgerEntry))).all())
+        assert [entry.reference_type for entry in entries] == [None]
 
     async def test_transfer_rejects_insufficient(
         self, aex_api_client: tuple[AsyncClient, AsyncSession]
@@ -154,10 +211,24 @@ class TestAexTransferEndpoint:
         db.add(user)
         await db.flush()
         await db.refresh(user)
+        order = Order(
+            UserId=user.id,
+            country=Country.THAILAND,
+            currencySell="RUB",
+            amountSell=1000,
+            currencyBuy="THB",
+            amountBuy=400,
+            rate=0.4,
+            status=int(OrderStatus.COMPLETED),
+            methodGet="qrcode",
+            publicNumber="ATXG0003",
+        )
+        db.add(order)
+        await db.commit()
 
         response = await client.post(
             "/api/aex/transfer",
-            json={"amount": "100"},
+            json={"orderId": order.id, "amount": "100"},
             headers={"Authorization": f"Bearer {_user_token(user.id)}"},
         )
 

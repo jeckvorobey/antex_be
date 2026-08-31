@@ -30,9 +30,7 @@ except ImportError:
     print("   uv run python run.py")
     sys.exit(1)
 
-DEFAULT_FORWARDED_ALLOW_IPS = (
-    "127.0.0.1,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16,::1,fc00::/7"
-)
+DEFAULT_FORWARDED_ALLOW_IPS = "127.0.0.1,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16,::1,fc00::/7"
 
 
 def _build_uvicorn_command(config: dict[str, Any]) -> list[str]:
@@ -113,7 +111,7 @@ def main() -> None:
         "port": int(os.getenv("APP_PORT", "8000")),
         "reload": True,
         "log_level": "info",
-        "access_log": True,
+        "access_log": False,
         "forwarded_allow_ips": os.getenv(
             "FORWARDED_ALLOW_IPS",
             DEFAULT_FORWARDED_ALLOW_IPS,

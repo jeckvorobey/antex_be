@@ -24,6 +24,15 @@ class SiteLeadCreate(BaseModel):
             return value.strip()
         return value
 
+    @field_validator("messenger", "source")
+    @classmethod
+    def reject_log_control_characters(cls, value: str | None) -> str | None:
+        if value is not None and any(
+            ord(character) < 32 or ord(character) == 127 for character in value
+        ):
+            raise ValueError("control characters are not allowed")
+        return value
+
 
 class SiteLeadOut(BaseModel):
     model_config = ConfigDict(from_attributes=True, populate_by_name=True)
