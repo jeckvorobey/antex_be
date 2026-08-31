@@ -17,6 +17,7 @@ from app.enums.user import UserRole
 from app.models.admin import Admin
 from app.models.user import User
 from app.services.site_lead_captcha import create_site_lead_challenge
+from app.services.site_lead_notifications import build_site_lead_manager_text
 
 
 class _FakeBot:
@@ -47,6 +48,31 @@ class _FakeRedis:
             return False
         self.set_values.add(key)
         return True
+
+
+def test_site_lead_telegram_text_escapes_html_controlled_fields() -> None:
+    """Публичный ввод не должен становиться Telegram HTML-разметкой."""
+    lead = type(
+        "Lead",
+        (),
+        {
+            "id": 1,
+            "messenger": "<b>Telegram</b>",
+            "contact": "<script>alert(1)</script>",
+            "topic": "<i>Обмен</i>",
+            "message": '<a href="https://attacker.example">текст</a>',
+            "source": "<u>landing</u>",
+        },
+    )()
+
+    assert build_site_lead_manager_text(lead) == (
+        "🆕 Заявка с сайта #1\n\n"
+        "💬 Мессенджер: &lt;b&gt;Telegram&lt;/b&gt;\n"
+        "👤 Контакт: &lt;script&gt;alert(1)&lt;/script&gt;\n"
+        "📌 Тема: &lt;i&gt;Обмен&lt;/i&gt;\n"
+        "📝 Сообщение: &lt;a href=&quot;https://attacker.example&quot;&gt;текст&lt;/a&gt;\n"
+        "🌐 Источник: &lt;u&gt;landing&lt;/u&gt;"
+    )
 
 
 def _valid_altcha_payload() -> str:
@@ -119,6 +145,35 @@ async def test_public_site_lead_post_requires_contact_and_message(
             "source": "antex-landing",
         },
     )
+
+    assert response.status_code == 422
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        ("messenger", "Telegram\n2026-01-01 ERROR forged"),
+        ("source", "antex-landing\r\nWARNING forged"),
+    ],
+)
+async def test_public_site_lead_rejects_control_characters_in_logged_metadata(
+    site_leads_api_client: tuple[AsyncClient, AsyncSession],
+    field: str,
+    value: str,
+) -> None:
+    """Line delimiters не должны попадать в application logs."""
+    client, _ = site_leads_api_client
+    payload = {
+        "messenger": "Telegram",
+        "contact": "@client",
+        "message": "Нужен обмен",
+        "source": "antex-landing",
+        "altcha": _valid_altcha_payload(),
+    }
+    payload[field] = value
+
+    response = await client.post("/public/site-leads", json=payload)
 
     assert response.status_code == 422
 

@@ -8,11 +8,13 @@
 from __future__ import annotations
 
 import logging
+import time
 
 import httpx
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
+from app.core.network_logging import emit_outbound_network_event
 from app.repositories.rate import RateRepository
 from app.services.exchange import ExchangeService
 from app.services.rate_calculator import build_market_rates, calculate_cross_rate
@@ -37,6 +39,37 @@ EXPECTED_RATE_CURRENCIES = frozenset(
         *INTERNAL_RATE_CURRENCIES,
     }
 )
+
+
+async def _provider_get(
+    client: httpx.AsyncClient,
+    endpoint: str,
+    *,
+    provider: str,
+    operation: str,
+    retry_count: int = 0,
+    **kwargs: object,
+) -> httpx.Response:
+    started = time.perf_counter()
+    response: httpx.Response | None = None
+    error: BaseException | None = None
+    try:
+        response = await client.get(endpoint, **kwargs)
+        response.raise_for_status()
+        return response
+    except BaseException as exc:
+        error = exc
+        raise
+    finally:
+        status_code = getattr(response, "status_code", None)
+        emit_outbound_network_event(
+            provider=provider,
+            operation=operation,
+            status=status_code if isinstance(status_code, int) else None,
+            duration_ms=(time.perf_counter() - started) * 1000,
+            retry_count=retry_count,
+            error=error,
+        )
 
 
 def _require_currencybeacon_api_key() -> str:
@@ -108,11 +141,13 @@ def _extract_frankfurter_rate(payload: object, symbol: str) -> float:
 
 async def _fetch_usd_rub_from_frankfurter(client: httpx.AsyncClient) -> float:
     """Получает USD/RUB из Frankfurter как fallback для CurrencyBeacon."""
-    response = await client.get(
+    response = await _provider_get(
+        client,
         FRANKFURTER_RATES_URL,
+        provider="frankfurter",
+        operation="rates",
         params={"base": "USD", "quotes": "RUB"},
     )
-    response.raise_for_status()
     return _extract_frankfurter_rate(response.json(), "RUB")
 
 
@@ -130,15 +165,17 @@ async def fetch_raw_rates() -> dict[str, float]:
             base_url=API_BASE_URL,
             timeout=REQUEST_TIMEOUT_SECONDS,
         ) as client:
-            response = await client.get(
+            response = await _provider_get(
+                client,
                 LATEST_ENDPOINT,
+                provider="currencybeacon",
+                operation="latest",
                 params={
                     "api_key": api_key,
                     "base": "USD",
                     "symbols": ",".join(SUPPORTED_SYMBOLS),
                 },
             )
-            response.raise_for_status()
 
             rates = _extract_rates_payload(response.json())
             resolved_rates: dict[str, float] = {}
@@ -155,15 +192,18 @@ async def fetch_raw_rates() -> dict[str, float]:
                     "CurrencyBeacon вернул неполные/некорректные данные для %s, выполняем дозапрос",
                     ",".join(missing_symbols),
                 )
-                retry_response = await client.get(
+                retry_response = await _provider_get(
+                    client,
                     LATEST_ENDPOINT,
+                    provider="currencybeacon",
+                    operation="latest",
+                    retry_count=1,
                     params={
                         "api_key": api_key,
                         "base": "USD",
                         "symbols": ",".join(missing_symbols),
                     },
                 )
-                retry_response.raise_for_status()
                 retry_rates = _extract_rates_payload(retry_response.json())
 
                 for symbol in missing_symbols:
@@ -192,13 +232,13 @@ async def fetch_raw_rates() -> dict[str, float]:
                             "зависимые пары будут сохранены без обновления",
                             symbol,
                         )
-    except httpx.TimeoutException as exc:
+    except httpx.TimeoutException:
         # TODO: если потребуется продуктовый fallback, читать последний сохранённый курс из БД.
-        raise RuntimeError("CurrencyBeacon request timed out") from exc
+        raise RuntimeError("CurrencyBeacon request timed out") from None
     except httpx.HTTPStatusError as exc:
-        raise RuntimeError(f"CurrencyBeacon returned HTTP {exc.response.status_code}") from exc
-    except httpx.HTTPError as exc:
-        raise RuntimeError("CurrencyBeacon network error") from exc
+        raise RuntimeError(f"CurrencyBeacon returned HTTP {exc.response.status_code}") from None
+    except httpx.HTTPError:
+        raise RuntimeError("CurrencyBeacon network error") from None
 
     return {f"usd_{symbol.lower()}": rate for symbol, rate in resolved_rates.items()}
 

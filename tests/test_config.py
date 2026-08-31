@@ -1,10 +1,17 @@
 from __future__ import annotations
 
+import hashlib
+import hmac
+import time
+from urllib.parse import urlencode
+
 import pytest
 from pydantic import ValidationError
 
 from app.core import security
 from app.core.config import Settings
+from app.schemas.admin import AdminLogin
+from app.schemas.auth import TelegramAuthRequest
 
 
 def test_production_config_requires_jwt_secret() -> None:
@@ -30,17 +37,28 @@ def test_webhook_config_requires_bot_token_and_host() -> None:
         )
 
 
-def test_production_webhook_config_requires_secret() -> None:
+def test_webhook_config_requires_secret_in_every_environment() -> None:
     with pytest.raises(ValidationError, match="TELEGRAM_WEBHOOK_SECRET"):
         Settings(
-            app_env="production",
-            jwt_secret="jwt-secret",
             telegram_mode="webhook",
             telegram_bot_token="123:test",
             telegram_webhook_host="https://example.com",
             telegram_webhook_secret=None,
             _env_file=None,
         )
+
+
+def test_webhook_url_uses_canonical_route_even_if_legacy_path_is_supplied() -> None:
+    settings = Settings(
+        telegram_mode="webhook",
+        telegram_bot_token="123:test",
+        telegram_webhook_host="https://example.com",
+        telegram_webhook_secret="secret",
+        telegram_webhook_path="/unexpected",
+        _env_file=None,
+    )
+
+    assert settings.telegram_webhook_url == "https://example.com/telegram/webhook"
 
 
 def test_jwt_helpers_raise_clear_error_without_secret(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -51,3 +69,51 @@ def test_jwt_helpers_raise_clear_error_without_secret(monkeypatch: pytest.Monkey
 
     with pytest.raises(RuntimeError, match="JWT_SECRET"):
         security.decode_access_token("token")
+
+
+def test_telegram_init_data_requires_current_auth_date(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Подписанные данные без времени и из будущего не принимаются."""
+    bot_token = "123:test-token"
+    monkeypatch.setattr(security.settings, "telegram_bot_token", bot_token)
+
+    def sign(values: dict[str, str]) -> str:
+        data_check_string = "\n".join(f"{key}={value}" for key, value in sorted(values.items()))
+        secret_key = hmac.new(b"WebAppData", bot_token.encode(), hashlib.sha256).digest()
+        signature = hmac.new(secret_key, data_check_string.encode(), hashlib.sha256).hexdigest()
+        return urlencode({**values, "hash": signature})
+
+    assert security.validate_telegram_init_data(sign({"user": '{"id":1}'})) is None
+    assert (
+        security.validate_telegram_init_data(
+            sign({"auth_date": str(int(time.time()) + 1), "user": '{"id":1}'})
+        )
+        is None
+    )
+
+
+def test_authentication_schemas_reject_oversized_inputs() -> None:
+    """Большие auth strings не должны доходить до parser или password hasher."""
+    with pytest.raises(ValidationError):
+        TelegramAuthRequest(init_data="x" * (16 * 1024 + 1))
+
+    with pytest.raises(ValidationError):
+        AdminLogin(username="u" * 256, password="valid")
+
+    with pytest.raises(ValidationError):
+        AdminLogin(username="valid", password="p" * 256)
+
+
+def test_telegram_init_data_rejects_more_than_64_fields(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Field-dense initData ограничивается до сортировки и HMAC проверки."""
+    bot_token = "123:test-token"
+    monkeypatch.setattr(security.settings, "telegram_bot_token", bot_token)
+    now = str(int(time.time()))
+    values = {"auth_date": now, "user": '{"id":1}'}
+    values.update({f"field_{index}": "x" for index in range(63)})
+    data_check_string = "\n".join(f"{key}={value}" for key, value in sorted(values.items()))
+    secret_key = hmac.new(b"WebAppData", bot_token.encode(), hashlib.sha256).digest()
+    signature = hmac.new(secret_key, data_check_string.encode(), hashlib.sha256).hexdigest()
+
+    assert security.validate_telegram_init_data(urlencode({**values, "hash": signature})) is None

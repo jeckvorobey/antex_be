@@ -9,9 +9,11 @@ import pytest
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy import event, select
 from sqlalchemy.ext.asyncio import AsyncSession
+from starlette.requests import Request
 
 from app.api import deps
 from app.api.routers.admin import verify_password
+from app.core import redis as redis_module
 from app.core.security import create_access_token
 from app.enums.country import Country
 from app.enums.order import OrderStatus
@@ -19,6 +21,43 @@ from app.models.admin import Admin
 from app.models.city import City
 from app.models.order import Order
 from app.models.user import User
+
+
+class _RateLimitPipeline:
+    def __init__(self, owner: _RateLimitRedis) -> None:
+        self.owner = owner
+        self.operations: list[tuple[str, str, int | None]] = []
+
+    def incr(self, key: str) -> _RateLimitPipeline:
+        self.operations.append(("incr", key, None))
+        return self
+
+    def expire(self, key: str, seconds: int, *, nx: bool) -> _RateLimitPipeline:
+        assert nx is True
+        self.operations.append(("expire", key, seconds))
+        return self
+
+    async def execute(self) -> list[int | bool]:
+        results: list[int | bool] = []
+        for operation, key, value in self.operations:
+            if operation == "incr":
+                self.owner.values[key] = self.owner.values.get(key, 0) + 1
+                results.append(self.owner.values[key])
+            else:
+                assert value is not None
+                self.owner.ttls.setdefault(key, value)
+                results.append(True)
+        return results
+
+
+class _RateLimitRedis:
+    def __init__(self) -> None:
+        self.values: dict[str, int] = {}
+        self.ttls: dict[str, int] = {}
+
+    def pipeline(self, *, transaction: bool) -> _RateLimitPipeline:
+        assert transaction is True
+        return _RateLimitPipeline(self)
 
 
 @contextmanager
@@ -47,8 +86,11 @@ def count_sql_statements(db_session: AsyncSession) -> Iterator[list[str]]:
 @pytest.fixture
 async def admin_crud_api_client(
     db_session: AsyncSession,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> AsyncIterator[tuple[AsyncClient, AsyncSession]]:
     from app.main import app
+
+    monkeypatch.setattr(redis_module, "redis_client", _RateLimitRedis())
 
     async def override_get_db_session() -> AsyncIterator[AsyncSession]:
         yield db_session
@@ -94,6 +136,30 @@ async def test_admin_refresh_token_is_restricted_to_refresh_endpoint(
     assert refreshed.status_code == 200
     assert refreshed.json()["access_token"]
     assert refreshed.json()["refresh_token"]
+
+
+@pytest.mark.asyncio
+async def test_admin_logout_revokes_current_access_and_refresh_tokens(
+    admin_crud_api_client: tuple[AsyncClient, AsyncSession],
+) -> None:
+    """Logout увеличивает server-side версию и отзывает пару токенов."""
+    client, db_session = admin_crud_api_client
+    admin = Admin(username="root", email="root@example.com", password_hash="unused")
+    db_session.add(admin)
+    await db_session.flush()
+    access = create_access_token({"sub": str(admin.id), "type": "admin", "sv": 0})
+    refresh = create_access_token({"sub": str(admin.id), "type": "admin_refresh", "sv": 0})
+
+    logout = await client.post("/api/admin/logout", headers={"Authorization": f"Bearer {access}"})
+    protected = await client.get("/api/admin/list", headers={"Authorization": f"Bearer {access}"})
+    renewed = await client.post(
+        "/api/admin/refresh",
+        headers={"Authorization": f"Bearer {refresh}"},
+    )
+
+    assert logout.status_code == 200
+    assert protected.status_code == 401
+    assert renewed.status_code == 401
 
 
 @pytest.mark.asyncio
@@ -206,6 +272,123 @@ async def test_admin_login_migrates_legacy_sha256_hash(
     await db_session.refresh(admin)
     assert admin.password_hash.startswith("scrypt$")
     assert verify_password("OldPassword123", admin.password_hash) == (True, False)
+
+
+@pytest.mark.asyncio
+async def test_admin_login_rate_limits_repeated_wrong_passwords(
+    admin_crud_api_client: tuple[AsyncClient, AsyncSession],
+) -> None:
+    """Login не должен неограниченно запускать Scrypt для одного IP и username."""
+    client, db_session = admin_crud_api_client
+    db_session.add(Admin(username="limited", password_hash=hashlib.sha256(b"correct").hexdigest()))
+    await db_session.commit()
+
+    for _ in range(5):
+        response = await client.post(
+            "/api/admin/login",
+            json={"username": "limited", "password": "wrong"},
+        )
+        assert response.status_code == 401
+
+    blocked = await client.post(
+        "/api/admin/login",
+        json={"username": "limited", "password": "wrong"},
+    )
+    assert blocked.status_code == 429
+
+
+@pytest.mark.asyncio
+async def test_admin_global_budget_does_not_block_six_distributed_attempts(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Строгий per-principal limit нельзя переиспользовать как global budget."""
+    from app.api.routers.admin import _enforce_admin_login_limit
+
+    fake = _RateLimitRedis()
+    monkeypatch.setattr(redis_module, "redis_client", fake)
+
+    for index in range(6):
+        request = Request(
+            {
+                "type": "http",
+                "method": "POST",
+                "path": "/api/admin/login",
+                "headers": [],
+                "client": (f"10.0.0.{index + 1}", 10000 + index),
+            }
+        )
+        await _enforce_admin_login_limit(request, f"admin-{index}")
+
+
+@pytest.mark.asyncio
+async def test_admin_login_counter_and_initial_ttl_are_atomic(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Counter не должен остаться бессрочным между INCR и EXPIRE."""
+    from app.api.routers.admin import _enforce_admin_login_limit
+
+    class Pipeline:
+        def __init__(self, owner: AtomicRedis) -> None:
+            self.owner = owner
+            self.operations: list[tuple[str, str, int | None]] = []
+
+        def incr(self, key: str) -> Pipeline:
+            self.operations.append(("incr", key, None))
+            return self
+
+        def expire(self, key: str, seconds: int, *, nx: bool) -> Pipeline:
+            assert nx is True
+            self.operations.append(("expire", key, seconds))
+            return self
+
+        async def execute(self) -> list[int | bool]:
+            results: list[int | bool] = []
+            for operation, key, value in self.operations:
+                if operation == "incr":
+                    self.owner.values[key] = self.owner.values.get(key, 0) + 1
+                    results.append(self.owner.values[key])
+                else:
+                    assert value is not None
+                    self.owner.ttls.setdefault(key, value)
+                    results.append(True)
+            return results
+
+    class AtomicRedis:
+        def __init__(self) -> None:
+            self.values: dict[str, int] = {}
+            self.ttls: dict[str, int] = {}
+
+        def pipeline(self, *, transaction: bool) -> Pipeline:
+            assert transaction is True
+            return Pipeline(self)
+
+        async def incr(self, key: str) -> int:
+            self.values[key] = self.values.get(key, 0) + 1
+            return self.values[key]
+
+        async def expire(self, key: str, seconds: int) -> bool:
+            del key, seconds
+            return False
+
+    fake = AtomicRedis()
+    monkeypatch.setattr(redis_module, "redis_client", fake)
+    request = Request(
+        {
+            "type": "http",
+            "method": "POST",
+            "path": "/api/admin/login",
+            "headers": [],
+            "client": ("10.0.0.1", 10000),
+        }
+    )
+
+    await _enforce_admin_login_limit(request, "root")
+
+    assert fake.ttls == {
+        "admin:login:global": 60,
+        "admin:login:ip:10.0.0.1": 60,
+        "admin:login:username:root": 60,
+    }
 
 
 @pytest.mark.asyncio

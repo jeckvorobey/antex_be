@@ -8,7 +8,7 @@ from pydantic import BaseModel, Field
 
 
 class TelegramAuthRequest(BaseModel):
-    init_data: str
+    init_data: str = Field(max_length=16 * 1024)
 
 
 class TokenResponse(BaseModel):

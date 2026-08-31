@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 import time
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
@@ -28,7 +29,6 @@ async def test_start_webhook_sets_url_and_secret(monkeypatch: pytest.MonkeyPatch
     monkeypatch.setattr(telegram_bot, "bot", bot)
     monkeypatch.setattr(telegram_bot, "dp", object())
     monkeypatch.setattr(settings, "telegram_webhook_host", "https://example.com")
-    monkeypatch.setattr(settings, "telegram_webhook_path", "/telegram/webhook")
     monkeypatch.setattr(settings, "telegram_webhook_secret", "secret-token")
 
     await telegram_bot.start_webhook()
@@ -56,6 +56,53 @@ async def test_telegram_webhook_rejects_invalid_secret(monkeypatch: pytest.Monke
 
     assert response.status_code == 403
     telegram_bot.dp.feed_webhook_update.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_expected_webhook_rejections_do_not_emit_application_warning(
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    monkeypatch.setattr(settings, "telegram_mode", "webhook")
+    monkeypatch.setattr(settings, "telegram_webhook_secret", "secret-token")
+    caplog.set_level(logging.WARNING, logger="app.api.routers.telegram")
+
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        invalid = await client.post(
+            "/telegram/webhook",
+            headers={"X-Telegram-Bot-Api-Secret-Token": "wrong-token"},
+            json={"update_id": 1},
+        )
+        monkeypatch.setattr(settings, "telegram_mode", "polling")
+        polling = await client.post("/telegram/webhook", json={"update_id": 2})
+
+    assert invalid.status_code == 403
+    assert polling.status_code == 200
+    assert [record for record in caplog.records if record.levelno >= logging.WARNING] == []
+
+
+@pytest.mark.asyncio
+async def test_telegram_webhook_rejects_missing_secret_even_with_initialized_bot(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Webhook никогда не принимает update без настроенного секрета."""
+    feed_webhook_update = AsyncMock()
+    monkeypatch.setattr(settings, "telegram_mode", "webhook")
+    monkeypatch.setattr(settings, "telegram_webhook_secret", None)
+    monkeypatch.setattr(telegram_bot, "bot", object())
+    monkeypatch.setattr(
+        telegram_bot,
+        "dp",
+        SimpleNamespace(feed_webhook_update=feed_webhook_update),
+    )
+
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        response = await client.post("/telegram/webhook", json={"update_id": 1})
+
+    assert response.status_code == 503
+    feed_webhook_update.assert_not_awaited()
 
 
 @pytest.mark.asyncio
