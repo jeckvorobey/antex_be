@@ -1,0 +1,14 @@
+.env*
+!.env.example
+.git
+.github
+.venv
+.pytest_cache
+.ruff_cache
+__pycache__
+*.py[cod]
+logs
+*.log
+tests
+coverage
+.coverage

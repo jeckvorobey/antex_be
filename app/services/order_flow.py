@@ -94,11 +94,14 @@ async def create_order_for_user(
         display_rate = rate
         display_currency_sell = currency_sell
         display_currency_buy = currency_buy
-    elif not _is_aex_withdrawal(payload):
+    else:
         quote = await ExchangeService().get_quote(
             db,
             ExchangeQuoteInput(
-                currency_sell=currency_sell,
+                # Внешний вывод ATXG котируется через канонический USDT-базис.
+                currency_sell=(
+                    TOKEN_RATE_BASE_CURRENCY if _is_aex_withdrawal(payload) else currency_sell
+                ),
                 currency_buy=currency_buy,
                 amount_sell=payload.amount_sell,
                 method_get=payload.method_get,
@@ -110,14 +113,6 @@ async def create_order_for_user(
         display_rate = quote.display_rate
         display_currency_sell = quote.display_currency_sell
         display_currency_buy = quote.display_currency_buy
-    else:
-        amount_buy = payload.amount_buy
-        rate = payload.rate
-        if payload.method_get == MethodGet.CASH:
-            delivery_rate = rate
-        display_rate = rate
-        display_currency_sell = currency_sell
-        display_currency_buy = currency_buy
     _validate_quote_country(payload.country, currency_buy)
     await _validate_aex_withdrawal_balance(db, user.id, payload)
 

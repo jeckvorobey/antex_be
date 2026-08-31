@@ -65,14 +65,9 @@ class Settings(BaseSettings):
             if not self._has_value(self.telegram_webhook_host):
                 raise ValueError("TELEGRAM_WEBHOOK_HOST is required when TELEGRAM_MODE=webhook")
 
-        if (
-            self.app_env == "production"
-            and self.telegram_mode == "webhook"
-            and not self._has_value(self.telegram_webhook_secret)
-        ):
+        if self.telegram_mode == "webhook" and not self._has_value(self.telegram_webhook_secret):
             raise ValueError(
-                "TELEGRAM_WEBHOOK_SECRET is required when APP_ENV=production "
-                "and TELEGRAM_MODE=webhook"
+                "TELEGRAM_WEBHOOK_SECRET is required when TELEGRAM_MODE=webhook"
             )
 
         return self
@@ -90,6 +85,9 @@ class Settings(BaseSettings):
     jwt_ttl_seconds: int = 86400
     admin_access_ttl_seconds: int = 900
     admin_refresh_ttl_seconds: int = 604800
+    admin_bootstrap_password: str | None = None
+    admin_login_rate_limit: int = 5
+    admin_login_rate_window_seconds: int = 60
 
     # Operator
     operator_chat_id: int | None = None

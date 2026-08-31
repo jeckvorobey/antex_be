@@ -192,13 +192,13 @@ async def fetch_raw_rates() -> dict[str, float]:
                             "зависимые пары будут сохранены без обновления",
                             symbol,
                         )
-    except httpx.TimeoutException as exc:
+    except httpx.TimeoutException:
         # TODO: если потребуется продуктовый fallback, читать последний сохранённый курс из БД.
-        raise RuntimeError("CurrencyBeacon request timed out") from exc
+        raise RuntimeError("CurrencyBeacon request timed out") from None
     except httpx.HTTPStatusError as exc:
-        raise RuntimeError(f"CurrencyBeacon returned HTTP {exc.response.status_code}") from exc
-    except httpx.HTTPError as exc:
-        raise RuntimeError("CurrencyBeacon network error") from exc
+        raise RuntimeError(f"CurrencyBeacon returned HTTP {exc.response.status_code}") from None
+    except httpx.HTTPError:
+        raise RuntimeError("CurrencyBeacon network error") from None
 
     return {f"usd_{symbol.lower()}": rate for symbol, rate in resolved_rates.items()}
 

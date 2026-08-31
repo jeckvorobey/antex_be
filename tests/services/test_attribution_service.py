@@ -152,7 +152,7 @@ async def test_campaign_registration_never_sets_referrer(db_session, monkeypatch
     assert acquisition.campaign_id == campaign.id
 
 
-async def test_replayed_trusted_init_data_deduplicates_marketing_touch(
+async def test_replayed_trusted_init_data_is_rejected_before_marketing_touch(
     db_session, monkeypatch
 ) -> None:
     from app.services import auth
@@ -167,7 +167,10 @@ async def test_replayed_trusted_init_data_deduplicates_marketing_touch(
     monkeypatch.setattr(auth, "validate_telegram_init_data", lambda _: parsed)
 
     await auth.telegram_auth(db_session, "trusted")
-    await auth.telegram_auth(db_session, "trusted")
+    with pytest.raises(AntExException, match="already used") as error:
+        await auth.telegram_auth(db_session, "trusted")
+
+    assert error.value.code == "INIT_DATA_REPLAYED"
 
     touches = (await db_session.execute(select(MarketingTouch))).scalars().all()
     assert len(touches) == 1

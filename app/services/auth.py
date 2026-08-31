@@ -10,6 +10,8 @@ from datetime import UTC, datetime
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core import redis as redis_module
+from app.core.config import settings
 from app.core.security import create_access_token, validate_telegram_init_data
 from app.exceptions import AntExException
 from app.models.attribution import UserAcquisition
@@ -27,6 +29,7 @@ async def telegram_auth(db: AsyncSession, init_data: str) -> TokenResponse:
     parsed = validate_telegram_init_data(init_data)
     if not parsed:
         raise AntExException("Invalid Telegram initData", code="INVALID_INIT_DATA", status_code=401)
+    await _consume_init_data(init_data)
 
     user_raw = parsed.get("user")
     if not user_raw:
@@ -151,6 +154,23 @@ def _marketing_session_key(init_data: str, telegram_id: int, start_param: str) -
     """Дедуплицирует replay одного trusted Telegram initData без хранения initData."""
     material = f"{telegram_id}:{start_param}:{init_data}"
     return hashlib.sha256(material.encode()).hexdigest()
+
+
+async def _consume_init_data(init_data: str) -> None:
+    """Атомарно отмечает валидный Telegram initData использованным ровно один раз."""
+    digest = hashlib.sha256(init_data.encode()).hexdigest()
+    consumed = await redis_module.redis_client.set(
+        f"telegram:init-data:{digest}",
+        "1",
+        ex=settings.telegram_init_data_ttl_seconds,
+        nx=True,
+    )
+    if not consumed:
+        raise AntExException(
+            "Telegram initData was already used",
+            code="INIT_DATA_REPLAYED",
+            status_code=401,
+        )
 
 
 def resolve_trusted_contact(user) -> TrustedContactResponse:

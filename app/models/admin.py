@@ -15,3 +15,4 @@ class Admin(Base, TimestampMixin):
     username: Mapped[str] = mapped_column(String(255), unique=True, nullable=False)
     email: Mapped[str | None] = mapped_column(String(255), unique=True, nullable=True)
     password_hash: Mapped[str] = mapped_column(String(255), nullable=False)
+    session_version: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
