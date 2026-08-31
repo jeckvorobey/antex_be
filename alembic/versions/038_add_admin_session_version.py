@@ -1,7 +1,7 @@
 """Добавляет версию сессии администратора.
 
-Revision ID: 033
-Revises: 032
+Revision ID: 038
+Revises: 037
 Create Date: 2026-08-31
 """
 
@@ -9,8 +9,8 @@ import sqlalchemy as sa
 
 from alembic import op
 
-revision = "033"
-down_revision = "032"
+revision = "038"
+down_revision = "037"
 branch_labels = None
 depends_on = None
 
