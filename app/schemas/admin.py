@@ -21,8 +21,8 @@ class AdminPasswordUpdate(BaseModel):
 
 
 class AdminLogin(BaseModel):
-    username: str
-    password: str
+    username: str = Field(max_length=255)
+    password: str = Field(max_length=255)
 
 
 class AdminOut(BaseModel):

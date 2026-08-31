@@ -213,6 +213,28 @@ async def test_telegram_auth_rejects_replayed_init_data(
 
 
 @pytest.mark.asyncio
+async def test_json_body_larger_than_one_mebibyte_is_rejected_before_auth(
+    auth_api_client: tuple[AsyncClient, AsyncSession],
+) -> None:
+    """Chunked JSON не должен обходить application body limit."""
+    client, _ = auth_api_client
+
+    async def oversized_json() -> AsyncIterator[bytes]:
+        yield b'{"init_data":"'
+        yield b"x" * (1024 * 1024)
+        yield b'"}'
+
+    response = await client.post(
+        "/api/auth/telegram",
+        content=oversized_json(),
+        headers={"Content-Type": "application/json"},
+    )
+
+    assert response.status_code == 413
+    assert response.json()["detail"] == "JSON body exceeds 1 MiB limit"
+
+
+@pytest.mark.asyncio
 async def test_telegram_auth_promotes_signed_allows_write_to_pm(
     auth_api_client: tuple[AsyncClient, AsyncSession],
     monkeypatch: pytest.MonkeyPatch,

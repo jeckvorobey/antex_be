@@ -27,6 +27,8 @@ from app.api.routers import (
 )
 from app.core.config import settings
 from app.core.logging import configure_logging
+from app.core.network_logging import NetworkLoggingMiddleware
+from app.core.request_limits import JsonBodyLimitMiddleware
 from app.core.security_headers import SecurityHeadersMiddleware
 from app.exceptions import AntExException
 
@@ -141,6 +143,13 @@ app.add_middleware(
     allow_methods=settings.cors_allow_methods,
     allow_headers=settings.cors_allow_headers,
 )
+
+app.add_middleware(
+    JsonBodyLimitMiddleware,
+    max_bytes=settings.max_json_request_bytes,
+)
+
+app.add_middleware(NetworkLoggingMiddleware)
 
 
 # Exception handler

@@ -29,6 +29,7 @@ class Settings(BaseSettings):
     log_level: str = "INFO"
     log_file_max_bytes: int = 10 * 1024 * 1024
     log_file_backup_count: int = 5
+    max_json_request_bytes: int = 1024 * 1024
 
     # БД
     database_url: str = ""
@@ -42,7 +43,6 @@ class Settings(BaseSettings):
     telegram_bot_username: str | None = None
     telegram_mode: Literal["polling", "webhook"] = "polling"
     telegram_webhook_host: str | None = None
-    telegram_webhook_path: str = "/telegram/webhook"
     telegram_webhook_secret: str | None = None
     telegram_init_data_ttl_seconds: int = 86400
     admin_id: int | None = None
@@ -51,7 +51,7 @@ class Settings(BaseSettings):
     @property
     def telegram_webhook_url(self) -> str | None:
         if self.telegram_webhook_host:
-            return f"{self.telegram_webhook_host}{self.telegram_webhook_path}"
+            return f"{self.telegram_webhook_host}/telegram/webhook"
         return None
 
     @model_validator(mode="after")
@@ -66,9 +66,7 @@ class Settings(BaseSettings):
                 raise ValueError("TELEGRAM_WEBHOOK_HOST is required when TELEGRAM_MODE=webhook")
 
         if self.telegram_mode == "webhook" and not self._has_value(self.telegram_webhook_secret):
-            raise ValueError(
-                "TELEGRAM_WEBHOOK_SECRET is required when TELEGRAM_MODE=webhook"
-            )
+            raise ValueError("TELEGRAM_WEBHOOK_SECRET is required when TELEGRAM_MODE=webhook")
 
         return self
 
@@ -87,6 +85,7 @@ class Settings(BaseSettings):
     admin_refresh_ttl_seconds: int = 604800
     admin_bootstrap_password: str | None = None
     admin_login_rate_limit: int = 5
+    admin_login_global_rate_limit: int = 100
     admin_login_rate_window_seconds: int = 60
 
     # Operator
