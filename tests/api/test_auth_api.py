@@ -14,16 +14,31 @@ from app.enums.user import UserRole
 from app.models.user import User
 
 
+class _FakeRedis:
+    """Минимальная Redis-модель для проверки одноразового initData."""
+
+    def __init__(self) -> None:
+        self.keys: set[str] = set()
+
+    async def set(self, key: str, value: str, *, ex: int, nx: bool = False) -> bool:
+        if nx and key in self.keys:
+            return False
+        self.keys.add(key)
+        return True
+
+
 @pytest.fixture
 async def auth_api_client(
     db_session: AsyncSession,
     monkeypatch: pytest.MonkeyPatch,
 ) -> AsyncIterator[tuple[AsyncClient, AsyncSession]]:
+    from app.core import redis as redis_module
     from app.core.config import settings
     from app.main import app
     from app.services import auth as auth_service
 
     settings.jwt_secret = "test-secret-for-auth-api-at-least-32-bytes"
+    monkeypatch.setattr(redis_module, "redis_client", _FakeRedis())
     monkeypatch.setattr(
         auth_service,
         "validate_telegram_init_data",
@@ -176,6 +191,25 @@ async def test_telegram_auth_returns_new_user_without_write_access(
     stored_user = await db_session.scalar(select(User).where(User.telegram_id == 123456))
     assert stored_user is not None
     assert stored_user.telegram_write_access is False
+
+
+@pytest.mark.asyncio
+async def test_telegram_auth_rejects_replayed_init_data(
+    auth_api_client: tuple[AsyncClient, AsyncSession],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Один Telegram initData нельзя обменять на два JWT."""
+    from app.core import redis as redis_module
+
+    client, _ = auth_api_client
+    monkeypatch.setattr(redis_module, "redis_client", _FakeRedis())
+
+    first = await client.post("/api/auth/telegram", json={"init_data": "signed-once"})
+    replay = await client.post("/api/auth/telegram", json={"init_data": "signed-once"})
+
+    assert first.status_code == 200
+    assert replay.status_code == 401
+    assert replay.json()["code"] == "INIT_DATA_REPLAYED"
 
 
 @pytest.mark.asyncio

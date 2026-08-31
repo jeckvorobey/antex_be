@@ -11,10 +11,11 @@ from datetime import UTC, datetime, time
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from cryptography.hazmat.primitives.kdf.scrypt import Scrypt
-from fastapi import APIRouter, HTTPException, Query, status
+from fastapi import APIRouter, HTTPException, Query, Request, status
 from sqlalchemy import case, func, select
 
 from app.api.deps import AdminUser, DbDep, RefreshAdminUser
+from app.core import redis as redis_module
 from app.core.config import settings
 from app.core.security import create_access_token
 from app.enums.user import UserRole
@@ -112,7 +113,9 @@ def get_today_start_for_timezone(
 
 
 @router.post("/login", response_model=AdminTokenResponse)
-async def admin_login(body: AdminLogin, db: DbDep) -> AdminTokenResponse:
+async def admin_login(body: AdminLogin, request: Request, db: DbDep) -> AdminTokenResponse:
+    """Выдаёт admin tokens после Redis-limited проверки пароля."""
+    await _enforce_admin_login_limit(request, body.username)
     repo = AdminRepository(db)
     admin = await repo.get_by_username(body.username)
     if not admin:
@@ -125,31 +128,50 @@ async def admin_login(body: AdminLogin, db: DbDep) -> AdminTokenResponse:
         await db.commit()
 
     access = create_access_token(
-        {"sub": str(admin.id), "type": "admin"},
+        {"sub": str(admin.id), "type": "admin", "sv": admin.session_version},
         ttl=settings.admin_access_ttl_seconds,
     )
     refresh = create_access_token(
-        {"sub": str(admin.id), "type": "admin_refresh"},
+        {"sub": str(admin.id), "type": "admin_refresh", "sv": admin.session_version},
         ttl=settings.admin_refresh_ttl_seconds,
     )
     return AdminTokenResponse(access_token=access, refresh_token=refresh)
 
 
+async def _enforce_admin_login_limit(request: Request, username: str) -> None:
+    """Ограничивает попытки login одновременно по IP и username."""
+    client_host = request.client.host if request.client else "unknown"
+    window = settings.admin_login_rate_window_seconds
+    for key in (
+        "admin:login:global",
+        f"admin:login:ip:{client_host}",
+        f"admin:login:username:{username.casefold()}",
+    ):
+        attempts = await redis_module.redis_client.incr(key)
+        if attempts == 1:
+            await redis_module.redis_client.expire(key, window)
+        if attempts > settings.admin_login_rate_limit:
+            raise HTTPException(status_code=429, detail="Too many login attempts")
+
+
 @router.post("/refresh", response_model=AdminTokenResponse)
 async def admin_refresh(_: DbDep, admin: RefreshAdminUser) -> AdminTokenResponse:
     access = create_access_token(
-        {"sub": str(admin.id), "type": "admin"},
+        {"sub": str(admin.id), "type": "admin", "sv": admin.session_version},
         ttl=settings.admin_access_ttl_seconds,
     )
     refresh = create_access_token(
-        {"sub": str(admin.id), "type": "admin_refresh"},
+        {"sub": str(admin.id), "type": "admin_refresh", "sv": admin.session_version},
         ttl=settings.admin_refresh_ttl_seconds,
     )
     return AdminTokenResponse(access_token=access, refresh_token=refresh)
 
 
 @router.post("/logout")
-async def admin_logout(_: AdminUser) -> dict[str, bool]:
+async def admin_logout(db: DbDep, admin: AdminUser) -> dict[str, bool]:
+    """Отзывает access и refresh токены текущего администратора."""
+    admin.session_version += 1
+    await db.commit()
     return {"ok": True}
 
 
@@ -187,6 +209,7 @@ async def update_admin_password(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Admin not found")
 
     await repo.update(admin, password_hash=build_password_hash(body.password))
+    admin.session_version += 1
     await db.commit()
     return {"ok": True}
 

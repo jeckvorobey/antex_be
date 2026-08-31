@@ -59,6 +59,29 @@ async def test_telegram_webhook_rejects_invalid_secret(monkeypatch: pytest.Monke
 
 
 @pytest.mark.asyncio
+async def test_telegram_webhook_rejects_missing_secret_even_with_initialized_bot(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Webhook никогда не принимает update без настроенного секрета."""
+    feed_webhook_update = AsyncMock()
+    monkeypatch.setattr(settings, "telegram_mode", "webhook")
+    monkeypatch.setattr(settings, "telegram_webhook_secret", None)
+    monkeypatch.setattr(telegram_bot, "bot", object())
+    monkeypatch.setattr(
+        telegram_bot,
+        "dp",
+        SimpleNamespace(feed_webhook_update=feed_webhook_update),
+    )
+
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        response = await client.post("/telegram/webhook", json={"update_id": 1})
+
+    assert response.status_code == 503
+    feed_webhook_update.assert_not_awaited()
+
+
+@pytest.mark.asyncio
 async def test_telegram_webhook_feeds_webhook_update_with_valid_secret(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

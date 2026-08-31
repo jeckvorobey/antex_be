@@ -152,6 +152,56 @@ class TestFetchRawRates:
         with pytest.raises(RuntimeError, match="CurrencyBeacon"):
             await fetch_raw_rates()
 
+    async def test_http_error_does_not_keep_request_url_with_api_key(
+        self,
+        mock_currencybeacon: AsyncMock,
+    ) -> None:
+        """Исключение не должно нести request URL, содержащий ключ."""
+        mock_currencybeacon.return_value.raise_for_status.side_effect = httpx.HTTPStatusError(
+            "bad request",
+            request=httpx.Request(
+                "GET",
+                "https://api.currencybeacon.com/v1/latest?api_key=test-api-key",
+            ),
+            response=httpx.Response(400),
+        )
+
+        with pytest.raises(RuntimeError, match="CurrencyBeacon") as error:
+            await fetch_raw_rates()
+
+        assert error.value.__cause__ is None
+
+    @pytest.mark.parametrize(
+        "request_error",
+        [
+            httpx.ReadTimeout(
+                "timeout",
+                request=httpx.Request(
+                    "GET",
+                    "https://api.currencybeacon.com/v1/latest?api_key=test-api-key",
+                ),
+            ),
+            httpx.ConnectError(
+                "network error",
+                request=httpx.Request(
+                    "GET",
+                    "https://api.currencybeacon.com/v1/latest?api_key=test-api-key",
+                ),
+            ),
+        ],
+    )
+    async def test_network_error_does_not_keep_request_url_with_api_key(
+        self,
+        mock_currencybeacon: AsyncMock,
+        request_error: httpx.HTTPError,
+    ) -> None:
+        mock_currencybeacon.side_effect = request_error
+
+        with pytest.raises(RuntimeError, match="CurrencyBeacon") as error:
+            await fetch_raw_rates()
+
+        assert error.value.__cause__ is None
+
     async def test_raises_when_rate_is_zero(self, mock_currencybeacon: AsyncMock) -> None:
         mock_currencybeacon.return_value.json.return_value = {
             "meta": {"code": 200},

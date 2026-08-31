@@ -12,6 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api import deps
 from app.api.routers.admin import verify_password
+from app.core import redis as redis_module
 from app.core.security import create_access_token
 from app.enums.country import Country
 from app.enums.order import OrderStatus
@@ -47,8 +48,22 @@ def count_sql_statements(db_session: AsyncSession) -> Iterator[list[str]]:
 @pytest.fixture
 async def admin_crud_api_client(
     db_session: AsyncSession,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> AsyncIterator[tuple[AsyncClient, AsyncSession]]:
     from app.main import app
+
+    class FakeRedis:
+        def __init__(self) -> None:
+            self.values: dict[str, int] = {}
+
+        async def incr(self, key: str) -> int:
+            self.values[key] = self.values.get(key, 0) + 1
+            return self.values[key]
+
+        async def expire(self, key: str, seconds: int) -> bool:
+            return True
+
+    monkeypatch.setattr(redis_module, "redis_client", FakeRedis())
 
     async def override_get_db_session() -> AsyncIterator[AsyncSession]:
         yield db_session
@@ -94,6 +109,30 @@ async def test_admin_refresh_token_is_restricted_to_refresh_endpoint(
     assert refreshed.status_code == 200
     assert refreshed.json()["access_token"]
     assert refreshed.json()["refresh_token"]
+
+
+@pytest.mark.asyncio
+async def test_admin_logout_revokes_current_access_and_refresh_tokens(
+    admin_crud_api_client: tuple[AsyncClient, AsyncSession],
+) -> None:
+    """Logout увеличивает server-side версию и отзывает пару токенов."""
+    client, db_session = admin_crud_api_client
+    admin = Admin(username="root", email="root@example.com", password_hash="unused")
+    db_session.add(admin)
+    await db_session.flush()
+    access = create_access_token({"sub": str(admin.id), "type": "admin", "sv": 0})
+    refresh = create_access_token({"sub": str(admin.id), "type": "admin_refresh", "sv": 0})
+
+    logout = await client.post("/api/admin/logout", headers={"Authorization": f"Bearer {access}"})
+    protected = await client.get("/api/admin/list", headers={"Authorization": f"Bearer {access}"})
+    renewed = await client.post(
+        "/api/admin/refresh",
+        headers={"Authorization": f"Bearer {refresh}"},
+    )
+
+    assert logout.status_code == 200
+    assert protected.status_code == 401
+    assert renewed.status_code == 401
 
 
 @pytest.mark.asyncio
@@ -206,6 +245,29 @@ async def test_admin_login_migrates_legacy_sha256_hash(
     await db_session.refresh(admin)
     assert admin.password_hash.startswith("scrypt$")
     assert verify_password("OldPassword123", admin.password_hash) == (True, False)
+
+
+@pytest.mark.asyncio
+async def test_admin_login_rate_limits_repeated_wrong_passwords(
+    admin_crud_api_client: tuple[AsyncClient, AsyncSession],
+) -> None:
+    """Login не должен неограниченно запускать Scrypt для одного IP и username."""
+    client, db_session = admin_crud_api_client
+    db_session.add(Admin(username="limited", password_hash=hashlib.sha256(b"correct").hexdigest()))
+    await db_session.commit()
+
+    for _ in range(5):
+        response = await client.post(
+            "/api/admin/login",
+            json={"username": "limited", "password": "wrong"},
+        )
+        assert response.status_code == 401
+
+    blocked = await client.post(
+        "/api/admin/login",
+        json={"username": "limited", "password": "wrong"},
+    )
+    assert blocked.status_code == 429
 
 
 @pytest.mark.asyncio
