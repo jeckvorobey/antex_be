@@ -23,7 +23,6 @@ async def telegram_webhook(
     x_telegram_bot_api_secret_token: str | None = Header(default=None),
 ) -> dict:
     if settings.telegram_mode != "webhook":
-        logger.warning("Received Telegram webhook while mode is not webhook")
         return {"ok": True}
 
     expected = settings.telegram_webhook_secret
@@ -31,7 +30,6 @@ async def telegram_webhook(
         logger.error("Rejected Telegram webhook: secret is not configured")
         raise HTTPException(status_code=503, detail="Webhook secret is not configured")
     if not hmac.compare_digest(x_telegram_bot_api_secret_token or "", expected):
-        logger.warning("Rejected Telegram webhook: invalid secret")
         raise HTTPException(status_code=403, detail="Invalid webhook secret")
 
     if telegram_bot.bot is None or telegram_bot.dp is None:

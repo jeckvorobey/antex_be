@@ -15,6 +15,7 @@ from app.repositories.aex import (
     AexWalletRepository,
 )
 from app.repositories.config import ConfigRepository
+from app.repositories.order import OrderRepository
 from app.schemas.aex import (
     AexAdminCreditRequest,
     AexAdminDebitRequest,
@@ -88,11 +89,16 @@ async def transfer_aex(
     user: CurrentUser,
 ) -> dict[str, object]:
     """Продажа ATXG (ATXG -> X). Hold + создание заявки на обмен."""
+    order = await OrderRepository(db).get_one(body.order_id)
+    if order is None or order.UserId != user.id:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Order not found")
+
     entry = await aex_service.hold(
         db,
         user.id,
         body.amount,
         reference_type="transfer",
+        reference_id=str(order.id),
         description="ATXG transfer hold",
     )
     await db.commit()

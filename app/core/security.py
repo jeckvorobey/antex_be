@@ -37,7 +37,10 @@ def validate_telegram_init_data(init_data: str) -> dict[str, Any] | None:
     if not settings.telegram_bot_token:
         return None
 
-    parsed = parse_qs(init_data)
+    try:
+        parsed = parse_qs(init_data, max_num_fields=64)
+    except ValueError:
+        return None
     received_hash = parsed.get("hash", [None])[0]
     if not received_hash:
         return None

@@ -142,16 +142,23 @@ async def _enforce_admin_login_limit(request: Request, username: str) -> None:
     """Ограничивает попытки login одновременно по IP и username."""
     client_host = request.client.host if request.client else "unknown"
     window = settings.admin_login_rate_window_seconds
-    for key in (
-        "admin:login:global",
-        f"admin:login:ip:{client_host}",
-        f"admin:login:username:{username.casefold()}",
+    for key, limit in (
+        ("admin:login:global", settings.admin_login_global_rate_limit),
+        (f"admin:login:ip:{client_host}", settings.admin_login_rate_limit),
+        (f"admin:login:username:{username.casefold()}", settings.admin_login_rate_limit),
     ):
-        attempts = await redis_module.redis_client.incr(key)
-        if attempts == 1:
-            await redis_module.redis_client.expire(key, window)
-        if attempts > settings.admin_login_rate_limit:
+        attempts = await _increment_rate_counter(key, window)
+        if attempts > limit:
             raise HTTPException(status_code=429, detail="Too many login attempts")
+
+
+async def _increment_rate_counter(key: str, window: int) -> int:
+    """Атомарно увеличивает counter и устанавливает начальный TTL."""
+    pipeline = redis_module.redis_client.pipeline(transaction=True)
+    pipeline.incr(key)
+    pipeline.expire(key, window, nx=True)
+    attempts, _ = await pipeline.execute()
+    return int(attempts)
 
 
 @router.post("/refresh", response_model=AdminTokenResponse)

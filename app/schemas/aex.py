@@ -151,6 +151,9 @@ class AexAdminRateRowOut(BaseModel):
 
 
 class AexTransferRequest(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
+    order_id: int = Field(alias="orderId", gt=0)
     amount: Decimal = Field(gt=0)
 
 
