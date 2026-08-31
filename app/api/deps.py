@@ -102,6 +102,8 @@ async def _get_admin_by_token_type(
     admin = await repo.get_by_id(admin_id)
     if not admin:
         raise HTTPException(status_code=401, detail="Admin not found")
+    if int(payload.get("sv", 0)) != admin.session_version:
+        raise HTTPException(status_code=401, detail="Admin session revoked")
     return admin
 
 

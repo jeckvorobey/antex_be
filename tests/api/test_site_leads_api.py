@@ -17,6 +17,7 @@ from app.enums.user import UserRole
 from app.models.admin import Admin
 from app.models.user import User
 from app.services.site_lead_captcha import create_site_lead_challenge
+from app.services.site_lead_notifications import build_site_lead_manager_text
 
 
 class _FakeBot:
@@ -48,6 +49,30 @@ class _FakeRedis:
         self.set_values.add(key)
         return True
 
+
+def test_site_lead_telegram_text_escapes_html_controlled_fields() -> None:
+    """Публичный ввод не должен становиться Telegram HTML-разметкой."""
+    lead = type(
+        "Lead",
+        (),
+        {
+            "id": 1,
+            "messenger": "<b>Telegram</b>",
+            "contact": "<script>alert(1)</script>",
+            "topic": "<i>Обмен</i>",
+            "message": "<a href=\"https://attacker.example\">текст</a>",
+            "source": "<u>landing</u>",
+        },
+    )()
+
+    assert build_site_lead_manager_text(lead) == (
+        "🆕 Заявка с сайта #1\n\n"
+        "💬 Мессенджер: &lt;b&gt;Telegram&lt;/b&gt;\n"
+        "👤 Контакт: &lt;script&gt;alert(1)&lt;/script&gt;\n"
+        "📌 Тема: &lt;i&gt;Обмен&lt;/i&gt;\n"
+        "📝 Сообщение: &lt;a href=&quot;https://attacker.example&quot;&gt;текст&lt;/a&gt;\n"
+        "🌐 Источник: &lt;u&gt;landing&lt;/u&gt;"
+    )
 
 def _valid_altcha_payload() -> str:
     challenge = Challenge.from_dict(create_site_lead_challenge())

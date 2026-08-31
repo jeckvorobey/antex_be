@@ -13,6 +13,45 @@ from app.models import *  # noqa: F403
 from app.models.base import Base
 
 
+class FakeRedis:
+    """Минимальный изолированный Redis для тестов без внешнего сервиса."""
+
+    def __init__(self) -> None:
+        self.values: dict[str, str] = {}
+
+    async def set(self, key: str, value: str, *, ex: int | None = None, nx: bool = False) -> bool:
+        del ex
+        if nx and key in self.values:
+            return False
+        self.values[key] = value
+        return True
+
+    async def get(self, key: str) -> str | None:
+        return self.values.get(key)
+
+    async def delete(self, key: str) -> int:
+        return int(self.values.pop(key, None) is not None)
+
+    async def incr(self, key: str) -> int:
+        value = int(self.values.get(key, "0")) + 1
+        self.values[key] = str(value)
+        return value
+
+    async def expire(self, key: str, seconds: int) -> bool:
+        del key, seconds
+        return True
+
+
+@pytest.fixture(autouse=True)
+def fake_redis(monkeypatch: pytest.MonkeyPatch) -> FakeRedis:
+    """Исключает обращения тестов к локальному либо внешнему Redis."""
+    from app.core import redis as redis_module
+
+    redis = FakeRedis()
+    monkeypatch.setattr(redis_module, "redis_client", redis)
+    return redis
+
+
 @pytest.fixture
 async def db_session() -> AsyncIterator[AsyncSession]:
     engine = create_async_engine("sqlite+aiosqlite:///:memory:")

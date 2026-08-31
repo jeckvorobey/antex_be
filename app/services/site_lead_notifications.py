@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import logging
+from html import escape
 
 from app.models.site_lead import SiteLead
 
@@ -45,21 +46,23 @@ async def notify_site_lead_created(lead: SiteLead, manager) -> None:
 
 
 def build_site_lead_manager_text(lead: SiteLead) -> str:
+    """Собирает HTML-безопасное уведомление для публичной заявки."""
     return "\n".join(
         [
             f"🆕 Заявка с сайта #{lead.id}",
             "",
             f"💬 Мессенджер: {_format_value(lead.messenger)}",
-            f"👤 Контакт: {lead.contact}",
+            f"👤 Контакт: {_format_value(lead.contact)}",
             f"📌 Тема: {_format_value(lead.topic)}",
-            f"📝 Сообщение: {lead.message}",
-            f"🌐 Источник: {lead.source}",
+            f"📝 Сообщение: {_format_value(lead.message)}",
+            f"🌐 Источник: {_format_value(lead.source)}",
         ]
     )
 
 
 def _format_value(value: str | None) -> str:
-    return value or "—"
+    """Экранирует значения, поскольку бот отправляет уведомления в HTML-режиме."""
+    return escape(value) if value else "—"
 
 
 def _get_telegram_bot():

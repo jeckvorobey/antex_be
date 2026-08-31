@@ -57,7 +57,16 @@ def validate_telegram_init_data(init_data: str) -> dict[str, Any] | None:
         return None
 
     auth_date = parsed.get("auth_date", [None])[0]
-    if auth_date and (time.time() - int(auth_date)) > settings.telegram_init_data_ttl_seconds:
+    if not auth_date:
+        return None
+    try:
+        auth_timestamp = int(auth_date)
+    except ValueError:
+        return None
+    now = time.time()
+    if auth_timestamp > now:
+        return None
+    if now - auth_timestamp > settings.telegram_init_data_ttl_seconds:
         return None
 
     return {k: v[0] for k, v in parsed.items()}

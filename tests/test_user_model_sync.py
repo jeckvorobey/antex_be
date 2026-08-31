@@ -165,7 +165,7 @@ async def test_telegram_auth_refreshes_existing_user(
         },
     )
 
-    second_token = await telegram_auth(db_session, "init-data")
+    second_token = await telegram_auth(db_session, "init-data-refreshed")
     assert second_token.access_token == "token-1"
 
     user = await UserRepository(db_session).get_one(1)
@@ -202,7 +202,7 @@ async def test_telegram_auth_persists_updates_and_clears_photo_url(
         lambda data: f"token-{data['sub']}",
     )
 
-    await telegram_auth(db_session, "init-data")
+    await telegram_auth(db_session, "init-data-updated")
     user = await UserRepository(db_session).get_one(1)
     assert user is not None
     assert user.photo_url == "https://t.me/i/userpic/320/old.jpg"
@@ -218,7 +218,7 @@ async def test_telegram_auth_persists_updates_and_clears_photo_url(
         },
     )
 
-    await telegram_auth(db_session, "init-data")
+    await telegram_auth(db_session, "init-data-without-photo")
     refreshed_user = await UserRepository(db_session).get_one(1)
     assert refreshed_user is not None
     assert refreshed_user.photo_url == "https://t.me/i/userpic/320/new.jpg"
@@ -280,7 +280,9 @@ async def test_telegram_auth_ignores_invalid_archived_and_ref_start_params(
                 "start_param": start_param,
             },
         )
-        assert (await telegram_auth(db_session, "signed-init-data")).access_token == "token"
+        assert (
+            await telegram_auth(db_session, f"signed-init-data-{telegram_id}")
+        ).access_token == "token"
 
     assert (await db_session.execute(select(MarketingAttribution))).scalars().all() == []
 

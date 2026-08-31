@@ -1413,7 +1413,7 @@ async def test_miniapp_order_keeps_saved_order_when_manager_notification_fails(
 
 
 @pytest.mark.asyncio
-async def test_miniapp_order_accepts_atxg_withdrawal_via_usdt_based_pair(
+async def test_miniapp_order_calculates_external_atxg_withdrawal_on_server(
     api_client: tuple[AsyncClient, AsyncSession],
 ) -> None:
     client, db_session = api_client
@@ -1429,8 +1429,8 @@ async def test_miniapp_order_accepts_atxg_withdrawal_via_usdt_based_pair(
             "currencySell": "ATXG",
             "amountSell": 400,
             "currencyBuy": "THB",
-            "amountBuy": 14480,
-            "rate": 36.2,
+            "amountBuy": 999999,
+            "rate": 999999,
             "methodGet": "qrcode",
         },
     )
@@ -1439,6 +1439,8 @@ async def test_miniapp_order_accepts_atxg_withdrawal_via_usdt_based_pair(
     order = await get_latest_order_for_user(db_session, customer.id)
     assert order.currencySell == "ATXG"
     assert order.currencyBuy == "THB"
+    assert order.rate == pytest.approx(35.114)
+    assert order.amountBuy == pytest.approx(14045.6)
 
     wallet = await db_session.scalar(select(AexWallet).where(AexWallet.user_id == customer.id))
     assert wallet is not None
