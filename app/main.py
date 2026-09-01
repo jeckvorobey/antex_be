@@ -114,11 +114,16 @@ async def lifespan(app: FastAPI) -> AsyncGenerator:
         logger.exception("Ошибка стартовой инициализации курсов")
 
     rate_task = asyncio.create_task(_rate_updater_loop())
+    from app.services.order_telegram_sync import order_telegram_sync_loop
+
+    order_sync_task = asyncio.create_task(order_telegram_sync_loop())
 
     try:
         yield
     finally:
         rate_task.cancel()
+        order_sync_task.cancel()
+        await asyncio.gather(rate_task, order_sync_task, return_exceptions=True)
         logger.info("Shutting down AntEx...")
         await manager_realtime_hub.stop()
         if bot_started:

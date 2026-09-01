@@ -17,6 +17,8 @@ from app.enums.order import MethodGet, OrderStatus
 from app.telegram import messages
 from app.telegram.i18n import get_translator, get_user_translator, normalize_locale
 from app.telegram.keyboards import (
+    manager_order_chat_only,
+    manager_order_close,
     manager_order_open_chat,
     order_created_actions,
     review_link,
@@ -100,6 +102,11 @@ def is_permanent_telegram_delivery_error(exc: Exception) -> bool:
     return "chat not found" in message or "user is deactivated" in message
 
 
+def is_telegram_message_not_modified(exc: Exception) -> bool:
+    """Telegram подтверждает, что сохранённая карточка уже актуальна."""
+    return isinstance(exc, TelegramBadRequest) and "message is not modified" in str(exc).lower()
+
+
 async def _send_rich_or_html(
     *,
     bot,
@@ -120,6 +127,8 @@ async def _send_rich_or_html(
             )
             return DeliveryOutcome.RICH, existing_message_id
         except (TelegramBadRequest, TelegramNotFound) as exc:
+            if is_telegram_message_not_modified(exc):
+                return DeliveryOutcome.RICH, existing_message_id
             if is_permanent_telegram_delivery_error(exc):
                 logger.warning(
                     "Order message edit skipped: chat is inaccessible chat_id=%s", chat_id
@@ -145,6 +154,8 @@ async def _send_rich_or_html(
             )
             return DeliveryOutcome.FALLBACK, existing_message_id
         except (TelegramBadRequest, TelegramNotFound) as exc:
+            if is_telegram_message_not_modified(exc):
+                return DeliveryOutcome.FALLBACK, existing_message_id
             if is_permanent_telegram_delivery_error(exc):
                 logger.warning("Order HTML edit skipped: chat is inaccessible chat_id=%s", chat_id)
                 return DeliveryOutcome.INACCESSIBLE, None
@@ -422,6 +433,8 @@ async def _deliver_user_status_message(
             order.userNotificationMessageId = old_message_id
             return DeliveryOutcome.SENT, old_message_id
         except TelegramBadRequest as exc:
+            if is_telegram_message_not_modified(exc):
+                return DeliveryOutcome.SENT, old_message_id
             if is_permanent_telegram_delivery_error(exc):
                 return DeliveryOutcome.INACCESSIBLE, None
             logger.info(
@@ -554,7 +567,7 @@ async def notify_order_created(
         view = OrderMessageView.from_order(order)
         if view.customer_username is None:
             view = replace(view, customer_username=getattr(user, "username", None))
-        delivery, _ = await _send_rich_or_html(
+        delivery, manager_message_id = await _send_rich_or_html(
             bot=bot,
             chat_id=manager.telegram_id,
             rich_html=messages.manager_order_card_rich(
@@ -569,6 +582,9 @@ async def notify_order_created(
             ),
             reply_markup=manager_order_open_chat(translate, order_id=order.id),
         )
+        if manager_message_id is not None:
+            order.managerNotificationChatId = manager.telegram_id
+            order.managerNotificationMessageId = manager_message_id
         if not is_delivery_success(delivery):
             logger.warning(
                 "Order notification delivery to manager failed: order_id=%s "
@@ -626,10 +642,9 @@ async def notify_order_status_changed(order) -> DeliveryOutcome:
         reply_markup = review_link(translate, REVIEW_URL)
 
         locale = normalize_locale(getattr(user, "language_code", None))
-        return await send_new_rich_user_status_message(
+        delivery, message_id = await _send_rich_or_html(
             bot=bot,
             chat_id=user.telegram_id,
-            order=order,
             rich_html=messages.order_completed_rich(
                 OrderMessageView.from_order(order),
                 translator=translate,
@@ -637,7 +652,11 @@ async def notify_order_status_changed(order) -> DeliveryOutcome:
             ),
             fallback_html=_build_user_status_text(order, translate=translate),
             reply_markup=reply_markup,
+            existing_message_id=getattr(order, "userNotificationMessageId", None),
         )
+        if message_id is not None:
+            order.userNotificationMessageId = message_id
+        return delivery
     delivery, _ = await _deliver_user_status_message(
         bot=bot,
         chat_id=user.telegram_id,
@@ -693,6 +712,24 @@ def build_manager_status_text(order) -> str:
         status=OrderStatus(int(order.status)),
         locale="ru",
     )
+
+
+def build_manager_status_markup(order) -> InlineKeyboardMarkup:
+    """Вернуть действия manager-карточки из актуального статуса заявки."""
+    translate = get_translator("ru")
+    status = OrderStatus(int(order.status))
+    manager_app_url = build_manager_workspace_url(order_id=order.id)
+    if status == OrderStatus.CREATED:
+        return manager_order_open_chat(translate, order_id=order.id)
+    if status == OrderStatus.PROCESSING:
+        return manager_order_close(
+            translate,
+            order_id=order.id,
+            manager_app_url=manager_app_url,
+        )
+    if manager_app_url:
+        return manager_order_chat_only(translate, manager_app_url=manager_app_url)
+    return InlineKeyboardMarkup(inline_keyboard=[])
 
 
 def _build_manager_order_text(order, user) -> str:

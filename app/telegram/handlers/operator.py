@@ -13,6 +13,7 @@ from app.enums.order import OrderStatus
 from app.enums.user import has_operator_access
 from app.repositories.order import OrderRepository
 from app.services.order_notifications import (
+    DeliveryOutcome,
     build_manager_workspace_url,
     edit_manager_order_card,
     is_delivery_success,
@@ -63,15 +64,7 @@ async def operator_take(callback: CallbackQuery) -> None:
             await callback.answer(translate("manager-access-denied"), show_alert=True)
             return
 
-        current = await OrderRepository(db).get_one(order_id)
-        if current is None:
-            await callback.answer(translate("operator-order-not-found"), show_alert=True)
-            return
-        if int(current.status) != int(OrderStatus.CREATED):
-            await callback.answer(translate("operator-order-status-changed"), show_alert=True)
-            return
-
-        result = await take_order_in_work(db, order_id=order_id)
+        result = await take_order_in_work(db, order_id=order_id, manager=user)
         order = result.order
 
     card_delivery = await edit_manager_order_card(
@@ -81,12 +74,14 @@ async def operator_take(callback: CallbackQuery) -> None:
             order_id=order.id,
             manager_app_url=build_manager_workspace_url(order_id=order.id),
         ),
-        customer_notified=is_delivery_success(result.delivery),
+        customer_notified=(
+            is_delivery_success(result.delivery) or result.delivery == DeliveryOutcome.SKIPPED
+        ),
     )
     if not is_delivery_success(card_delivery):
         await callback.answer(translate("operator-card-update-failed"), show_alert=True)
         return
-    if not is_delivery_success(result.delivery):
+    if result.delivery != DeliveryOutcome.SKIPPED and not is_delivery_success(result.delivery):
         await callback.answer(translate("operator-handoff-delivery-failed"), show_alert=True)
         return
     await callback.answer()
@@ -160,7 +155,12 @@ async def operator_cancel_confirm(callback: CallbackQuery) -> None:
             await callback.answer(translate("manager-access-denied"), show_alert=True)
             return
 
-        order = await update_order_status(db, order_id=order_id, status=OrderStatus.CANCELLED)
+        order = await update_order_status(
+            db,
+            order_id=order_id,
+            status=OrderStatus.CANCELLED,
+            manager_id=user.id,
+        )
         manager_app_url = build_manager_workspace_url(order_id=order.id)
 
     reply_markup = None
@@ -219,7 +219,12 @@ async def operator_close(callback: CallbackQuery) -> None:
             await callback.answer(translate("manager-access-denied"), show_alert=True)
             return
 
-        order = await update_order_status(db, order_id=order_id, status=OrderStatus.COMPLETED)
+        order = await update_order_status(
+            db,
+            order_id=order_id,
+            status=OrderStatus.COMPLETED,
+            manager_id=user.id,
+        )
         manager_app_url = build_manager_workspace_url(order_id=order.id)
 
     reply_markup = None

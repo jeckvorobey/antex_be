@@ -46,6 +46,11 @@ class Settings(BaseSettings):
     telegram_webhook_host: str | None = None
     telegram_webhook_secret: str | None = None
     telegram_init_data_ttl_seconds: int = 86400
+    order_telegram_sync_poll_seconds: float = 1.0
+    order_telegram_sync_retry_base_seconds: int = 5
+    order_telegram_sync_lease_seconds: int = 60
+    order_telegram_sync_max_attempts: int = 8
+    order_telegram_sync_batch_size: int = 50
     admin_id: int | None = None
     dev_user_id: int | None = None
 

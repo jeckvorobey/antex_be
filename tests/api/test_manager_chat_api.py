@@ -24,7 +24,6 @@ from app.repositories.chat import ChatRepository
 from app.schemas.chat import ManagerOrderStatusRequest
 from app.services.chat import ChatService
 from app.services.chat_attachments import send_manager_attachment
-from app.services.order_notifications import DeliveryOutcome
 
 
 async def test_manager_text_idempotency_is_scoped_to_conversation(db_session) -> None:
@@ -160,11 +159,11 @@ async def test_manager_orders_include_backend_location_and_customer_name(db_sess
     assert without_city.city is None
 
 
-async def test_status_endpoint_commits_new_notification_id_without_write_access_change(
+async def test_status_endpoint_passes_authenticated_manager_to_workflow(
     db_session,
     monkeypatch,
 ) -> None:
-    """Новый Telegram message id сохраняется даже при неизменном write-access."""
+    """Status endpoint закрепляет фактически авторизованного manager."""
     customer = User(telegram_id=830001, telegram_write_access=True)
     manager = User(telegram_id=830002, role=int(UserRole.MANAGER))
     db_session.add_all([customer, manager])
@@ -185,12 +184,11 @@ async def test_status_endpoint_commits_new_notification_id_without_write_access_
     db_session.add(order)
     await db_session.commit()
 
-    async def fake_update_order_status(*_args, **_kwargs):
-        return order
+    captured: dict[str, object] = {}
 
-    async def fake_notify_order_status_changed(target_order, **_kwargs):
-        target_order.userNotificationMessageId = 987
-        return DeliveryOutcome.SENT
+    async def fake_update_order_status(*_args, **kwargs):
+        captured.update(kwargs)
+        return order
 
     async def fake_publish(*_args, **_kwargs) -> None:
         return None
@@ -198,10 +196,6 @@ async def test_status_endpoint_commits_new_notification_id_without_write_access_
     monkeypatch.setattr(
         "app.api.routers.manager.update_order_status",
         fake_update_order_status,
-    )
-    monkeypatch.setattr(
-        "app.api.routers.manager.notify_order_status_changed",
-        fake_notify_order_status_changed,
     )
     monkeypatch.setattr("app.api.routers.manager.manager_realtime_hub.publish", fake_publish)
 
@@ -212,9 +206,11 @@ async def test_status_endpoint_commits_new_notification_id_without_write_access_
         manager=manager,
     )
 
-    await db_session.rollback()
-    await db_session.refresh(order)
-    assert order.userNotificationMessageId == 987
+    assert captured == {
+        "order_id": order.id,
+        "status": int(OrderStatus.PROCESSING),
+        "manager_id": manager.id,
+    }
 
 
 async def test_chat_list_bulk_enrichment_has_bounded_query_count(db_session) -> None:
