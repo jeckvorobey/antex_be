@@ -52,7 +52,10 @@ async def test_stale_task_finishes_without_telegram_delivery(monkeypatch) -> Non
     monkeypatch.setattr(order_telegram_sync, "OrderRepository", FakeOrderRepository)
     monkeypatch.setattr(order_telegram_sync, "_deliver_manager", delivery)
 
-    await order_telegram_sync.process_order_telegram_sync_task(SimpleNamespace(), task)
+    await order_telegram_sync.process_order_telegram_sync_task(
+        SimpleNamespace(scalar=AsyncMock(return_value=SimpleNamespace(state="delivered"))),
+        task,
+    )
 
     assert task.state == "delivered"
     assert task.lastErrorCode == "stale_status"
@@ -60,7 +63,7 @@ async def test_stale_task_finishes_without_telegram_delivery(monkeypatch) -> Non
 
 
 @pytest.mark.asyncio
-async def test_missing_manager_message_link_is_permanent_failure(monkeypatch) -> None:
+async def test_missing_manager_message_link_is_retried(monkeypatch) -> None:
     task = SimpleNamespace(
         OrderId=5,
         status=2,
@@ -88,9 +91,12 @@ async def test_missing_manager_message_link_is_permanent_failure(monkeypatch) ->
 
     monkeypatch.setattr(order_telegram_sync, "OrderRepository", FakeOrderRepository)
 
-    await order_telegram_sync.process_order_telegram_sync_task(SimpleNamespace(), task)
+    await order_telegram_sync.process_order_telegram_sync_task(
+        SimpleNamespace(scalar=AsyncMock(return_value=SimpleNamespace(state="delivered"))),
+        task,
+    )
 
-    assert task.state == "failed"
+    assert task.state == "retry"
     assert task.attemptCount == 1
     assert task.lastErrorCode == "message_link_missing"
 
@@ -125,7 +131,10 @@ async def test_temporary_failure_schedules_exponential_retry(monkeypatch) -> Non
     )
     before = datetime.now(UTC)
 
-    await order_telegram_sync.process_order_telegram_sync_task(SimpleNamespace(), task)
+    await order_telegram_sync.process_order_telegram_sync_task(
+        SimpleNamespace(scalar=AsyncMock(return_value=SimpleNamespace(state="delivered"))),
+        task,
+    )
 
     assert task.state == "retry"
     assert task.attemptCount == 3
@@ -146,7 +155,11 @@ async def test_message_not_modified_is_delivered(monkeypatch) -> None:
     from app.telegram import bot as telegram_bot
 
     monkeypatch.setattr(telegram_bot, "bot", bot)
-    monkeypatch.setattr(order_telegram_sync, "build_manager_status_text", lambda order: "current")
+    monkeypatch.setattr(
+        order_telegram_sync,
+        "build_manager_status_text",
+        lambda order, **kwargs: "current",
+    )
     monkeypatch.setattr(order_telegram_sync, "build_manager_status_markup", lambda order: None)
     order = SimpleNamespace(
         id=5,
@@ -157,3 +170,53 @@ async def test_message_not_modified_is_delivered(monkeypatch) -> None:
     result = await order_telegram_sync._deliver_manager(order)
 
     assert result == (order_telegram_sync.SyncResult.DELIVERED, None)
+
+
+@pytest.mark.asyncio
+async def test_deleted_manager_message_is_replaced(monkeypatch) -> None:
+    replacement = SimpleNamespace(message_id=91)
+    bot = SimpleNamespace(
+        edit_message_text=AsyncMock(
+            side_effect=TelegramBadRequest(
+                method="editMessageText",
+                message="message to edit not found",
+            )
+        ),
+        send_message=AsyncMock(return_value=replacement),
+    )
+    from app.telegram import bot as telegram_bot
+
+    monkeypatch.setattr(telegram_bot, "bot", bot)
+    monkeypatch.setattr(
+        order_telegram_sync,
+        "build_manager_status_text",
+        lambda order, **kwargs: "current",
+    )
+    monkeypatch.setattr(order_telegram_sync, "build_manager_status_markup", lambda order: None)
+    order = SimpleNamespace(
+        id=5,
+        managerNotificationChatId=700001,
+        managerNotificationMessageId=42,
+    )
+
+    result = await order_telegram_sync._deliver_manager(order)
+
+    assert result == (order_telegram_sync.SyncResult.DELIVERED, None)
+    assert order.managerNotificationMessageId == 91
+    bot.send_message.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_user_delivery_reconciles_cached_write_access(monkeypatch) -> None:
+    user = SimpleNamespace(telegram_write_access=True)
+    order = SimpleNamespace(user=user)
+    monkeypatch.setattr(
+        order_telegram_sync,
+        "notify_order_status_changed",
+        AsyncMock(return_value=order_telegram_sync.DeliveryOutcome.INACCESSIBLE),
+    )
+
+    result = await order_telegram_sync._deliver_user(order)
+
+    assert result == (order_telegram_sync.SyncResult.FAILED, "chat_inaccessible")
+    assert user.telegram_write_access is False

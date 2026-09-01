@@ -755,3 +755,19 @@ def test_order_workflow_rejects_action_by_another_manager() -> None:
 
     assert caught.value.code == "ORDER_STATUS_CONFLICT"
     assert caught.value.status_code == 409
+
+
+def test_aex_terminal_transition_preserves_domain_error() -> None:
+    with pytest.raises(AntExException) as caught:
+        order_status.validate_order_status_transition(
+            SimpleNamespace(
+                status=int(OrderStatus.COMPLETED),
+                ManagerId=7,
+                currencySell="ATXG",
+            ),
+            OrderStatus.CANCELLED,
+            manager_id=7,
+        )
+
+    assert caught.value.code == "ATXG_ORDER_FINAL_STATUS_LOCKED"
+    assert caught.value.status_code == 422

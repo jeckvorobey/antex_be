@@ -104,9 +104,12 @@ async def update_order_status(
         return order
 
     if (
-        target_status == OrderStatus.PROCESSING
-        and manager_id is not None
+        manager_id is not None
         and getattr(order, "ManagerId", None) is None
+        and (
+            target_status == OrderStatus.PROCESSING
+            or OrderStatus(int(order.status)) == OrderStatus.PROCESSING
+        )
     ):
         order.ManagerId = manager_id
 
@@ -150,11 +153,12 @@ async def update_order_status(
             order_id=hydrated.id,
         )
 
-    await enqueue_order_telegram_sync_tasks(
-        db,
-        order_id=order_id,
-        status=target_status,
-    )
+    if notify_user:
+        await enqueue_order_telegram_sync_tasks(
+            db,
+            order_id=order_id,
+            status=target_status,
+        )
     await db.commit()
 
     if target_status == OrderStatus.CANCELLED and not _is_aex_withdrawal_order(hydrated):
@@ -224,7 +228,6 @@ async def update_order_status(
                 order_id,
             )
 
-    del notify_user
     return hydrated
 
 
@@ -327,10 +330,10 @@ def validate_order_status_transition(
         )
     if current_status == target_status:
         return
+    _validate_aex_status_transition(order, target_status)
     if target_status not in _ALLOWED_STATUS_TRANSITIONS[current_status]:
         raise AntExException(
             "Order status transition is not allowed",
             code="ORDER_STATUS_CONFLICT",
             status_code=409,
         )
-    _validate_aex_status_transition(order, target_status)

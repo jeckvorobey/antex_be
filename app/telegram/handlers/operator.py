@@ -11,6 +11,7 @@ from sqlalchemy.exc import SQLAlchemyError
 from app.core.database import create_db_session
 from app.enums.order import OrderStatus
 from app.enums.user import has_operator_access
+from app.exceptions import AntExException
 from app.repositories.order import OrderRepository
 from app.services.order_notifications import (
     DeliveryOutcome,
@@ -64,7 +65,16 @@ async def operator_take(callback: CallbackQuery) -> None:
             await callback.answer(translate("manager-access-denied"), show_alert=True)
             return
 
-        result = await take_order_in_work(db, order_id=order_id, manager=user)
+        try:
+            result = await take_order_in_work(db, order_id=order_id, manager=user)
+        except AntExException as exc:
+            message_key = (
+                "operator-order-not-found"
+                if exc.code == "ORDER_NOT_FOUND"
+                else "operator-order-status-changed"
+            )
+            await callback.answer(translate(message_key), show_alert=True)
+            return
         order = result.order
 
     card_delivery = await edit_manager_order_card(

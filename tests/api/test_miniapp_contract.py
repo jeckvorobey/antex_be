@@ -1977,7 +1977,7 @@ async def test_completed_aex_order_rejects_later_cancellation_without_balance_mu
 
     wallet = await db_session.scalar(select(AexWallet).where(AexWallet.user_id == customer.id))
     order = await db_session.get(Order, order_id)
-    assert exc_info.value.code == "ORDER_STATUS_CONFLICT"
+    assert exc_info.value.code == "ATXG_ORDER_FINAL_STATUS_LOCKED"
     assert order is not None
     assert order.status == int(OrderStatus.COMPLETED)
     assert wallet is not None

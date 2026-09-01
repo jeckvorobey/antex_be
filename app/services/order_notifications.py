@@ -705,12 +705,13 @@ def _build_user_status_text(order, *, translate) -> str:
     return messages.order_created(order.publicNumber, translator=translate)
 
 
-def build_manager_status_text(order) -> str:
+def build_manager_status_text(order, *, customer_notified: bool = True) -> str:
     """Вернуть regular HTML представление manager-карточки для совместимости."""
     return messages.manager_order_card_html(
         OrderMessageView.from_order(order),
         status=OrderStatus(int(order.status)),
         locale="ru",
+        customer_notified=customer_notified,
     )
 
 
