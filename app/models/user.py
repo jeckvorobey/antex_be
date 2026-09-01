@@ -57,7 +57,11 @@ class User(Base, TimestampMixin):
         nullable=True,
     )
 
-    orders: Mapped[list[Order]] = relationship("Order", back_populates="user")
+    orders: Mapped[list[Order]] = relationship(
+        "Order",
+        back_populates="user",
+        foreign_keys="Order.UserId",
+    )
     city: Mapped[City | None] = relationship("City", back_populates="users")
     aex_wallet: Mapped[AexWallet | None] = relationship(
         "AexWallet",

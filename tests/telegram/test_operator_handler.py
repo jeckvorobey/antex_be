@@ -82,7 +82,7 @@ async def test_operator_take_moves_order_to_processing(monkeypatch) -> None:
         return fake_db
 
     async def _fake_check_user(db, tg_user):
-        return SimpleNamespace(role=2), False
+        return SimpleNamespace(id=7, role=2), False
 
     class _FakeOrderRepository:
         def __init__(self, session) -> None:
@@ -92,8 +92,9 @@ async def test_operator_take_moves_order_to_processing(monkeypatch) -> None:
             assert order_id == 5
             return SimpleNamespace(status=int(OrderStatus.CREATED))
 
-    async def _fake_take_order_in_work(db, *, order_id: int):
+    async def _fake_take_order_in_work(db, *, order_id: int, manager):
         assert order_id == 5
+        assert manager.id == 7
         return OrderTakeResult(order=updated_order, delivery=DeliveryOutcome.RICH)
 
     monkeypatch.setattr(operator_handler, "_get_db", _fake_get_db)
@@ -148,9 +149,10 @@ async def test_operator_take_shows_honest_failed_delivery_state(monkeypatch) -> 
         return _FakeDbSession()
 
     async def _fake_check_user(db, tg_user):
-        return SimpleNamespace(role=2), False
+        return SimpleNamespace(id=7, role=2), False
 
-    async def _fake_take_order_in_work(db, *, order_id: int):
+    async def _fake_take_order_in_work(db, *, order_id: int, manager):
+        assert manager.id == 7
         return OrderTakeResult(order=order, delivery=DeliveryOutcome.FAILED)
 
     monkeypatch.setattr(operator_handler, "_get_db", _fake_get_db)
@@ -167,33 +169,36 @@ async def test_operator_take_shows_honest_failed_delivery_state(monkeypatch) -> 
     assert "клиенту не удалось отправить" in callback.answers[-1]["text"]
 
 
-async def test_operator_take_rejects_stale_callback(monkeypatch) -> None:
+async def test_operator_take_same_manager_retry_is_idempotent(monkeypatch) -> None:
     callback = _FakeCallback("op:take:5")
-    take_order = AsyncMock()
-
-    class _FakeOrderRepository:
-        def __init__(self, session) -> None:
-            self.session = session
-
-        async def get_one(self, order_id: int):
-            return SimpleNamespace(status=int(OrderStatus.PROCESSING))
+    order = SimpleNamespace(
+        id=5,
+        publicNumber="2026050001",
+        status=int(OrderStatus.PROCESSING),
+        user=SimpleNamespace(username="customer", telegram_id=700002),
+        currencySell="RUB",
+        currencyBuy="THB",
+        amountSell=10000,
+    )
+    take_order = AsyncMock(
+        return_value=OrderTakeResult(order=order, delivery=DeliveryOutcome.SKIPPED)
+    )
 
     async def _fake_get_db():
         return _FakeDbSession()
 
     async def _fake_check_user(db, tg_user):
-        return SimpleNamespace(role=2), False
+        return SimpleNamespace(id=7, role=2), False
 
     monkeypatch.setattr(operator_handler, "_get_db", _fake_get_db)
     monkeypatch.setattr(operator_handler, "check_user", _fake_check_user)
-    monkeypatch.setattr(operator_handler, "OrderRepository", _FakeOrderRepository)
     monkeypatch.setattr(operator_handler, "take_order_in_work", take_order)
 
     await operator_handler.operator_take(callback)
 
-    take_order.assert_not_awaited()
-    assert callback.message.edits == []
-    assert callback.answers[-1]["text"] == "Заявка уже изменила статус"
+    take_order.assert_awaited_once()
+    assert len(callback.message.edits) == 1
+    assert callback.answers[-1]["show_alert"] is False
 
 
 async def test_operator_take_preserves_operator_access_control(monkeypatch) -> None:
@@ -411,11 +416,12 @@ async def test_operator_cancel_confirm_marks_order_cancelled(monkeypatch) -> Non
         return fake_db
 
     async def _fake_check_user(db, tg_user):
-        return SimpleNamespace(role=2), False
+        return SimpleNamespace(id=7, role=2), False
 
-    async def _fake_update_order_status(db, *, order_id: int, status):
+    async def _fake_update_order_status(db, *, order_id: int, status, manager_id: int):
         assert order_id == 9
         assert status == OrderStatus.CANCELLED
+        assert manager_id == 7
         return updated_order
 
     monkeypatch.setattr(operator_handler, "_get_db", _fake_get_db)
@@ -449,7 +455,7 @@ async def test_operator_cancel_keep_restores_processing_keyboard(monkeypatch) ->
         return fake_db
 
     async def _fake_check_user(db, tg_user):
-        return SimpleNamespace(role=2), False
+        return SimpleNamespace(id=7, role=2), False
 
     class _FakeOrderRepository:
         def __init__(self, session) -> None:
@@ -496,11 +502,12 @@ async def test_operator_close_marks_order_completed(monkeypatch) -> None:
         return fake_db
 
     async def _fake_check_user(db, tg_user):
-        return SimpleNamespace(role=2), False
+        return SimpleNamespace(id=7, role=2), False
 
-    async def _fake_update_order_status(db, *, order_id: int, status):
+    async def _fake_update_order_status(db, *, order_id: int, status, manager_id: int):
         assert order_id == 9
         assert status == OrderStatus.COMPLETED
+        assert manager_id == 7
         return updated_order
 
     monkeypatch.setattr(operator_handler, "_get_db", _fake_get_db)

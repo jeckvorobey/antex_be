@@ -25,6 +25,16 @@ class OrderRepository(BaseRepository[Order]):
         )
         return result.scalar_one_or_none()
 
+    async def get_one_for_update(self, order_id: int) -> Order | None:
+        """Заблокировать заявку на время атомарного status workflow."""
+        result = await self.session.execute(
+            select(Order)
+            .where(Order.id == order_id, Order.destroyTime.is_(None))
+            .options(selectinload(Order.user), selectinload(Order.city))
+            .with_for_update()
+        )
+        return result.scalar_one_or_none()
+
     async def update_status(self, order_id: int, status: int) -> Order | None:
         order = await self.session.get(Order, order_id)
         if order:

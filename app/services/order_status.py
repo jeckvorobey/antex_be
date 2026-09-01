@@ -16,16 +16,22 @@ from app.repositories.user import UserRepository
 from app.services.order_notifications import (
     DeliveryOutcome,
     is_delivery_success,
-    notify_order_status_changed,
     reconcile_telegram_write_access,
     send_customer_handoff,
 )
+from app.services.order_telegram_sync import enqueue_order_telegram_sync_tasks
 from app.telegram import messages
 from app.telegram.i18n import get_user_translator
 
 logger = logging.getLogger(__name__)
 TOKEN_CURRENCY = "ATXG"
 _TOKEN_TERMINAL_STATUSES = frozenset({OrderStatus.COMPLETED, OrderStatus.CANCELLED})
+_ALLOWED_STATUS_TRANSITIONS = {
+    OrderStatus.CREATED: frozenset({OrderStatus.PROCESSING, OrderStatus.CANCELLED}),
+    OrderStatus.PROCESSING: frozenset({OrderStatus.COMPLETED, OrderStatus.CANCELLED}),
+    OrderStatus.COMPLETED: frozenset(),
+    OrderStatus.CANCELLED: frozenset(),
+}
 
 
 @dataclass(frozen=True)
@@ -77,6 +83,7 @@ async def update_order_status(
     order_id: int,
     status: OrderStatus | int,
     notify_user: bool = True,
+    manager_id: int | None = None,
 ) -> object:
     try:
         target_status = OrderStatus(int(status))
@@ -84,14 +91,27 @@ async def update_order_status(
         raise ValueError(f"Unsupported status: {status}") from exc
 
     repo = OrderRepository(db)
-    order = await repo.get_one(order_id)
+    locked_getter = getattr(repo, "get_one_for_update", None)
+    order = (
+        await locked_getter(order_id) if callable(locked_getter) else await repo.get_one(order_id)
+    )
     if order is None:
         raise AntExException("Order not found", code="ORDER_NOT_FOUND", status_code=404)
+
+    validate_order_status_transition(order, target_status, manager_id=manager_id)
 
     if order.status == int(target_status):
         return order
 
-    _validate_aex_status_transition(order, target_status)
+    if (
+        manager_id is not None
+        and getattr(order, "ManagerId", None) is None
+        and (
+            target_status == OrderStatus.PROCESSING
+            or OrderStatus(int(order.status)) == OrderStatus.PROCESSING
+        )
+    ):
+        order.ManagerId = manager_id
 
     order = await repo.update_status(order_id, int(target_status))
     hydrated = await repo.get_one(order_id)
@@ -133,6 +153,12 @@ async def update_order_status(
             order_id=hydrated.id,
         )
 
+    if notify_user:
+        await enqueue_order_telegram_sync_tasks(
+            db,
+            order_id=order_id,
+            status=target_status,
+        )
     await db.commit()
 
     if target_status == OrderStatus.CANCELLED and not _is_aex_withdrawal_order(hydrated):
@@ -202,46 +228,42 @@ async def update_order_status(
                 order_id,
             )
 
-    if not notify_user:
-        return hydrated
-
-    try:
-        delivery = await notify_order_status_changed(hydrated)
-        reconcile_telegram_write_access(
-            getattr(hydrated, "user", None),
-            delivery,
-            operation="order_status_changed",
-        )
-        await db.commit()
-    except Exception:
-        logger.exception(
-            "Failed to send order status notification for order_id=%s status=%s",
-            order_id,
-            int(target_status),
-        )
-        await db.rollback()
     return hydrated
 
 
-async def take_order_in_work(db: AsyncSession, *, order_id: int) -> OrderTakeResult:
+async def take_order_in_work(
+    db: AsyncSession,
+    *,
+    order_id: int,
+    manager: object | None = None,
+) -> OrderTakeResult:
     """Перевести заявку в работу и отдельно зафиксировать результат Telegram handoff."""
-    current = await OrderRepository(db).get_one(order_id)
+    if manager is None:
+        manager = await UserRepository(db).get_manager()
+    manager_id = getattr(manager, "id", None)
+
+    repo = OrderRepository(db)
+    locked_getter = getattr(repo, "get_one_for_update", None)
+    current = (
+        await locked_getter(order_id) if callable(locked_getter) else await repo.get_one(order_id)
+    )
     if current is None:
         raise AntExException("Order not found", code="ORDER_NOT_FOUND", status_code=404)
-    if int(current.status) != int(OrderStatus.CREATED):
-        raise AntExException(
-            "Order is no longer available for taking",
-            code="ORDER_STATUS_CONFLICT",
-            status_code=409,
-        )
+    validate_order_status_transition(
+        current,
+        OrderStatus.PROCESSING,
+        manager_id=manager_id,
+    )
+    if int(current.status) == int(OrderStatus.PROCESSING):
+        return OrderTakeResult(order=current, delivery=DeliveryOutcome.SKIPPED)
 
     order = await update_order_status(
         db,
         order_id=order_id,
         status=OrderStatus.PROCESSING,
         notify_user=False,
+        manager_id=manager_id,
     )
-    manager = await UserRepository(db).get_manager()
     notification_message_id_before = getattr(order, "userNotificationMessageId", None)
     delivery = await send_customer_handoff(order, manager)
     write_access_changed = reconcile_telegram_write_access(
@@ -284,4 +306,34 @@ def _validate_aex_status_transition(order: object, target_status: OrderStatus) -
             "ATXG order final status cannot be changed",
             code="ATXG_ORDER_FINAL_STATUS_LOCKED",
             status_code=422,
+        )
+
+
+def validate_order_status_transition(
+    order: object,
+    target_status: OrderStatus,
+    *,
+    manager_id: int | None,
+) -> None:
+    """Проверить общую матрицу статусов и владельца заявки."""
+    current_status = OrderStatus(int(order.status))  # type: ignore[attr-defined]
+    assigned_manager_id = getattr(order, "ManagerId", None)
+    if (
+        manager_id is not None
+        and assigned_manager_id is not None
+        and int(assigned_manager_id) != int(manager_id)
+    ):
+        raise AntExException(
+            "Order is assigned to another manager",
+            code="ORDER_STATUS_CONFLICT",
+            status_code=409,
+        )
+    if current_status == target_status:
+        return
+    _validate_aex_status_transition(order, target_status)
+    if target_status not in _ALLOWED_STATUS_TRANSITIONS[current_status]:
+        raise AntExException(
+            "Order status transition is not allowed",
+            code="ORDER_STATUS_CONFLICT",
+            status_code=409,
         )

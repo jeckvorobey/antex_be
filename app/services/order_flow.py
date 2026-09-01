@@ -193,6 +193,10 @@ async def create_order_for_user(
         return hydrated
 
     notification_message_id_before = getattr(hydrated, "userNotificationMessageId", None)
+    manager_message_link_before = (
+        getattr(hydrated, "managerNotificationChatId", None),
+        getattr(hydrated, "managerNotificationMessageId", None),
+    )
     write_access_before = bool(getattr(user, "telegram_write_access", False))
     try:
         logger.info(
@@ -232,10 +236,18 @@ async def create_order_for_user(
         )
     finally:
         notification_message_id = getattr(hydrated, "userNotificationMessageId", None)
+        manager_message_link = (
+            getattr(hydrated, "managerNotificationChatId", None),
+            getattr(hydrated, "managerNotificationMessageId", None),
+        )
         write_access_changed = (
             bool(getattr(user, "telegram_write_access", False)) != write_access_before
         )
-        if notification_message_id != notification_message_id_before or write_access_changed:
+        if (
+            notification_message_id != notification_message_id_before
+            or manager_message_link != manager_message_link_before
+            or write_access_changed
+        ):
             try:
                 await db.commit()
             except Exception:

@@ -30,10 +30,6 @@ from app.schemas.chat import (
 )
 from app.services.chat import ChatService
 from app.services.chat_realtime import manager_realtime_hub, trigger_manager_refresh
-from app.services.order_notifications import (
-    notify_order_status_changed,
-    reconcile_telegram_write_access,
-)
 from app.services.order_status import update_order_status
 
 router = APIRouter(prefix="/api/manager", tags=["manager"])
@@ -226,16 +222,8 @@ async def update_manager_order_status(
         db,
         order_id=order_id,
         status=body.status,
-        notify_user=False,
+        manager_id=manager.id,
     )
-    delivery = await notify_order_status_changed(order)
-    reconcile_telegram_write_access(
-        getattr(order, "user", None),
-        delivery,
-        operation="manager_workspace_order_status",
-    )
-    # Доставка может изменить id статусной карточки даже при неизменном write-access.
-    await db.commit()
 
     payload = _manager_order_out(order)
     await trigger_manager_refresh(manager, "order.status.updated")

@@ -1816,7 +1816,7 @@ async def test_completed_aex_order_debits_reserved_balance(
     _, _, customer = await seed_exchange_data(db_session)
     await credit_aex_wallet(db_session, customer.id, 1000)
     token = create_access_token({"sub": str(customer.id), "role": customer.role})
-    monkeypatch.setattr(order_status, "notify_order_status_changed", AsyncMock())
+    monkeypatch.setattr(order_status, "enqueue_order_telegram_sync_tasks", AsyncMock())
 
     response = await client.post(
         "/api/miniapp/orders",
@@ -1834,6 +1834,7 @@ async def test_completed_aex_order_debits_reserved_balance(
     assert response.status_code == 201
     order_id = (await get_latest_order_for_user(db_session, customer.id)).id
 
+    await update_order_status(db_session, order_id=order_id, status=OrderStatus.PROCESSING)
     updated = await update_order_status(db_session, order_id=order_id, status=OrderStatus.COMPLETED)
 
     wallet = await db_session.scalar(select(AexWallet).where(AexWallet.user_id == customer.id))
@@ -1863,7 +1864,7 @@ async def test_cancelled_aex_order_releases_reserved_balance(
     _, _, customer = await seed_exchange_data(db_session)
     await credit_aex_wallet(db_session, customer.id, 1000)
     token = create_access_token({"sub": str(customer.id), "role": customer.role})
-    monkeypatch.setattr(order_status, "notify_order_status_changed", AsyncMock())
+    monkeypatch.setattr(order_status, "enqueue_order_telegram_sync_tasks", AsyncMock())
 
     response = await client.post(
         "/api/miniapp/orders",
@@ -1910,7 +1911,7 @@ async def test_aex_order_status_retry_does_not_mutate_balance_twice(
     _, _, customer = await seed_exchange_data(db_session)
     await credit_aex_wallet(db_session, customer.id, 1000)
     token = create_access_token({"sub": str(customer.id), "role": customer.role})
-    monkeypatch.setattr(order_status, "notify_order_status_changed", AsyncMock())
+    monkeypatch.setattr(order_status, "enqueue_order_telegram_sync_tasks", AsyncMock())
 
     response = await client.post(
         "/api/miniapp/orders",
@@ -1928,6 +1929,7 @@ async def test_aex_order_status_retry_does_not_mutate_balance_twice(
     assert response.status_code == 201
     order_id = (await get_latest_order_for_user(db_session, customer.id)).id
 
+    await update_order_status(db_session, order_id=order_id, status=OrderStatus.PROCESSING)
     await update_order_status(db_session, order_id=order_id, status=OrderStatus.COMPLETED)
     await update_order_status(db_session, order_id=order_id, status=OrderStatus.COMPLETED)
 
@@ -1950,7 +1952,7 @@ async def test_completed_aex_order_rejects_later_cancellation_without_balance_mu
     _, _, customer = await seed_exchange_data(db_session)
     await credit_aex_wallet(db_session, customer.id, 1000)
     token = create_access_token({"sub": str(customer.id), "role": customer.role})
-    monkeypatch.setattr(order_status, "notify_order_status_changed", AsyncMock())
+    monkeypatch.setattr(order_status, "enqueue_order_telegram_sync_tasks", AsyncMock())
 
     response = await client.post(
         "/api/miniapp/orders",
@@ -1967,6 +1969,7 @@ async def test_completed_aex_order_rejects_later_cancellation_without_balance_mu
     )
     assert response.status_code == 201
     order_id = (await get_latest_order_for_user(db_session, customer.id)).id
+    await update_order_status(db_session, order_id=order_id, status=OrderStatus.PROCESSING)
     await update_order_status(db_session, order_id=order_id, status=OrderStatus.COMPLETED)
 
     with pytest.raises(AntExException) as exc_info:
@@ -2001,7 +2004,7 @@ async def test_completed_aex_order_does_not_credit_referral_bonus(
     )
     await credit_aex_wallet(db_session, customer.id, 1000)
     token = create_access_token({"sub": str(customer.id), "role": customer.role})
-    monkeypatch.setattr(order_status, "notify_order_status_changed", AsyncMock())
+    monkeypatch.setattr(order_status, "enqueue_order_telegram_sync_tasks", AsyncMock())
 
     response = await client.post(
         "/api/miniapp/orders",
@@ -2019,6 +2022,7 @@ async def test_completed_aex_order_does_not_credit_referral_bonus(
     assert response.status_code == 201
     order_id = (await get_latest_order_for_user(db_session, customer.id)).id
 
+    await update_order_status(db_session, order_id=order_id, status=OrderStatus.PROCESSING)
     await update_order_status(db_session, order_id=order_id, status=OrderStatus.COMPLETED)
 
     referral_entries_count = await db_session.scalar(
@@ -2065,7 +2069,7 @@ async def test_reengagement_order_keeps_referral_bonus_without_marketing_ledger(
     )
     await db_session.flush()
     token = create_access_token({"sub": str(customer.id), "role": customer.role})
-    monkeypatch.setattr(order_status, "notify_order_status_changed", AsyncMock())
+    monkeypatch.setattr(order_status, "enqueue_order_telegram_sync_tasks", AsyncMock())
 
     response = await client.post(
         "/api/miniapp/orders",
@@ -2083,6 +2087,7 @@ async def test_reengagement_order_keeps_referral_bonus_without_marketing_ledger(
     assert response.status_code == 201, response.text
 
     order = await get_latest_order_for_user(db_session, customer.id)
+    await update_order_status(db_session, order_id=order.id, status=OrderStatus.PROCESSING)
     await update_order_status(db_session, order_id=order.id, status=OrderStatus.COMPLETED)
 
     reference_types = set(

@@ -18,6 +18,7 @@ EXPECTED_TABLES = {
     "Users",
     "Orders",
     "OrderNumberCounters",
+    "OrderTelegramSyncTasks",
     "Broadcasts",
     "SiteLeads",
     "MarketingPlatforms",
@@ -41,6 +42,7 @@ EXPECTED_BROADCAST_COLUMNS = {
 EXPECTED_ORDER_COLUMNS = {
     "id",
     "UserId",
+    "ManagerId",
     "CityId",
     "country",
     "currencySell",
@@ -54,8 +56,24 @@ EXPECTED_ORDER_COLUMNS = {
     "methodGet",
     "publicNumber",
     "userNotificationMessageId",
+    "managerNotificationChatId",
+    "managerNotificationMessageId",
     "endTime",
     "destroyTime",
+    "createdAt",
+    "updatedAt",
+}
+EXPECTED_ORDER_TELEGRAM_SYNC_TASK_COLUMNS = {
+    "id",
+    "OrderId",
+    "target",
+    "status",
+    "state",
+    "attemptCount",
+    "nextAttemptAt",
+    "lockedAt",
+    "deliveredAt",
+    "lastErrorCode",
     "createdAt",
     "updatedAt",
 }
@@ -169,6 +187,19 @@ def test_model_metadata_contains_required_migration_columns() -> None:
     assert set(Base.metadata.tables["Configs"].columns.keys()) >= EXPECTED_REFERRAL_CONFIG_COLUMNS
     assert set(Base.metadata.tables["Broadcasts"].columns.keys()) >= EXPECTED_BROADCAST_COLUMNS
     assert set(Base.metadata.tables["Orders"].columns.keys()) >= EXPECTED_ORDER_COLUMNS
+    sync_tasks = Base.metadata.tables["OrderTelegramSyncTasks"]
+    assert set(sync_tasks.columns.keys()) >= EXPECTED_ORDER_TELEGRAM_SYNC_TASK_COLUMNS
+    assert {column.name for column in sync_tasks.primary_key.columns} == {"id"}
+    assert any(
+        {column.name for column in constraint.columns} == {"OrderId", "status", "target"}
+        for constraint in sync_tasks.constraints
+        if hasattr(constraint, "columns") and constraint.__class__.__name__ == "UniqueConstraint"
+    )
+    assert any(
+        index.name == "ix_order_telegram_sync_tasks_due"
+        and [column.name for column in index.columns] == ["state", "nextAttemptAt"]
+        for index in sync_tasks.indexes
+    )
     assert set(Base.metadata.tables["SiteLeads"].columns.keys()) >= EXPECTED_SITE_LEAD_COLUMNS
     assert {"id", "slug", "name"} <= set(Base.metadata.tables["MarketingPlatforms"].columns.keys())
     assert {"id", "code", "name"} <= set(Base.metadata.tables["MarketingCurrencies"].columns.keys())
