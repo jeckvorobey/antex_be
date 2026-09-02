@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timedelta
 
-from sqlalchemy import desc, func, select
+from sqlalchemy import case, desc, func, select
 from sqlalchemy.orm import selectinload
 
 from app.models.order import Order
@@ -13,6 +13,57 @@ from app.repositories.base import BaseRepository
 
 class OrderRepository(BaseRepository[Order]):
     model = Order
+
+    async def manager_page(
+        self,
+        *,
+        limit: int,
+        offset: int,
+        today_from: datetime,
+    ) -> tuple[list[Order], int, int, dict[str, float]]:
+        """Страница активных заявок и агрегаты всего набора без загрузки всех строк."""
+        from app.enums.order import OrderStatus
+
+        conditions = (
+            Order.destroyTime.is_(None),
+            Order.status.in_([OrderStatus.CREATED, OrderStatus.PROCESSING]),
+        )
+        result = await self.session.execute(
+            select(Order)
+            .where(*conditions)
+            .options(selectinload(Order.user), selectinload(Order.city))
+            .order_by(Order.createdAt.desc(), Order.id.desc())
+            .limit(limit)
+            .offset(offset)
+        )
+        rows = list(result.scalars().all())
+        aggregates = await self.session.execute(
+            select(
+                Order.currencySell,
+                func.count(Order.id),
+                func.sum(Order.amountSell),
+                func.sum(
+                    case(
+                        (
+                            (Order.createdAt >= today_from)
+                            & (Order.createdAt < today_from + timedelta(days=1)),
+                            1,
+                        ),
+                        else_=0,
+                    )
+                ),
+            )
+            .where(*conditions)
+            .group_by(Order.currencySell)
+            .order_by(Order.currencySell)
+        )
+        total = today_total = 0
+        amounts: dict[str, float] = {}
+        for currency, count, amount, today_count in aggregates:
+            total += int(count)
+            today_total += int(today_count)
+            amounts[currency] = float(amount)
+        return rows, total, today_total, amounts
 
     async def get_one(self, order_id: int) -> Order | None:
         result = await self.session.execute(

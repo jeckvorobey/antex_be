@@ -128,6 +128,9 @@ class ManagerRealtimeViewingRequest(BaseModel):
 
 class ManagerOrderListResponse(BaseModel):
     items: list[ManagerOrderSummary]
+    total: int
+    todayTotal: int
+    amountTotals: dict[str, float]
 
 
 class ManagerOrderStatusRequest(BaseModel):

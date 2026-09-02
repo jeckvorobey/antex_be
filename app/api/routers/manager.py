@@ -5,15 +5,17 @@ from __future__ import annotations
 import asyncio
 import json
 from contextlib import suppress
+from datetime import UTC, datetime
+from typing import Annotated
 from uuid import UUID
 
 from fastapi import APIRouter, Header, HTTPException, Query, Response, status
 from fastapi.responses import StreamingResponse
+from pydantic import AwareDatetime
 
 from app.api.deps import DbDep, ManagerUser
 from app.core.config import settings
 from app.core.database import create_db_session
-from app.enums.order import OrderStatus
 from app.repositories.chat import ChatRepository
 from app.repositories.order import OrderRepository
 from app.schemas.chat import (
@@ -203,13 +205,30 @@ async def close_chat(
 
 
 @router.get("/orders", response_model=ManagerOrderListResponse)
-async def list_manager_orders(db: DbDep, manager: ManagerUser) -> ManagerOrderListResponse:
+async def list_manager_orders(
+    db: DbDep,
+    manager: ManagerUser,
+    limit: Annotated[int, Query(ge=1, le=100)] = 50,
+    offset: Annotated[int, Query(ge=0)] = 0,
+    todayFrom: Annotated[AwareDatetime | None, Query()] = None,  # noqa: N803
+) -> ManagerOrderListResponse:
     del manager
-    repo = OrderRepository(db)
-    created = await repo.list_by_status(OrderStatus.CREATED, limit=100)
-    processing = await repo.list_by_status(OrderStatus.PROCESSING, limit=100)
-    orders = sorted([*created, *processing], key=lambda item: item.createdAt, reverse=True)
-    return ManagerOrderListResponse(items=[_manager_order_out(order) for order in orders])
+    today_from = (
+        todayFrom.astimezone(UTC)
+        if todayFrom is not None
+        else datetime.now(UTC).replace(hour=0, minute=0, second=0, microsecond=0)
+    )
+    orders, total, today_total, amounts = await OrderRepository(db).manager_page(
+        limit=limit,
+        offset=offset,
+        today_from=today_from,
+    )
+    return ManagerOrderListResponse(
+        items=[_manager_order_out(order) for order in orders],
+        total=total,
+        todayTotal=today_total,
+        amountTotals=amounts,
+    )
 
 
 @router.get("/orders/{order_id}", response_model=ManagerOrderSummary)
