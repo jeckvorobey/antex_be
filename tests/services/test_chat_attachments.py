@@ -312,3 +312,80 @@ async def test_expired_delivery_claim_recovers_crash_pending(db_session, monkeyp
     assert retried.delivery_status == "sent"
     assert retried.telegram_message_id == 911
     assert calls == 1
+
+
+async def test_video_note_is_normalized_and_sent_with_reply(db_session, monkeypatch):
+    from app.services.chat_media import NormalizedRecording
+
+    customer = User(telegram_id=940010)
+    db_session.add(customer)
+    await db_session.flush()
+    repo = ChatRepository(db_session)
+    conversation, _ = await repo.get_or_create_conversation(customer.id)
+    replied = await repo.create_message(
+        conversation_id=conversation.id,
+        direction="inbound",
+        message_type="text",
+        telegram_chat_id=940010,
+        telegram_message_id=20,
+    )
+
+    async def normalize(content, *, kind):
+        assert content == b"browser-webm" and kind == "video_note"
+        return NormalizedRecording(
+            b"normalized-mp4", "video-note.mp4", "video/mp4", {"duration": 2, "length": 384}
+        )
+
+    class Bot:
+        async def send_video_note(self, *, chat_id, video_note, reply_parameters):
+            assert chat_id == 940010 and video_note.data == b"normalized-mp4"
+            assert reply_parameters.message_id == 20
+            return SimpleNamespace(
+                message_id=21, video_note=SimpleNamespace(file_id="note", file_unique_id="unique")
+            )
+
+    @asynccontextmanager
+    async def sender():
+        yield Bot()
+
+    monkeypatch.setattr("app.services.chat_attachments.normalize_recording", normalize)
+    monkeypatch.setattr("app.services.chat_attachments.sender_bot", sender)
+    message, _, attempted = await send_manager_attachment(
+        db_session,
+        conversation_id=conversation.id,
+        client_request_id="video-reply-1",
+        content=b"browser-webm",
+        filename="record.webm",
+        mime_type="video/webm",
+        kind="video_note",
+        reply_to_message_id=replied.id,
+    )
+    assert attempted and message.delivery_status == "sent"
+    assert message.reply_to_message_id == replied.id
+    assert message.attachments[0].filename == "video-note.mp4"
+    assert message.attachments[0].media_metadata["length"] == 384
+
+
+async def test_attachment_reply_cannot_target_another_conversation(db_session):
+    import pytest
+
+    customer, other = User(telegram_id=940011), User(telegram_id=940012)
+    db_session.add_all([customer, other])
+    await db_session.flush()
+    repo = ChatRepository(db_session)
+    conversation, _ = await repo.get_or_create_conversation(customer.id)
+    other_chat, _ = await repo.get_or_create_conversation(other.id)
+    replied = await repo.create_message(
+        conversation_id=other_chat.id, direction="inbound", message_type="text"
+    )
+    with pytest.raises(LookupError, match="reply_message_not_found"):
+        await send_manager_attachment(
+            db_session,
+            conversation_id=conversation.id,
+            client_request_id="cross-reply-1",
+            content=b"document",
+            filename="file.txt",
+            mime_type="text/plain",
+            kind="document",
+            reply_to_message_id=replied.id,
+        )

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from pathlib import PurePath
+from typing import Annotated
 from urllib.parse import quote
 
 from fastapi import APIRouter, HTTPException, Query, Request, Response, status
@@ -36,6 +37,7 @@ async def upload_chat_attachment(
         min_length=1,
         max_length=255,
     ),
+    reply_to_message_id: Annotated[int | None, Query(alias="replyToMessageId", ge=1)] = None,
     kind: str = Query(..., min_length=1, max_length=24),
 ) -> ChatMessageOut:
     del manager
@@ -63,9 +65,10 @@ async def upload_chat_attachment(
             filename=safe_filename,
             mime_type=mime_type,
             kind=kind,
+            reply_to_message_id=reply_to_message_id,
         )
     except LookupError as exc:
-        raise HTTPException(status_code=404, detail="Conversation not found") from exc
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
 

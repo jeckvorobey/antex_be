@@ -167,6 +167,24 @@ def _normalize_message(message: Message) -> tuple[str, list[InboundAttachment]]:
     return "other", attachments
 
 
+def _forward_source_label(message: Message) -> str | None:
+    """Получить доступную подпись Telegram origin без раскрытия идентификаторов."""
+    origin = message.forward_origin
+    if origin is None:
+        return None
+    if origin.type == "user":
+        label = origin.sender_user.full_name
+    elif origin.type == "hidden_user":
+        label = origin.sender_user_name
+    elif origin.type == "chat":
+        label = origin.sender_chat.title or origin.sender_chat.full_name
+    elif origin.type == "channel":
+        label = origin.chat.title
+    else:
+        label = None
+    return label[:255] if label else None
+
+
 async def _capture(message: Message, *, edited: bool = False) -> None:
     if message.from_user is None or message.from_user.is_bot:
         return
@@ -205,6 +223,7 @@ async def _capture(message: Message, *, edited: bool = False) -> None:
             reply_to_telegram_message_id=reply_to_telegram_message_id,
             telegram_edit_date=message.edit_date if edited else None,
             attachments=attachments,
+            forward_source_label=_forward_source_label(message),
         )
         await db.commit()
         if created:

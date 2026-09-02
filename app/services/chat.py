@@ -70,6 +70,7 @@ class ChatService:
         reply_to_telegram_message_id: int | None = None,
         telegram_edit_date: datetime | None = None,
         attachments: list[InboundAttachment] | None = None,
+        forward_source_label: str | None = None,
     ) -> tuple[ChatMessage, ChatConversation, bool]:
         existing = await self.repo.get_by_telegram_identity(
             telegram_chat_id,
@@ -105,6 +106,7 @@ class ChatService:
             telegram_edit_date=telegram_edit_date,
             delivery_status="received",
             reply_to_message_id=reply_to_id,
+            forward_source_label=forward_source_label,
         )
         for attachment in attachments or []:
             await self.repo.add_attachment(
@@ -181,6 +183,8 @@ class ChatService:
                 raise RuntimeError("Chat conversation disappeared for idempotent message")
             if conversation.id != conversation_id:
                 raise LookupError("conversation_not_found")
+            if existing.forward_source_message_id is not None or existing.message_type != "text":
+                raise ValueError("client_request_conflict")
             if existing.delivery_status == "sent":
                 return existing, conversation, False
             delivered, attempted = await self._attempt_text_delivery(existing, conversation)
@@ -380,6 +384,7 @@ class ChatService:
             deliveryStatus=message.delivery_status,
             telegramMessageId=message.telegram_message_id,
             replyToMessageId=message.reply_to_message_id,
+            forwardSourceLabel=message.forward_source_label,
             edited=message.telegram_edit_date is not None,
             createdAt=message.createdAt,
             updatedAt=message.updatedAt,

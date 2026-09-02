@@ -8,11 +8,12 @@ from io import BytesIO
 from uuid import uuid4
 
 from aiogram.exceptions import TelegramBadRequest, TelegramForbiddenError, TelegramNotFound
-from aiogram.types import BufferedInputFile, Message
+from aiogram.types import BufferedInputFile, Message, ReplyParameters
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.chat import ChatAttachment, ChatConversation, ChatMessage
 from app.repositories.chat import ChatRepository
+from app.services.chat_media import normalize_recording
 from app.services.order_notifications import (
     DeliveryOutcome,
     is_permanent_telegram_delivery_error,
@@ -22,7 +23,7 @@ from app.telegram.bot import sender_bot
 
 logger = logging.getLogger(__name__)
 
-ALLOWED_ATTACHMENT_KINDS = frozenset({"photo", "document", "voice", "video"})
+ALLOWED_ATTACHMENT_KINDS = frozenset({"photo", "document", "voice", "video", "video_note"})
 MAX_MANAGER_ATTACHMENT_BYTES = 20 * 1024 * 1024
 ATTACHMENT_DELIVERY_LEASE = timedelta(minutes=2)
 
@@ -34,6 +35,8 @@ def _sent_file(message: Message, kind: str):
         return message.video
     if kind == "voice" and message.voice:
         return message.voice
+    if kind == "video_note" and message.video_note:
+        return message.video_note
     if message.document:
         return message.document
     return None
@@ -48,6 +51,7 @@ async def send_manager_attachment(
     filename: str,
     mime_type: str,
     kind: str,
+    reply_to_message_id: int | None = None,
 ) -> tuple[ChatMessage, ChatConversation, bool]:
     repo = ChatRepository(db)
     existing = await repo.get_by_client_request_id(client_request_id)
@@ -57,6 +61,8 @@ async def send_manager_attachment(
             raise RuntimeError("Chat conversation disappeared for idempotent attachment")
         if conversation.id != conversation_id:
             raise LookupError("conversation_not_found")
+        if existing.forward_source_message_id is not None or existing.message_type != kind:
+            raise ValueError("client_request_conflict")
         if existing.delivery_status == "sent":
             return existing, conversation, False
         return await retry_manager_attachment(
@@ -73,6 +79,15 @@ async def send_manager_attachment(
     conversation = await repo.get_conversation(conversation_id)
     if conversation is None:
         raise LookupError("conversation_not_found")
+    if reply_to_message_id is not None:
+        replied = await repo.get_message(reply_to_message_id)
+        if replied is None or replied.conversation_id != conversation.id:
+            raise LookupError("reply_message_not_found")
+    metadata = None
+    if kind in {"voice", "video_note"}:
+        normalized = await normalize_recording(content, kind=kind)
+        content, filename, mime_type = normalized.content, normalized.filename, normalized.mime_type
+        metadata = normalized.metadata
     user = conversation.user
     message = await repo.create_message(
         conversation_id=conversation.id,
@@ -83,6 +98,7 @@ async def send_manager_attachment(
         telegram_chat_id=user.telegram_id,
         delivery_status="pending",
         client_request_id=client_request_id,
+        reply_to_message_id=reply_to_message_id,
     )
     await repo.touch_outbound(conversation)
     attachment = await repo.add_attachment(
@@ -93,6 +109,7 @@ async def send_manager_attachment(
         mime_type=mime_type,
         size=len(content),
         payload=content,
+        media_metadata=metadata,
     )
 
     # Bytes и metadata должны стать durable до внешнего Telegram side effect.
@@ -198,15 +215,28 @@ async def _deliver_manager_attachment(
             raise ValueError("attachment_payload_unavailable")
         filename = attachment.filename or "attachment"
         upload = BufferedInputFile(payload, filename=filename)
+        reply_options = {}
+        if message.reply_to_message_id is not None:
+            replied = await repo.get_message(message.reply_to_message_id)
+            if replied is not None and replied.telegram_message_id is not None:
+                reply_options["reply_parameters"] = ReplyParameters(
+                    message_id=replied.telegram_message_id,
+                )
         async with sender_bot() as bot:
             if kind == "photo":
-                sent = await bot.send_photo(chat_id=user.telegram_id, photo=upload)
+                sent = await bot.send_photo(chat_id=user.telegram_id, photo=upload, **reply_options)
             elif kind == "video":
-                sent = await bot.send_video(chat_id=user.telegram_id, video=upload)
+                sent = await bot.send_video(chat_id=user.telegram_id, video=upload, **reply_options)
+            elif kind == "video_note":
+                sent = await bot.send_video_note(
+                    chat_id=user.telegram_id, video_note=upload, **reply_options
+                )
             elif kind == "voice":
-                sent = await bot.send_voice(chat_id=user.telegram_id, voice=upload)
+                sent = await bot.send_voice(chat_id=user.telegram_id, voice=upload, **reply_options)
             else:
-                sent = await bot.send_document(chat_id=user.telegram_id, document=upload)
+                sent = await bot.send_document(
+                    chat_id=user.telegram_id, document=upload, **reply_options
+                )
         message.telegram_message_id = sent.message_id
         message.delivery_status = "sent"
         outcome = DeliveryOutcome.SENT
@@ -229,12 +259,13 @@ async def _deliver_manager_attachment(
             kind,
             type(exc).__name__,
         )
-    except Exception:
+    except Exception as exc:
         message.delivery_status = "failed"
-        logger.exception(
-            "Manager attachment delivery failed unexpectedly: conversation_id=%s kind=%s",
+        logger.warning(
+            "Manager attachment delivery failed unexpectedly: conversation_id=%s kind=%s error=%s",
             conversation.id,
             kind,
+            type(exc).__name__,
         )
 
     reconcile_telegram_write_access(user, outcome, operation="manager_chat_attachment")

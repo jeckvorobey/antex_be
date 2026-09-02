@@ -18,6 +18,7 @@ from app.repositories.chat import ChatRepository
 from app.repositories.order import OrderRepository
 from app.schemas.chat import (
     ChatConversationOut,
+    ChatForwardRequest,
     ChatListResponse,
     ChatMessageOut,
     ChatMessagesResponse,
@@ -29,6 +30,7 @@ from app.schemas.chat import (
     ManagerRealtimeViewingRequest,
 )
 from app.services.chat import ChatService
+from app.services.chat_forwarding import forward_manager_message
 from app.services.chat_realtime import manager_realtime_hub, trigger_manager_refresh
 from app.services.order_status import update_order_status
 
@@ -123,8 +125,37 @@ async def send_chat_message(
         )
     except LookupError as exc:
         raise _not_found(str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
     await db.commit()
     if created:
+        await service.publish_outbound(message, conversation)
+    return service.message_out(message)
+
+
+@router.post("/chats/{conversation_id}/forward", response_model=ChatMessageOut)
+async def forward_chat_message(
+    conversation_id: int,
+    body: ChatForwardRequest,
+    db: DbDep,
+    manager: ManagerUser,
+) -> ChatMessageOut:
+    """Переслать доступное сообщение нативным методом Telegram."""
+    del manager
+    try:
+        message, conversation, attempted = await forward_manager_message(
+            db,
+            conversation_id=conversation_id,
+            client_request_id=body.clientRequestId,
+            source_message_id=body.sourceMessageId,
+        )
+    except LookupError as exc:
+        raise _not_found(str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    await db.commit()
+    service = ChatService(db)
+    if attempted:
         await service.publish_outbound(message, conversation)
     return service.message_out(message)
 

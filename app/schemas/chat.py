@@ -68,6 +68,7 @@ class ChatMessageOut(BaseModel):
     deliveryStatus: str
     telegramMessageId: int | None
     replyToMessageId: int | None
+    forwardSourceLabel: str | None = None
     edited: bool
     createdAt: datetime
     updatedAt: datetime
@@ -107,6 +108,11 @@ class ChatSendRequest(BaseModel):
         if not value:
             raise ValueError("Message text must not be blank")
         return value
+
+
+class ChatForwardRequest(BaseModel):
+    clientRequestId: str = Field(min_length=8, max_length=64)
+    sourceMessageId: int = Field(ge=1)
 
 
 class ChatReadResponse(BaseModel):

@@ -112,6 +112,13 @@ class ChatMessage(Base, TimestampMixin):
         nullable=True,
     )
 
+    forward_source_message_id: Mapped[int | None] = mapped_column(
+        Integer,
+        ForeignKey("ChatMessages.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    forward_source_label: Mapped[str | None] = mapped_column(String(255), nullable=True)
+
     conversation: Mapped[ChatConversation] = relationship(
         "ChatConversation",
         back_populates="messages",

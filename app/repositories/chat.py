@@ -190,12 +190,18 @@ class ChatRepository(BaseRepository[ChatConversation]):
         claim_token: str,
         claimed_at: datetime,
         expired_before: datetime,
+        forwarding: bool = False,
     ) -> bool:
         result = await self.session.execute(
             update(ChatMessage)
             .where(
                 ChatMessage.id == message_id,
-                ChatMessage.message_type == "text",
+                (
+                    ChatMessage.forward_source_message_id.is_not(None)
+                    if forwarding
+                    else (ChatMessage.message_type == "text")
+                    & ChatMessage.forward_source_message_id.is_(None)
+                ),
                 ChatMessage.delivery_status != "sent",
                 or_(
                     ChatMessage.delivery_claim_token.is_(None),
