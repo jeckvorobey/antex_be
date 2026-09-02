@@ -1,5 +1,25 @@
 """Шаблоны Rich Messages для Telegram."""
 
+ORDER_CONTACT_RICH_TEMPLATE = """<footer>{footer}</footer>
+<h2>{title}</h2>
+<p>{lead}</p>
+<hr/>
+{summary}
+<h3>{heading}</h3>
+<p>{instruction}</p>
+<aside>{reply_note}</aside>"""
+
+ORDER_CONTACT_HTML_TEMPLATE = """<b>{title}</b>
+
+{lead}
+
+{summary}
+
+<b>{heading}</b>
+{instruction}
+
+{reply_note}"""
+
 EXCHANGE_START_TEMPLATE = """<p>👋 <b>{greeting}</b></p>
 <footer>{category}</footer>
 <h2>💱 {title}</h2>

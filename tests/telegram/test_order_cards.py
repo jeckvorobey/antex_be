@@ -109,18 +109,16 @@ def test_order_summary_escapes_persisted_telegram_values() -> None:
 
 
 @pytest.mark.parametrize(
-    ("locale", "action_copy", "channel_copy", "reply_copy"),
+    ("locale", "action_copy", "reply_copy"),
     [
         (
             "ru",
-            "Нажмите «Написать в этот чат»",
-            "Отправьте сообщение в официальном чате бота",
+            "просто отправьте сообщение этому боту",
             "Менеджер ответит здесь через официальный бот",
         ),
         (
             "en",
-            "Tap “Write in this chat”",
-            "Send your message in the official bot chat",
+            "send a message to this bot",
             "The manager will reply here through the official bot",
         ),
     ],
@@ -129,7 +127,6 @@ def test_handoff_copy_uses_official_bot_conversation(
     order_view: OrderMessageView,
     locale: str,
     action_copy: str,
-    channel_copy: str,
     reply_copy: str,
 ) -> None:
     rich = messages.order_handoff_rich(order_view, locale=locale)
@@ -137,10 +134,10 @@ def test_handoff_copy_uses_official_bot_conversation(
 
     assert "<footer>" in rich
     assert "<table bordered striped>" in rich
-    assert "<ol>" in rich
+    assert "<h3>" in rich
     assert "<blockquote>" not in rich
     assert "<details>" not in rich
-    for required_copy in (action_copy, channel_copy, reply_copy):
+    for required_copy in (action_copy, reply_copy):
         assert required_copy in rich
         assert required_copy in regular
 
@@ -152,9 +149,8 @@ def test_reminder_reuses_handoff_details_and_instructions(order_view: OrderMessa
     assert "#2026080096" in rich
     assert "Менеджер ожидает ваше сообщение" in rich
     assert "<table bordered striped>" in rich
-    assert "Что нужно сделать" in rich
-    assert "Нажмите «Написать в этот чат»" in rich
-    assert "Отправьте сообщение в официальном чате бота" in rich
+    assert "Связь с менеджером" in rich
+    assert "просто отправьте сообщение этому боту" in rich
     assert "<blockquote>" not in rich
     assert "<details>" not in rich
     assert "Менеджер ответит здесь через официальный бот" in rich

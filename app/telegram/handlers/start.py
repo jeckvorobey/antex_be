@@ -17,7 +17,7 @@ from app.enums.user import has_admin_access, has_operator_access
 from app.repositories.config import ConfigRepository
 from app.repositories.order import OrderRepository
 from app.services.manager_working_hours import ManagerWorkingHoursService
-from app.services.order_notifications import build_manager_status_text
+from app.services.order_notifications import build_manager_status_markup, build_manager_status_text
 from app.telegram import messages
 from app.telegram.handlers.exchange import ExchangeState
 from app.telegram.i18n import get_user_translator
@@ -25,7 +25,6 @@ from app.telegram.keyboards import (
     choose_country,
     manager_home,
     manager_new_orders_list,
-    manager_order_open_chat,
 )
 from app.telegram.rich_messages import answer_rich
 from app.telegram.services.user_service import check_user
@@ -167,7 +166,7 @@ async def manager_order_detail(callback: CallbackQuery) -> None:
     await _safe_edit_text(
         callback.message,
         build_manager_status_text(order),
-        reply_markup=manager_order_open_chat(order_id=order.id),
+        reply_markup=build_manager_status_markup(order),
     )
     await callback.answer()
 

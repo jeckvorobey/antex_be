@@ -110,16 +110,18 @@ async def test_operator_take_moves_order_to_processing(monkeypatch) -> None:
         "url": None,
     }
     assert (
-        callback.message.edits[0]["reply_markup"].inline_keyboard[2][0].callback_data
+        callback.message.edits[0]["reply_markup"].inline_keyboard[1][0].callback_data
         == "op:cancel:5"
     )
     assert (
-        callback.message.edits[0]["reply_markup"].inline_keyboard[2][1].callback_data
+        callback.message.edits[0]["reply_markup"].inline_keyboard[1][1].callback_data
         == "op:close:5"
     )
-    chat_button = callback.message.edits[0]["reply_markup"].inline_keyboard[0][0]
-    assert chat_button.url is None
-    assert chat_button.web_app.url.endswith("#/manager/orders/5")
+    assert all(
+        button.web_app is None
+        for row in callback.message.edits[0]["reply_markup"].inline_keyboard
+        for button in row
+    )
     rich_html = callback.message.edits[0]["rich_message"].html
     assert "✅ Заявка #2026050001 принята в работу" in rich_html
     assert "Клиенту отправлена просьба начать диалог" in rich_html
@@ -349,29 +351,6 @@ async def test_operator_remind_rejects_missing_or_inactive_order(
     assert callback.answers[-1] == {"text": answer, "show_alert": True, "url": None}
 
 
-async def test_operator_open_chat_handler_is_no_longer_used(monkeypatch) -> None:
-    fake_db = _FakeDbSession()
-    callback = _FakeCallback("op:open_chat:5")
-
-    async def _fake_get_db():
-        return fake_db
-
-    async def _fake_check_user(db, tg_user):
-        return SimpleNamespace(role=2), False
-
-    monkeypatch.setattr(operator_handler, "_get_db", _fake_get_db)
-    monkeypatch.setattr(operator_handler, "check_user", _fake_check_user)
-
-    await operator_handler.operator_open_chat(callback)
-
-    assert callback.answers[-1] == {
-        "text": "Откройте чат в Manager Mini App",
-        "show_alert": True,
-        "url": None,
-    }
-    assert callback.message.edits == []
-
-
 async def test_operator_cancel_requests_confirmation(monkeypatch) -> None:
     fake_db = _FakeDbSession()
     callback = _FakeCallback("op:cancel:9")
@@ -431,9 +410,7 @@ async def test_operator_cancel_confirm_marks_order_cancelled(monkeypatch) -> Non
     await operator_handler.operator_cancel_confirm(callback)
 
     assert callback.answers[-1] == {"text": "Заявка отменена", "show_alert": True, "url": None}
-    chat_button = callback.message.edits[0]["reply_markup"].inline_keyboard[0][0]
-    assert chat_button.url is None
-    assert chat_button.web_app.url.endswith("#/manager/orders/9")
+    assert callback.message.edits[0]["reply_markup"].inline_keyboard == []
     rich_html = callback.message.edits[0]["rich_message"].html
     assert "❌ Заявка #2026050002 отменена" in rich_html
     assert "Работа по заявке остановлена" in rich_html
@@ -473,11 +450,9 @@ async def test_operator_cancel_keep_restores_processing_keyboard(monkeypatch) ->
 
     assert callback.answers[-1] == {"text": None, "show_alert": False, "url": None}
     markup = callback.message.edits[0]["reply_markup"]
-    assert markup.inline_keyboard[2][0].callback_data == "op:cancel:9"
-    assert markup.inline_keyboard[2][1].callback_data == "op:close:9"
-    chat_button = markup.inline_keyboard[0][0]
-    assert chat_button.url is None
-    assert chat_button.web_app.url.endswith("#/manager/orders/9")
+    assert markup.inline_keyboard[1][0].callback_data == "op:cancel:9"
+    assert markup.inline_keyboard[1][1].callback_data == "op:close:9"
+    assert markup.inline_keyboard[0][0].callback_data == "op:remind:9"
 
 
 async def test_operator_close_marks_order_completed(monkeypatch) -> None:
@@ -517,9 +492,7 @@ async def test_operator_close_marks_order_completed(monkeypatch) -> None:
     await operator_handler.operator_close(callback)
 
     assert callback.answers[-1] == {"text": None, "show_alert": False, "url": None}
-    chat_button = callback.message.edits[0]["reply_markup"].inline_keyboard[0][0]
-    assert chat_button.url is None
-    assert chat_button.web_app.url.endswith("#/manager/orders/9")
+    assert callback.message.edits[0]["reply_markup"].inline_keyboard == []
     text = str(callback.message.edits[0]["rich_message"].html)
     assert "✅ Заявка #2026050002 завершена" in text
     assert "Страна</td><td><b>Грузия" in text

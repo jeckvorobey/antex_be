@@ -21,6 +21,8 @@ from app.telegram.message_templates import (
     EXCHANGE_START_TEMPLATE,
     OFF_HOURS_BLOCK_TEMPLATE,
     ORDER_COMPLETED_TEMPLATE,
+    ORDER_CONTACT_HTML_TEMPLATE,
+    ORDER_CONTACT_RICH_TEMPLATE,
     WORKING_HOURS_BLOCK_TEMPLATE,
 )
 from app.telegram.order_cards import OrderMessageView, render_order_regular, render_order_rich
@@ -540,21 +542,47 @@ def referral_bonus_reversed(
     )
 
 
+def _order_contact_message(
+    view: OrderMessageView,
+    *,
+    reminder: bool,
+    rich: bool,
+    translator: Translate | None,
+    locale: str | None,
+) -> str:
+    """Единая инструкция прямой связи для принятия заявки и напоминания."""
+    translate = _resolve_translator(translator, locale)
+    current_locale = locale or "ru"
+    template = ORDER_CONTACT_RICH_TEMPLATE if rich else ORDER_CONTACT_HTML_TEMPLATE
+    renderer = render_order_rich if rich else render_order_regular
+    title_key = "order-reminder-title" if reminder else "order-handoff-title"
+    footer_key = "order-reminder-footer" if reminder else "manager-order-card-footer"
+    return _strip_fluent_isolates(
+        template.format(
+            footer=escape(translate(footer_key)),
+            title=escape(translate(title_key, id=view.public_number)),
+            lead=escape(translate("order-contact-lead")),
+            summary=renderer(view, locale=current_locale),
+            heading=escape(translate("order-contact-heading")),
+            instruction=escape(translate("customer-chat-instruction")),
+            reply_note=escape(translate("customer-chat-reply-note")),
+        )
+    )
+
+
 def order_handoff_rich(
     view: OrderMessageView,
     *,
     translator: Translate | None = None,
     locale: str | None = None,
 ) -> str:
-    """Rich HTML-инструкция клиенту после принятия заявки."""
-    translate = _resolve_translator(translator, locale)
-    current_locale = locale or "ru"
-    return _strip_fluent_isolates(
-        translate(
-            "order-handoff-rich",
-            id=escape(view.public_number),
-            summary=render_order_rich(view, locale=current_locale),
-        )
+    """Rich-сообщение принятия заявки с общей инструкцией."""
+    return _order_contact_message(
+        view,
+        reminder=False,
+        rich=True,
+        translator=translator,
+        locale=locale,
     )
 
 
@@ -564,15 +592,13 @@ def order_handoff_html(
     translator: Translate | None = None,
     locale: str | None = None,
 ) -> str:
-    """Обычный HTML fallback для инструкции клиенту."""
-    translate = _resolve_translator(translator, locale)
-    current_locale = locale or "ru"
-    return _strip_fluent_isolates(
-        translate(
-            "order-handoff-html",
-            id=escape(view.public_number),
-            summary=render_order_regular(view, locale=current_locale),
-        )
+    """HTML fallback принятия заявки с общей инструкцией."""
+    return _order_contact_message(
+        view,
+        reminder=False,
+        rich=False,
+        translator=translator,
+        locale=locale,
     )
 
 
@@ -582,15 +608,13 @@ def order_reminder_rich(
     translator: Translate | None = None,
     locale: str | None = None,
 ) -> str:
-    """Rich-напоминание с карточкой заявки и инструкцией для клиента."""
-    translate = _resolve_translator(translator, locale)
-    current_locale = locale or "ru"
-    return _strip_fluent_isolates(
-        translate(
-            "order-reminder-rich",
-            id=escape(view.public_number),
-            summary=render_order_rich(view, locale=current_locale),
-        )
+    """Rich-сообщение напоминания с общей инструкцией."""
+    return _order_contact_message(
+        view,
+        reminder=True,
+        rich=True,
+        translator=translator,
+        locale=locale,
     )
 
 
@@ -600,15 +624,13 @@ def order_reminder_html(
     translator: Translate | None = None,
     locale: str | None = None,
 ) -> str:
-    """Обычный HTML fallback напоминания."""
-    translate = _resolve_translator(translator, locale)
-    current_locale = locale or "ru"
-    return _strip_fluent_isolates(
-        translate(
-            "order-reminder-html",
-            id=escape(view.public_number),
-            summary=render_order_regular(view, locale=current_locale),
-        )
+    """HTML fallback напоминания с общей инструкцией."""
+    return _order_contact_message(
+        view,
+        reminder=True,
+        rich=False,
+        translator=translator,
+        locale=locale,
     )
 
 

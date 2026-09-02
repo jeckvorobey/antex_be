@@ -6,7 +6,6 @@ import logging
 import re
 from dataclasses import dataclass, replace
 from enum import StrEnum
-from urllib.parse import urlsplit, urlunsplit
 
 from aiogram.exceptions import TelegramBadRequest, TelegramForbiddenError, TelegramNotFound
 from aiogram.types import InlineKeyboardMarkup, InputRichMessage
@@ -17,12 +16,10 @@ from app.enums.order import MethodGet, OrderStatus
 from app.telegram import messages
 from app.telegram.i18n import get_translator, get_user_translator, normalize_locale
 from app.telegram.keyboards import (
-    manager_order_chat_only,
+    confirm_order,
     manager_order_close,
-    manager_order_open_chat,
     order_created_actions,
     review_link,
-    user_order_write_manager,
 )
 from app.telegram.order_cards import OrderMessageView
 
@@ -113,7 +110,7 @@ async def _send_rich_or_html(
     chat_id: int,
     rich_html: str,
     fallback_html: str,
-    reply_markup: InlineKeyboardMarkup,
+    reply_markup: InlineKeyboardMarkup | None,
     existing_message_id: int | None = None,
 ) -> tuple[DeliveryOutcome, int | None]:
     """Отправить Rich Message и один раз перейти на обычный HTML при отказе Bot API."""
@@ -264,23 +261,6 @@ def build_official_bot_chat_url() -> str | None:
     return f"https://t.me/{username}"
 
 
-def build_manager_workspace_url(
-    *,
-    order_id: int | None = None,
-    conversation_id: int | None = None,
-) -> str | None:
-    """Собрать hash-route Manager Mini App без персонального Telegram URL."""
-    base_url = (settings.frontend_webapp_url or "").strip()
-    if not base_url:
-        return None
-    parsed = urlsplit(base_url)
-    if conversation_id is not None:
-        route = f"/manager/chats/{conversation_id}"
-    else:
-        route = "/manager/orders" if order_id is None else f"/manager/orders/{order_id}"
-    return urlunsplit((parsed.scheme, parsed.netloc, parsed.path, parsed.query, route))
-
-
 async def send_customer_handoff(order, manager) -> DeliveryOutcome:
     """Отправить клиенту новую карточку принятой заявки и убрать предыдущее."""
     del manager
@@ -298,14 +278,13 @@ async def send_customer_handoff(order, manager) -> DeliveryOutcome:
     translate = get_user_translator(user)
     locale = normalize_locale(getattr(user, "language_code", None))
     view = OrderMessageView.from_order(order)
-    markup = user_order_write_manager(translate)
     previous_message_id = getattr(order, "userNotificationMessageId", None)
     delivery, message_id = await _send_rich_or_html(
         bot=bot,
         chat_id=user.telegram_id,
         rich_html=messages.order_handoff_rich(view, translator=translate, locale=locale),
         fallback_html=messages.order_handoff_html(view, translator=translate, locale=locale),
-        reply_markup=markup,
+        reply_markup=None,
     )
     if message_id is not None:
         order.userNotificationMessageId = message_id
@@ -334,13 +313,12 @@ async def send_customer_reminder(order, manager) -> DeliveryOutcome:
     translate = get_user_translator(user)
     locale = normalize_locale(getattr(user, "language_code", None))
     view = OrderMessageView.from_order(order)
-    markup = user_order_write_manager(translate)
     delivery, _ = await _send_rich_or_html(
         bot=bot,
         chat_id=user.telegram_id,
         rich_html=messages.order_reminder_rich(view, translator=translate, locale=locale),
         fallback_html=messages.order_reminder_html(view, translator=translate, locale=locale),
-        reply_markup=markup,
+        reply_markup=None,
     )
     return delivery
 
@@ -580,7 +558,7 @@ async def notify_order_created(
                 status=OrderStatus.CREATED,
                 locale="ru",
             ),
-            reply_markup=manager_order_open_chat(translate, order_id=order.id),
+            reply_markup=build_manager_status_markup(order),
         )
         if manager_message_id is not None:
             order.managerNotificationChatId = manager.telegram_id
@@ -636,8 +614,6 @@ async def notify_order_status_changed(order) -> DeliveryOutcome:
 
     translate = get_user_translator(user)
     reply_markup = None
-    if order.status == 2:
-        reply_markup = user_order_write_manager(translate)
     if order.status == 3:
         reply_markup = review_link(translate, REVIEW_URL)
 
@@ -719,17 +695,10 @@ def build_manager_status_markup(order) -> InlineKeyboardMarkup:
     """Вернуть действия manager-карточки из актуального статуса заявки."""
     translate = get_translator("ru")
     status = OrderStatus(int(order.status))
-    manager_app_url = build_manager_workspace_url(order_id=order.id)
     if status == OrderStatus.CREATED:
-        return manager_order_open_chat(translate, order_id=order.id)
+        return confirm_order(translate, order_id=order.id)
     if status == OrderStatus.PROCESSING:
-        return manager_order_close(
-            translate,
-            order_id=order.id,
-            manager_app_url=manager_app_url,
-        )
-    if manager_app_url:
-        return manager_order_chat_only(translate, manager_app_url=manager_app_url)
+        return manager_order_close(translate, order_id=order.id)
     return InlineKeyboardMarkup(inline_keyboard=[])
 
 

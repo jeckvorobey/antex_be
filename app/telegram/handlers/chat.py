@@ -1,30 +1,20 @@
-"""Capture unhandled private Telegram messages for the manager workspace."""
+"""Приём свободных личных сообщений в единый чат менеджера."""
 
 from __future__ import annotations
 
 import logging
 
 from aiogram import F, Router
-from aiogram.fsm.context import FSMContext
-from aiogram.types import CallbackQuery, Message
+from aiogram.types import Message
 
 from app.core.database import create_db_session
 from app.enums.user import has_operator_access
 from app.services.chat import ChatService, InboundAttachment
 from app.telegram.exceptions import TelegramCaptureRetryError
-from app.telegram.i18n import get_translator, normalize_locale
 from app.telegram.services.user_service import check_user
 
 logger = logging.getLogger(__name__)
 router = Router(name="manager-chat-capture")
-
-
-@router.callback_query(F.data == "chat:write")
-async def open_official_manager_chat(callback: CallbackQuery, state: FSMContext) -> None:
-    """Перевести клиента из текущего FSM в официальный bot conversation."""
-    await state.clear()
-    translate = get_translator(normalize_locale(callback.from_user.language_code))
-    await callback.answer(translate("customer-chat-reply-prompt"), show_alert=True)
 
 
 def _normalize_message(message: Message) -> tuple[str, list[InboundAttachment]]:
@@ -186,6 +176,7 @@ def _forward_source_label(message: Message) -> str | None:
 
 
 async def _capture(message: Message, *, edited: bool = False) -> None:
+    """Сохраняет через ChatService, затем публикует результат после commit."""
     if message.from_user is None or message.from_user.is_bot:
         return
 
@@ -232,7 +223,7 @@ async def _capture(message: Message, *, edited: bool = False) -> None:
 
 @router.message(F.chat.type == "private")
 async def capture_unhandled_private_message(message: Message) -> None:
-    """Persist only messages not consumed by earlier start/exchange/operator handlers."""
+    """Принимает сообщения, не занятые командами и шагами оформления заявки."""
     if message.text is not None and message.text.startswith("/"):
         return
     try:
@@ -248,6 +239,7 @@ async def capture_unhandled_private_message(message: Message) -> None:
 
 @router.edited_message(F.chat.type == "private")
 async def capture_edited_private_message(message: Message) -> None:
+    """Сохраняет редактирование сообщения в существующей истории."""
     try:
         await _capture(message, edited=True)
     except Exception as exc:

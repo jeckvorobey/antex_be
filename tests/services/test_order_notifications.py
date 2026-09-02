@@ -270,10 +270,7 @@ async def test_customer_handoff_uses_rich_message_and_public_number(
     assert bot.rich_sent[0]["rich_message"].html is not None
     assert "Заявка #2026050008" in bot.rich_sent[0]["rich_message"].html
     assert "10 000 ₮ USDT" in bot.rich_sent[0]["rich_message"].html
-    button = bot.rich_sent[0]["reply_markup"].inline_keyboard[0][0]
-    assert button.text == "💬 Написать в этот чат"
-    assert button.url is None
-    assert button.callback_data == "chat:write"
+    assert bot.rich_sent[0]["reply_markup"] is None
 
 
 @pytest.mark.asyncio
@@ -295,7 +292,7 @@ async def test_customer_handoff_falls_back_once_to_regular_html(
     assert delivery == DeliveryOutcome.FALLBACK
     assert bot.rich_sent == []
     assert len(bot.sent) == 1
-    assert "официальном чате бота" in bot.sent[0]["text"]
+    assert "просто отправьте сообщение этому боту" in bot.sent[0]["text"]
 
 
 @pytest.mark.asyncio
@@ -411,7 +408,7 @@ async def test_customer_handoff_falls_back_to_new_regular_notification_and_delet
 
     assert delivery == DeliveryOutcome.FALLBACK
     assert bot.edited == []
-    assert "официальном чате бота" in bot.sent[0]["text"]
+    assert "просто отправьте сообщение этому боту" in bot.sent[0]["text"]
     assert bot.deleted == [(700002, 55)]
     assert bot.rich_sent == []
 
@@ -441,14 +438,6 @@ async def test_customer_handoff_sends_new_fallback_when_rich_method_is_not_found
     assert bot.deleted == [(700002, 55)]
 
 
-def test_manager_workspace_url_uses_miniapp_order_route(monkeypatch) -> None:
-    monkeypatch.setattr(order_notifications.settings, "frontend_webapp_url", "https://app.test/")
-
-    assert order_notifications.build_manager_workspace_url(order_id=8) == (
-        "https://app.test/#/manager/orders/8"
-    )
-
-
 @pytest.mark.asyncio
 async def test_customer_handoff_without_manager_username_stays_in_official_bot(
     monkeypatch: pytest.MonkeyPatch,
@@ -466,9 +455,7 @@ async def test_customer_handoff_without_manager_username_stays_in_official_bot(
 
     assert delivery == DeliveryOutcome.RICH
     assert len(bot.rich_sent) == 1
-    button = bot.rich_sent[0]["reply_markup"].inline_keyboard[0][0]
-    assert button.url is None
-    assert button.callback_data == "chat:write"
+    assert bot.rich_sent[0]["reply_markup"] is None
     assert "Готов продолжить обмен" not in caplog.text
     assert "manager_username_missing" not in caplog.text
 
@@ -750,7 +737,7 @@ async def test_notify_order_status_changed_adds_summary_for_completed_order(
 
 
 @pytest.mark.asyncio
-async def test_notify_order_status_changed_adds_write_manager_button_for_processing(
+async def test_notify_order_status_changed_has_no_chat_button_for_processing(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     bot = _FakeBot()
@@ -774,17 +761,11 @@ async def test_notify_order_status_changed_adds_write_manager_button_for_process
 
     assert bot.edited[0]["chat_id"] == 700002
     assert "принята в работу" in bot.edited[0]["text"]
-    reply_markup = cast(Any, bot.edited[0]["reply_markup"])
-    assert reply_markup.inline_keyboard[0][0].text == "💬 Написать в этот чат"
-    assert reply_markup.inline_keyboard[0][0].url is None
-    assert reply_markup.inline_keyboard[0][0].callback_data == "chat:write"
+    assert bot.edited[0]["reply_markup"] is None
 
 
 def test_notify_order_created_manager_keyboard_has_no_chat_button() -> None:
-    markup = order_notifications.manager_order_open_chat(
-        get_translator("ru"),
-        order_id=8,
-    )
+    markup = order_notifications.build_manager_status_markup(SimpleNamespace(id=8, status=1))
 
     assert len(markup.inline_keyboard) == 1
     assert markup.inline_keyboard[0][0].callback_data == "op:cancel:8"

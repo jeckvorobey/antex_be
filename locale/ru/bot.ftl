@@ -114,8 +114,6 @@ btn-cancel-order = ❌ Отменить заявку
 btn-confirm-cancel-order = ❌ Подтвердить отмену
 btn-keep-order = ✅ Оставить
 btn-take-order = ✅ Взять в работу
-btn-open-chat = 💬 Написать в чат
-btn-write-manager = 💬 Написать в этот чат
 btn-close-order = ✅ Закрыть заявку
 btn-leave-review = ⭐ Оставить отзыв
 menu-open-site = 🚀 Открыть приложение
@@ -147,12 +145,16 @@ order-created =
     ⏳ Мы получили ваш запрос и уже начали обработку.
 
     Пожалуйста, ожидайте подтверждения. Статус заявки будет обновлён автоматически.
+
+    { customer-chat-instruction }
 order-created-offline =
     ✅ Заявка #{ $id } создана.
 
     Заявка принята.
 
     <blockquote>Менеджер обработает заявку утром после начала рабочего дня.</blockquote>
+
+    { customer-chat-instruction }
 order-creation-failed = Не удалось создать заявку. Попробуйте ещё раз через минуту.
 order-created-notification-failed = Заявка #{ $id } создана, но подтверждение не удалось отправить. Откройте «Мои заявки», чтобы проверить статус.
 order-creation-limit-reached = У вас уже слишком много активных заявок. Дождитесь обработки текущих или завершите их.
@@ -161,60 +163,19 @@ order-confirmed =
 
     👨‍💼 Менеджер уже занимается вашим обменом.
 
-    💬 Для связи используйте кнопку «Написать в чат».
+    { customer-chat-instruction }
 order-details-caption = Детали заявки
 order-country-thailand = Таиланд
 order-country-vietnam = Вьетнам
 order-country-georgia = Грузия
 order-country-internal = Внутренний обмен
-order-handoff-rich =
-    <footer>Статус заявки</footer>
-    <h2>✅ Заявка #{ $id } принята в работу</h2>
-    <p>Менеджер готов продолжить обмен.</p>
-    <hr/>
-    { $summary }
-    <h2>Что нужно сделать</h2>
-    <ol>
-      <li>💬 Нажмите «Написать в этот чат».</li>
-      <li>📝 Отправьте сообщение в официальном чате бота.</li>
-    </ol>
-    <aside>Менеджер ответит здесь через официальный бот и согласует детали обмена.</aside>
-order-handoff-html =
-    <b>✅ Заявка #{ $id } принята в работу</b>
-
-    Менеджер готов продолжить обмен.
-
-    { $summary }
-
-    <b>Что нужно сделать</b>
-    1. 💬 Нажмите «Написать в этот чат».
-    2. 📝 Отправьте сообщение в официальном чате бота.
-
-    Менеджер ответит здесь через официальный бот и согласует детали обмена.
-order-reminder-rich =
-    <footer>Напоминание по заявке</footer>
-    <h2>🔔 Менеджер ожидает ваше сообщение по заявке #{ $id }</h2>
-    <p>Менеджер готов продолжить обмен.</p>
-    <hr/>
-    { $summary }
-    <h2>Что нужно сделать</h2>
-    <ol>
-      <li>💬 Нажмите «Написать в этот чат».</li>
-      <li>📝 Отправьте сообщение в официальном чате бота.</li>
-    </ol>
-    <aside>Менеджер ответит здесь через официальный бот и согласует детали обмена.</aside>
-order-reminder-html =
-    <b>🔔 Менеджер ожидает ваше сообщение по заявке #{ $id }</b>
-
-    Менеджер готов продолжить обмен.
-
-    { $summary }
-
-    <b>Что нужно сделать</b>
-    1. 💬 Нажмите «Написать в этот чат».
-    2. 📝 Отправьте сообщение в официальном чате бота.
-
-    Менеджер ответит здесь через официальный бот и согласует детали обмена.
+order-handoff-title = ✅ Заявка #{ $id } принята в работу
+order-reminder-footer = Напоминание по заявке
+order-reminder-title = 🔔 Менеджер ожидает ваше сообщение по заявке #{ $id }
+order-contact-lead = Менеджер готов продолжить обмен.
+order-contact-heading = Связь с менеджером
+customer-chat-instruction = 💬 Для связи с менеджером просто отправьте сообщение этому боту.
+customer-chat-reply-note = Менеджер ответит здесь через официальный бот и согласует детали обмена.
 manager-order-card-footer = Статус заявки
 manager-order-created-title = 🆕 Новая заявка #{ $id }
 manager-order-created-lead = Ожидает решения менеджера.
@@ -250,14 +211,10 @@ order-completed-bottom-rich =
     <aside>💰 За видео-отзыв (кружок) предоставляем <b>бонус 5$ к следующему обмену 💰</b></aside>
     <p>⭐ <b>Будем рады вашему отзыву!</b><br/>Это помогает нам становиться лучше.</p>
 order-cancelled = ❌ Заявка #{ $id } отменена.
-btn-write-manager = 💬 Написать в этот чат
-btn-open-client-chat = 💬 Открыть чат в Mini App
 btn-remind-client = 🔔 Напомнить клиенту
-customer-chat-reply-prompt = Напишите сообщение в этом чате с ботом. Менеджер ответит здесь.
 manager-chat-fallback-title = Новое сообщение клиента
 manager-chat-fallback-anonymous = Клиент #{ $user_id }
 manager-chat-fallback-media = Вложение: { $media_type }
-manager-chat-fallback-open = Открыть чат в Mini App
 operator-order-not-found = Заявка не найдена
 operator-order-status-changed = Заявка уже изменила статус
 operator-card-update-failed = Не удалось обновить карточку заявки
@@ -266,7 +223,6 @@ operator-reminder-processing-only = Напоминание доступно то
 operator-reminder-failed = Не удалось отправить напоминание. Попробуйте ещё раз.
 operator-reminder-sent = 🔔 Напоминание отправлено клиенту
 operator-order-cancelled = Заявка отменена
-operator-chat-button-obsolete = Откройте чат в Manager Mini App
 referral-bonus-credited =
     🎁 Вознаграждение по реферальной программе: +{ $amount } ATXG
     За успешно завершённую заявку #{ $order_id }.

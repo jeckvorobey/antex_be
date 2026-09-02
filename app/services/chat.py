@@ -9,7 +9,7 @@ from datetime import UTC, datetime, timedelta
 from uuid import uuid4
 
 from aiogram.exceptions import TelegramBadRequest, TelegramForbiddenError, TelegramNotFound
-from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup, ReplyParameters, WebAppInfo
+from aiogram.types import ReplyParameters
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.chat import ChatConversation, ChatMessage
@@ -29,7 +29,6 @@ from app.schemas.chat import (
 from app.services.chat_realtime import manager_realtime_hub, trigger_manager_refresh
 from app.services.order_notifications import (
     DeliveryOutcome,
-    build_manager_workspace_url,
     is_permanent_telegram_delivery_error,
     reconcile_telegram_write_access,
 )
@@ -442,8 +441,15 @@ class ChatService:
         message: ChatMessage,
         conversation: ChatConversation,
     ) -> None:
-        await trigger_manager_refresh(await self.user_repo.get_manager(), "chat.message.created")
-        await self._notify_manager_if_offline(message, conversation)
+        """После commit независимо обновляет чаты и уведомляет менеджера в Telegram."""
+        try:
+            await trigger_manager_refresh(
+                await self.user_repo.get_manager(), "chat.message.created"
+            )
+        except Exception:
+            # Недоступность realtime не должна прерывать Telegram-доставку.
+            logger.warning("Manager chat realtime refresh failed")
+        await self._notify_manager(message, conversation)
 
     async def publish_message_updated(self, message: ChatMessage) -> None:
         await trigger_manager_refresh(await self.user_repo.get_manager(), "chat.message.updated")
@@ -462,20 +468,15 @@ class ChatService:
         await manager_realtime_hub.publish("chat.read.updated", payload)
         await manager_realtime_hub.publish("chat.unread.updated", payload)
 
-    async def _notify_manager_if_offline(
+    async def _notify_manager(
         self,
         message: ChatMessage,
         conversation: ChatConversation,
     ) -> None:
+        """Доставляет новое входящее уведомление независимо от presence менеджера."""
         manager = await self.user_repo.get_manager()
         if manager is None or manager.telegram_id is None:
             return
-        try:
-            if await manager_realtime_hub.is_online(manager.id):
-                return
-        except Exception:
-            logger.exception("Failed to read manager presence; sending Telegram fallback")
-
         customer = conversation.user
         translate = get_user_translator(manager)
         display_name = " ".join(
@@ -500,28 +501,14 @@ class ChatService:
             f"<b>{html.escape(display_name)}</b>\n"
             f"{html.escape(preview)}"
         )
-        reply_markup: InlineKeyboardMarkup | None = None
-        manager_app_url = build_manager_workspace_url(conversation_id=conversation.id)
-        if manager_app_url:
-            reply_markup = InlineKeyboardMarkup(
-                inline_keyboard=[
-                    [
-                        InlineKeyboardButton(
-                            text=translate("manager-chat-fallback-open"),
-                            web_app=WebAppInfo(url=manager_app_url),
-                        )
-                    ]
-                ]
-            )
         try:
             async with sender_bot() as bot:
                 await bot.send_message(
                     chat_id=manager.telegram_id,
                     text=text,
-                    reply_markup=reply_markup,
                 )
         except Exception:
-            logger.exception(
-                "Failed to send manager chat fallback notification: manager_id=%s",
+            logger.warning(
+                "Manager chat notification delivery failed: manager_id=%s",
                 manager.id,
             )

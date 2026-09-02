@@ -15,7 +15,7 @@ from app.exceptions import AntExException
 from app.repositories.order import OrderRepository
 from app.services.order_notifications import (
     DeliveryOutcome,
-    build_manager_workspace_url,
+    build_manager_status_markup,
     edit_manager_order_card,
     is_delivery_success,
     reconcile_telegram_write_access,
@@ -23,12 +23,7 @@ from app.services.order_notifications import (
 )
 from app.services.order_status import take_order_in_work, update_order_status
 from app.telegram.i18n import get_translator, normalize_locale
-from app.telegram.keyboards import (
-    manager_order_cancel_confirm,
-    manager_order_chat_only,
-    manager_order_close,
-    manager_order_open_chat,
-)
+from app.telegram.keyboards import manager_order_cancel_confirm
 from app.telegram.services.user_service import check_user
 
 logger = logging.getLogger(__name__)
@@ -42,16 +37,6 @@ async def _get_db():
 def _operator_translate(callback: CallbackQuery):
     """Выбрать Fluent translator по языку Telegram-оператора."""
     return get_translator(normalize_locale(callback.from_user.language_code))
-
-
-def _build_active_order_markup(order):
-    if int(getattr(order, "status", 0)) == int(OrderStatus.PROCESSING):
-        return manager_order_close(
-            order_id=order.id,
-            manager_app_url=build_manager_workspace_url(order_id=order.id),
-        )
-
-    return manager_order_open_chat(order_id=order.id)
 
 
 @router.callback_query(F.data.startswith("op:take:"))
@@ -80,10 +65,7 @@ async def operator_take(callback: CallbackQuery) -> None:
     card_delivery = await edit_manager_order_card(
         message=callback.message,
         order=order,
-        reply_markup=manager_order_close(
-            order_id=order.id,
-            manager_app_url=build_manager_workspace_url(order_id=order.id),
-        ),
+        reply_markup=build_manager_status_markup(order),
         customer_notified=(
             is_delivery_success(result.delivery) or result.delivery == DeliveryOutcome.SKIPPED
         ),
@@ -171,16 +153,11 @@ async def operator_cancel_confirm(callback: CallbackQuery) -> None:
             status=OrderStatus.CANCELLED,
             manager_id=user.id,
         )
-        manager_app_url = build_manager_workspace_url(order_id=order.id)
-
-    reply_markup = None
-    if manager_app_url:
-        reply_markup = manager_order_chat_only(manager_app_url=manager_app_url)
 
     card_delivery = await edit_manager_order_card(
         message=callback.message,
         order=order,
-        reply_markup=reply_markup,
+        reply_markup=build_manager_status_markup(order),
     )
     if not is_delivery_success(card_delivery):
         await callback.answer(translate("operator-card-update-failed"), show_alert=True)
@@ -205,17 +182,9 @@ async def operator_cancel_keep(callback: CallbackQuery) -> None:
             return
 
     await callback.message.edit_reply_markup(  # type: ignore[union-attr]
-        reply_markup=_build_active_order_markup(order)
+        reply_markup=build_manager_status_markup(order)
     )
     await callback.answer()
-
-
-@router.callback_query(F.data.startswith("op:open_chat:"))
-async def operator_open_chat(callback: CallbackQuery) -> None:
-    await callback.answer(
-        _operator_translate(callback)("operator-chat-button-obsolete"),
-        show_alert=True,
-    )
 
 
 @router.callback_query(F.data.startswith("op:close:"))
@@ -235,16 +204,11 @@ async def operator_close(callback: CallbackQuery) -> None:
             status=OrderStatus.COMPLETED,
             manager_id=user.id,
         )
-        manager_app_url = build_manager_workspace_url(order_id=order.id)
-
-    reply_markup = None
-    if manager_app_url:
-        reply_markup = manager_order_chat_only(manager_app_url=manager_app_url)
 
     card_delivery = await edit_manager_order_card(
         message=callback.message,
         order=order,
-        reply_markup=reply_markup,
+        reply_markup=build_manager_status_markup(order),
     )
     if not is_delivery_success(card_delivery):
         await callback.answer(translate("operator-card-update-failed"), show_alert=True)

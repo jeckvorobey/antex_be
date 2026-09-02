@@ -20,14 +20,13 @@ from app.telegram.keyboards import (
     choose_service,
     confirm_exchange,
     confirm_off_hours_exchange,
+    confirm_order,
     manager_home,
     manager_order_close,
-    manager_order_open_chat,
     obtaining,
     order_created_actions,
     orders_pagination,
     review_link,
-    user_order_write_manager,
 )
 
 
@@ -515,14 +514,13 @@ async def test_exchange_keyboards_are_backend_driven() -> None:
 async def test_manager_order_keyboards_use_new_callbacks() -> None:
     translator = get_translator("ru")
 
-    open_chat = manager_order_open_chat(
+    open_chat = confirm_order(
         translator,
         order_id=17,
     )
     close_order = manager_order_close(
         translator,
         order_id=17,
-        manager_app_url="https://miniapp.example/#/manager/orders/17",
     )
     review = review_link(translator, "https://example.com/review")
 
@@ -534,64 +532,32 @@ async def test_manager_order_keyboards_use_new_callbacks() -> None:
     assert open_chat.inline_keyboard[0][1].text == "✅ Взять в работу"
     assert open_chat.inline_keyboard[0][1].style == "success"
 
-    assert close_order.inline_keyboard[0][0].text == "💬 Открыть чат в Mini App"
-    assert close_order.inline_keyboard[0][0].url is None
-    assert close_order.inline_keyboard[0][0].web_app.url.endswith("#/manager/orders/17")
-    assert close_order.inline_keyboard[1][0].callback_data == "op:remind:17"
-    assert close_order.inline_keyboard[1][0].text == "🔔 Напомнить клиенту"
-    assert close_order.inline_keyboard[2][0].callback_data == "op:cancel:17"
-    assert close_order.inline_keyboard[2][0].style == "danger"
-    assert close_order.inline_keyboard[2][1].callback_data == "op:close:17"
-    assert close_order.inline_keyboard[2][1].style == "success"
+    assert close_order.inline_keyboard[0][0].callback_data == "op:remind:17"
+    assert close_order.inline_keyboard[0][0].text == "🔔 Напомнить клиенту"
+    assert close_order.inline_keyboard[1][0].callback_data == "op:cancel:17"
+    assert close_order.inline_keyboard[1][0].style == "danger"
+    assert close_order.inline_keyboard[1][1].callback_data == "op:close:17"
+    assert close_order.inline_keyboard[1][1].style == "success"
     assert review.inline_keyboard[0][0].url == "https://example.com/review"
     assert review.inline_keyboard[0][0].style == "success"
     assert review.inline_keyboard[1][0].callback_data == "fsm:cancel"
     assert review.inline_keyboard[1][0].style == "primary"
 
 
-async def test_chat_buttons_use_manager_miniapp_and_official_bot_callback() -> None:
-    translator = get_translator("ru")
-
-    manager_btn = manager_order_close(
-        translator,
-        order_id=17,
-        manager_app_url="https://miniapp.example/#/manager/orders/17",
-    )
-    user_btn = user_order_write_manager(translator)
-
-    manager_button = manager_btn.inline_keyboard[0][0]
-    user_button = user_btn.inline_keyboard[0][0]
-    assert manager_button.url is None
-    assert manager_button.web_app.url == "https://miniapp.example/#/manager/orders/17"
-    assert user_button.url is None
-    assert user_button.callback_data == "chat:write"
-
-
 def test_manager_order_keyboards_have_equivalent_english_labels() -> None:
     translator = get_translator("en")
 
-    created = manager_order_open_chat(translator, order_id=17)
+    created = confirm_order(translator, order_id=17)
     processing = manager_order_close(
         translator,
         order_id=17,
-        manager_app_url="https://miniapp.example/#/manager/orders/17",
     )
 
     assert [button.text for button in created.inline_keyboard[0]] == [
         "❌ Cancel order",
         "✅ Take order",
     ]
-    assert [row[0].text for row in processing.inline_keyboard[:2]] == [
-        "💬 Open chat in Mini App",
+    assert [row[0].text for row in processing.inline_keyboard] == [
         "🔔 Remind client",
+        "❌ Cancel order",
     ]
-
-
-def test_customer_chat_button_never_contains_personal_telegram_url() -> None:
-    translator = get_translator("ru")
-
-    user_btn = user_order_write_manager(translator)
-
-    button = user_btn.inline_keyboard[0][0]
-    assert button.url is None
-    assert button.callback_data == "chat:write"
