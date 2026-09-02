@@ -10,6 +10,7 @@ from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.enums.order import OrderStatus
+from app.enums.user import has_operator_access
 from app.exceptions import AntExException
 from app.repositories.order import OrderRepository
 from app.repositories.user import UserRepository
@@ -85,6 +86,7 @@ async def update_order_status(
     notify_user: bool = True,
     manager_id: int | None = None,
 ) -> object:
+    """Атомарно меняет статус и восстанавливает назначение после снятия роли менеджера."""
     try:
         target_status = OrderStatus(int(status))
     except ValueError as exc:
@@ -98,9 +100,19 @@ async def update_order_status(
     if order is None:
         raise AntExException("Order not found", code="ORDER_NOT_FOUND", status_code=404)
 
-    validate_order_status_transition(order, target_status, manager_id=manager_id)
+    reassign_manager = await _can_reassign_inactive_manager(db, order, manager_id)
+    validate_order_status_transition(
+        order, target_status, manager_id=None if reassign_manager else manager_id
+    )
+
+    if reassign_manager:
+        order.ManagerId = manager_id
 
     if order.status == int(target_status):
+        if reassign_manager:
+            # Повтор статуса меняет только назначение без финансовых и Telegram-дублей.
+            await db.commit()
+            return await repo.get_one(order_id)
         return order
 
     if (
@@ -249,12 +261,21 @@ async def take_order_in_work(
     )
     if current is None:
         raise AntExException("Order not found", code="ORDER_NOT_FOUND", status_code=404)
+    reassign_manager = await _can_reassign_inactive_manager(db, current, manager_id)
     validate_order_status_transition(
         current,
         OrderStatus.PROCESSING,
-        manager_id=manager_id,
+        manager_id=None if reassign_manager else manager_id,
     )
     if int(current.status) == int(OrderStatus.PROCESSING):
+        if reassign_manager:
+            current = await update_order_status(
+                db,
+                order_id=order_id,
+                status=OrderStatus.PROCESSING,
+                notify_user=False,
+                manager_id=manager_id,
+            )
         return OrderTakeResult(order=current, delivery=DeliveryOutcome.SKIPPED)
 
     order = await update_order_status(
@@ -288,6 +309,26 @@ async def take_order_in_work(
             if reloaded is not None:
                 order = reloaded
     return OrderTakeResult(order=order, delivery=delivery)
+
+
+async def _can_reassign_inactive_manager(
+    db: AsyncSession, order: object, manager_id: int | None
+) -> bool:
+    """Разрешает действующему менеджеру забрать активную заявку бывшего менеджера."""
+    assigned_id = getattr(order, "ManagerId", None)
+    if (
+        manager_id is None
+        or assigned_id is None
+        or assigned_id == manager_id
+        or getattr(order, "status", None) not in (OrderStatus.CREATED, OrderStatus.PROCESSING)
+    ):
+        return False
+    users = UserRepository(db)
+    assigned = await users.get_one(assigned_id)
+    if assigned is not None and has_operator_access(assigned.role):
+        return False
+    manager = await users.get_one(manager_id)
+    return manager is not None and has_operator_access(manager.role)
 
 
 def _is_aex_withdrawal_order(order: object) -> bool:
