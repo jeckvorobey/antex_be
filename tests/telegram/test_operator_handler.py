@@ -110,11 +110,11 @@ async def test_operator_take_moves_order_to_processing(monkeypatch) -> None:
         "url": None,
     }
     assert (
-        callback.message.edits[0]["reply_markup"].inline_keyboard[1][0].callback_data
+        callback.message.edits[0]["reply_markup"].inline_keyboard[0][0].callback_data
         == "op:cancel:5"
     )
     assert (
-        callback.message.edits[0]["reply_markup"].inline_keyboard[1][1].callback_data
+        callback.message.edits[0]["reply_markup"].inline_keyboard[0][1].callback_data
         == "op:close:5"
     )
     assert all(
@@ -450,9 +450,9 @@ async def test_operator_cancel_keep_restores_processing_keyboard(monkeypatch) ->
 
     assert callback.answers[-1] == {"text": None, "show_alert": False, "url": None}
     markup = callback.message.edits[0]["reply_markup"]
-    assert markup.inline_keyboard[1][0].callback_data == "op:cancel:9"
-    assert markup.inline_keyboard[1][1].callback_data == "op:close:9"
-    assert markup.inline_keyboard[0][0].callback_data == "op:remind:9"
+    assert len(markup.inline_keyboard) == 1
+    assert markup.inline_keyboard[0][0].callback_data == "op:cancel:9"
+    assert markup.inline_keyboard[0][1].callback_data == "op:close:9"
 
 
 async def test_operator_close_marks_order_completed(monkeypatch) -> None:

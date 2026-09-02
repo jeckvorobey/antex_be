@@ -4,12 +4,19 @@ from contextlib import asynccontextmanager
 from types import SimpleNamespace
 
 import pytest
+from aiogram.exceptions import TelegramBadRequest
+from aiogram.methods import SendMessage
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy import event
 from starlette.requests import Request
 
 from app.api import deps
-from app.api.routers.manager import list_chats, list_manager_orders, update_manager_order_status
+from app.api.routers.manager import (
+    list_chats,
+    list_manager_orders,
+    send_chat_message,
+    update_manager_order_status,
+)
 from app.api.routers.manager_attachments import upload_chat_attachment
 from app.core.config import settings
 from app.core.security import create_access_token
@@ -21,9 +28,71 @@ from app.models.city import City
 from app.models.order import Order
 from app.models.user import User
 from app.repositories.chat import ChatRepository
-from app.schemas.chat import ManagerOrderStatusRequest
+from app.schemas.chat import ChatSendRequest, ManagerOrderStatusRequest
 from app.services.chat import ChatService
 from app.services.chat_attachments import send_manager_attachment
+
+
+@pytest.mark.parametrize("outcome", ["sent", "rejected", "no_chat_id", "unexpected"])
+async def test_text_endpoint_serializes_delivery_and_retry_without_lazy_io(
+    db_session, monkeypatch, caplog, outcome
+) -> None:
+    """Ответ API после commit не загружает updatedAt синхронно и сохраняет идемпотентность."""
+    customer = User(
+        telegram_id=None if outcome == "no_chat_id" else 829790,
+        telegram_write_access=True,
+    )
+    manager = User(telegram_id=829789, role=int(UserRole.MANAGER))
+    db_session.add_all([customer, manager])
+    await db_session.flush()
+    conversation = ChatConversation(user_id=customer.id, manager_id=manager.id)
+    db_session.add(conversation)
+    await db_session.commit()
+    attempts = 0
+
+    class FakeBot:
+        """Подменяет только внешний Telegram, оставляя БД и сериализацию реальными."""
+
+        async def send_message(self, **kwargs):
+            """Первый отказ допускает успешный повтор прежнего ключа."""
+            nonlocal attempts
+            attempts += 1
+            if outcome == "unexpected" and attempts == 1:
+                raise RuntimeError("private-runtime-detail")
+            if outcome == "rejected" and attempts == 1:
+                raise TelegramBadRequest(
+                    method=SendMessage(**kwargs),
+                    message="Bad Request: message to be replied not found",
+                )
+            return SimpleNamespace(message_id=829791)
+
+    @asynccontextmanager
+    async def sender():
+        """Предоставляет изолированного бота."""
+        yield FakeBot()
+
+    async def publish(*_args):
+        """Исключает внешний Redis из проверки HTTP-ответа."""
+
+    monkeypatch.setattr("app.services.chat.sender_bot", sender)
+    monkeypatch.setattr(ChatService, "publish_outbound", publish)
+    request = ChatSendRequest(clientRequestId="text-response-retry-key", text="Ответ менеджера")
+    first = await send_chat_message(
+        conversation_id=conversation.id, body=request, db=db_session, manager=manager
+    )
+    assert first.deliveryStatus == ("sent" if outcome == "sent" else "failed")
+    assert first.updatedAt is not None
+    assert first.text == "Ответ менеджера"
+    assert "private-runtime-detail" not in caplog.text
+    if outcome == "rejected":
+        assert "reason=reply_message_not_found" in caplog.text
+
+    repeated = await send_chat_message(
+        conversation_id=conversation.id, body=request, db=db_session, manager=manager
+    )
+    assert repeated.id == first.id
+    assert repeated.deliveryStatus == ("failed" if outcome == "no_chat_id" else "sent")
+    assert attempts == {"sent": 1, "rejected": 2, "no_chat_id": 0, "unexpected": 2}[outcome]
 
 
 async def test_manager_text_idempotency_is_scoped_to_conversation(db_session) -> None:
@@ -221,7 +290,9 @@ async def test_chat_list_bulk_enrichment_has_bounded_query_count(db_session) -> 
         customer = User(telegram_id=831100 + index, username=f"customer_{index}")
         db_session.add(customer)
         await db_session.flush()
-        conversation = ChatConversation(user_id=customer.id, unread_count=index)
+        conversation = ChatConversation(
+            user_id=customer.id, manager_id=manager.id, unread_count=index
+        )
         db_session.add(conversation)
         await db_session.flush()
         db_session.add(
@@ -336,7 +407,9 @@ async def test_upload_replay_publishes_retry_delivery_result(
     manager = User(telegram_id=833002, role=int(UserRole.MANAGER))
     db_session.add_all([customer, manager])
     await db_session.flush()
-    conversation, _ = await ChatRepository(db_session).get_or_create_conversation(customer.id)
+    conversation, _ = await ChatRepository(
+        db_session, manager_id=manager.id
+    ).get_or_create_conversation(customer.id)
     sends = 0
 
     class FakeBot:

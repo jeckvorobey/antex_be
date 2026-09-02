@@ -118,11 +118,14 @@ async def test_invalid_list_pagination_is_rejected(manager_client, path, params)
 
 
 async def test_chat_pages_and_message_cursor_are_complete(db_session, manager_client):
-    client, _ = manager_client
+    client, manager = manager_client
     users = [User(telegram_id=951000 + i, first_name="Страница") for i in range(103)]
     db_session.add_all(users)
     await db_session.flush()
-    chats = [ChatConversation(user_id=user.id, unread_count=i % 2) for i, user in enumerate(users)]
+    chats = [
+        ChatConversation(user_id=user.id, manager_id=manager.id, unread_count=i % 2)
+        for i, user in enumerate(users)
+    ]
     db_session.add_all(chats)
     await db_session.flush()
     messages = [

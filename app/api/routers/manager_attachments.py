@@ -9,7 +9,7 @@ from urllib.parse import quote
 from fastapi import APIRouter, HTTPException, Query, Request, Response, status
 
 from app.api.deps import DbDep, ManagerUser
-from app.models.chat import ChatAttachment
+from app.repositories.chat import ChatRepository
 from app.schemas.chat import ChatMessageOut
 from app.services.chat import ChatService
 from app.services.chat_attachments import (
@@ -40,7 +40,9 @@ async def upload_chat_attachment(
     reply_to_message_id: Annotated[int | None, Query(alias="replyToMessageId", ge=1)] = None,
     kind: str = Query(..., min_length=1, max_length=24),
 ) -> ChatMessageOut:
-    del manager
+    """Проверяет владельца до чтения и обработки тела вложения."""
+    if await ChatRepository(db, manager_id=manager.id).get_conversation(conversation_id) is None:
+        raise HTTPException(status_code=404, detail="Conversation not found")
     if kind not in ALLOWED_ATTACHMENT_KINDS:
         raise HTTPException(status_code=422, detail="Unsupported attachment kind")
 
@@ -59,6 +61,7 @@ async def upload_chat_attachment(
     try:
         message, conversation, delivery_attempted = await send_manager_attachment(
             db,
+            manager_id=manager.id,
             conversation_id=conversation_id,
             client_request_id=client_request_id,
             content=bytes(content),
@@ -73,7 +76,7 @@ async def upload_chat_attachment(
         raise HTTPException(status_code=422, detail=str(exc)) from exc
 
     await db.commit()
-    service = ChatService(db)
+    service = ChatService(db, manager_id=manager.id)
     if delivery_attempted:
         await service.publish_outbound(message, conversation)
     return service.message_out(message)
@@ -90,10 +93,10 @@ async def retry_chat_attachment(
     manager: ManagerUser,
 ) -> ChatMessageOut:
     """Повторить Telegram delivery без повторной загрузки bytes клиентом."""
-    del manager
     try:
         message, conversation, attempted = await retry_manager_attachment(
             db,
+            manager_id=manager.id,
             conversation_id=conversation_id,
             client_request_id=client_request_id,
         )
@@ -103,7 +106,7 @@ async def retry_chat_attachment(
         raise HTTPException(status_code=409, detail=str(exc)) from exc
 
     await db.commit()
-    service = ChatService(db)
+    service = ChatService(db, manager_id=manager.id)
     if attempted:
         await service.publish_outbound(message, conversation)
     return service.message_out(message)
@@ -115,8 +118,7 @@ async def get_chat_attachment(
     db: DbDep,
     manager: ManagerUser,
 ) -> Response:
-    del manager
-    attachment = await db.get(ChatAttachment, attachment_id)
+    attachment = await ChatRepository(db, manager_id=manager.id).get_attachment(attachment_id)
     if attachment is None:
         raise HTTPException(status_code=404, detail="Attachment not found")
     try:

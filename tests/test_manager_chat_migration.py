@@ -15,14 +15,26 @@ def test_manager_chat_revisions_form_one_linear_alembic_head() -> None:
     """Разрыв или fork manager-chat revision graph нарушает deploy contract."""
     script = ScriptDirectory.from_config(Config("alembic.ini"))
 
-    assert script.get_heads() == ["040"]
+    assert script.get_heads() == ["041"]
     revisions = []
-    current = script.get_revision("040")
+    current = script.get_revision("041")
     while current is not None and current.revision != "030":
         revisions.append(current.revision)
         current = script.get_revision(current.down_revision)
 
-    assert revisions == ["040", "039", "038", "037", "036", "035", "034", "033", "032", "031"]
+    assert revisions == [
+        "041",
+        "040",
+        "039",
+        "038",
+        "037",
+        "036",
+        "035",
+        "034",
+        "033",
+        "032",
+        "031",
+    ]
 
 
 def test_manager_chat_upgrade_and_downgrade_emit_attachment_contract(monkeypatch) -> None:

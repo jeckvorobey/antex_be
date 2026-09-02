@@ -5,6 +5,9 @@ from contextlib import asynccontextmanager
 from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
 
+import pytest
+from aiogram.exceptions import TelegramBadRequest
+from aiogram.methods import SendVideoNote, SendVoice
 from sqlalchemy import event
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
@@ -12,6 +15,94 @@ from app.models.base import Base
 from app.models.user import User
 from app.repositories.chat import ChatRepository
 from app.services.chat_attachments import retry_manager_attachment, send_manager_attachment
+
+
+@pytest.mark.parametrize("kind", ["voice", "video_note"])
+@pytest.mark.parametrize("with_reply", [False, True])
+@pytest.mark.parametrize(
+    "description,reason",
+    [
+        ("Bad Request: VOICE_MESSAGES_FORBIDDEN", "voice_messages_forbidden"),
+        ("Bad Request: message to be replied not found", "reply_message_not_found"),
+        ("Bad Request: VIDEO_CONTENT_TYPE_INVALID", "invalid_media"),
+        ("Bad Request: file is too big", "file_too_large"),
+        ("Bad Request: unknown private detail", "telegram_bad_request"),
+    ],
+)
+async def test_recording_rejection_logs_safe_reason_and_preserves_payload(
+    db_session, monkeypatch, caplog, kind, with_reply, description, reason
+) -> None:
+    """Отказ медиа диагностируется без сырых Telegram details и потери записи."""
+    customer = User(telegram_id=820009, telegram_write_access=True)
+    db_session.add(customer)
+    await db_session.flush()
+    repo = ChatRepository(db_session)
+    conversation, _ = await repo.get_or_create_conversation(customer.id)
+    replied = await repo.create_message(
+        conversation_id=conversation.id,
+        direction="inbound",
+        message_type="text",
+        telegram_chat_id=customer.telegram_id,
+        telegram_message_id=410,
+    )
+    message = await repo.create_message(
+        conversation_id=conversation.id,
+        direction="outbound",
+        message_type=kind,
+        delivery_status="pending",
+        client_request_id="recording-safe-diagnostic",
+        reply_to_message_id=replied.id if with_reply else None,
+    )
+    await repo.add_attachment(
+        message,
+        kind=kind,
+        payload=b"private-recording-payload",
+        filename="private-recording-name",
+    )
+    await db_session.commit()
+    attempts = 0
+
+    class FakeBot:
+        """Воспроизводит отказ Telegram на границе отправки файла."""
+
+        async def send_voice(self, **kwargs):
+            """Имитирует отказ отправки голоса."""
+            nonlocal attempts
+            attempts += 1
+            assert bool(kwargs.get("reply_parameters")) == with_reply
+            if with_reply:
+                assert kwargs["reply_parameters"].message_id == 410
+            raise TelegramBadRequest(method=SendVoice(**kwargs), message=description)
+
+        async def send_video_note(self, **kwargs):
+            """Имитирует отказ отправки кружочка."""
+            nonlocal attempts
+            attempts += 1
+            assert bool(kwargs.get("reply_parameters")) == with_reply
+            if with_reply:
+                assert kwargs["reply_parameters"].message_id == 410
+            raise TelegramBadRequest(method=SendVideoNote(**kwargs), message=description)
+
+    @asynccontextmanager
+    async def sender():
+        """Предоставляет изолированный Telegram transport."""
+        yield FakeBot()
+
+    monkeypatch.setattr("app.services.chat_attachments.sender_bot", sender)
+    result, _, attempted = await retry_manager_attachment(
+        db_session,
+        conversation_id=conversation.id,
+        client_request_id="recording-safe-diagnostic",
+    )
+    assert attempted and attempts == 1
+    assert result.delivery_status == "failed"
+    assert result.attachments[0].payload == b"private-recording-payload"
+    assert customer.telegram_write_access is True
+    assert f"reason={reason}" in caplog.text
+    assert f"has_reply={with_reply}" in caplog.text
+    assert result.reply_to_message_id == (replied.id if with_reply else None)
+    assert description not in caplog.text
+    assert "private-recording" not in caplog.text
 
 
 async def test_manager_document_send_persists_telegram_attachment(db_session, monkeypatch) -> None:

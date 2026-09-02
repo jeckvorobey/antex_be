@@ -110,7 +110,7 @@ async def test_direct_message_is_saved_once_and_notifies_manager(
     ("status", "callbacks"),
     [
         (1, ["op:cancel:17", "op:take:17"]),
-        (2, ["op:remind:17", "op:cancel:17", "op:close:17"]),
+        (2, ["op:cancel:17", "op:close:17"]),
         (3, []),
         (4, []),
     ],

@@ -27,8 +27,18 @@ if TYPE_CHECKING:
 
 
 class ChatConversation(Base, TimestampMixin):
+    """Переписка конкретной пары менеджер-клиент."""
+
     __tablename__ = "ChatConversations"
     __table_args__ = (
+        UniqueConstraint("manager_id", "user_id", name="uq_chat_conversations_manager_user"),
+        Index(
+            "uq_chat_conversations_unowned_user",
+            "user_id",
+            unique=True,
+            postgresql_where=text("manager_id IS NULL"),
+            sqlite_where=text("manager_id IS NULL"),
+        ),
         Index("ix_chat_conversations_last_message_at", "last_message_at"),
         Index("ix_chat_conversations_unread_count", "unread_count"),
     )
@@ -38,7 +48,12 @@ class ChatConversation(Base, TimestampMixin):
         Integer,
         ForeignKey("Users.id", ondelete="CASCADE"),
         nullable=False,
-        unique=True,
+    )
+    # NULL сохраняет историю без доказанного владельца, не передавая её новому менеджеру.
+    manager_id: Mapped[int | None] = mapped_column(
+        Integer,
+        ForeignKey("Users.id", ondelete="RESTRICT"),
+        nullable=True,
     )
     status: Mapped[str] = mapped_column(
         String(16),
@@ -59,7 +74,7 @@ class ChatConversation(Base, TimestampMixin):
     )
     last_read_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
-    user: Mapped[User] = relationship("User")
+    user: Mapped[User] = relationship("User", foreign_keys=[user_id])
     messages: Mapped[list[ChatMessage]] = relationship(
         "ChatMessage",
         back_populates="conversation",

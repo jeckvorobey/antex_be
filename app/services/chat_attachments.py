@@ -13,6 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.chat import ChatAttachment, ChatConversation, ChatMessage
 from app.repositories.chat import ChatRepository
+from app.services.chat_delivery_errors import telegram_rejection_reason
 from app.services.chat_media import normalize_recording
 from app.services.order_notifications import (
     DeliveryOutcome,
@@ -46,6 +47,7 @@ async def send_manager_attachment(
     db: AsyncSession,
     *,
     conversation_id: int,
+    manager_id: int | None = None,
     client_request_id: str,
     content: bytes | None,
     filename: str,
@@ -53,12 +55,12 @@ async def send_manager_attachment(
     kind: str,
     reply_to_message_id: int | None = None,
 ) -> tuple[ChatMessage, ChatConversation, bool]:
-    repo = ChatRepository(db)
+    repo = ChatRepository(db, manager_id=manager_id)
     existing = await repo.get_by_client_request_id(client_request_id)
     if existing is not None:
         conversation = await repo.get_conversation(existing.conversation_id)
         if conversation is None:
-            raise RuntimeError("Chat conversation disappeared for idempotent attachment")
+            raise LookupError("conversation_not_found")
         if conversation.id != conversation_id:
             raise LookupError("conversation_not_found")
         if existing.forward_source_message_id is not None or existing.message_type != kind:
@@ -67,6 +69,7 @@ async def send_manager_attachment(
             return existing, conversation, False
         return await retry_manager_attachment(
             db,
+            manager_id=manager_id,
             conversation_id=conversation_id,
             client_request_id=client_request_id,
         )
@@ -128,10 +131,11 @@ async def retry_manager_attachment(
     db: AsyncSession,
     *,
     conversation_id: int,
+    manager_id: int | None = None,
     client_request_id: str,
 ) -> tuple[ChatMessage, ChatConversation, bool]:
     """Повторить failed/pending delivery из сохранённого database payload."""
-    repo = ChatRepository(db)
+    repo = ChatRepository(db, manager_id=manager_id)
     message = await repo.get_by_client_request_id(client_request_id)
     if message is None or message.conversation_id != conversation_id:
         raise LookupError("attachment_not_found")
@@ -254,10 +258,15 @@ async def _deliver_manager_attachment(
             outcome = DeliveryOutcome.INACCESSIBLE
         message.delivery_status = "failed"
         logger.warning(
-            "Manager attachment delivery failed: conversation_id=%s kind=%s error=%s",
+            "Manager attachment delivery failed: conversation_id=%s kind=%s "
+            "message_id=%s attachment_id=%s has_reply=%s error=%s reason=%s",
             conversation.id,
             kind,
+            message.id,
+            attachment.id,
+            bool(reply_options),
             type(exc).__name__,
+            telegram_rejection_reason(exc),
         )
     except Exception as exc:
         message.delivery_status = "failed"

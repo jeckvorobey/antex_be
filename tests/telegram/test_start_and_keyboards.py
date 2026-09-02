@@ -532,12 +532,13 @@ async def test_manager_order_keyboards_use_new_callbacks() -> None:
     assert open_chat.inline_keyboard[0][1].text == "✅ Взять в работу"
     assert open_chat.inline_keyboard[0][1].style == "success"
 
-    assert close_order.inline_keyboard[0][0].callback_data == "op:remind:17"
-    assert close_order.inline_keyboard[0][0].text == "🔔 Напомнить клиенту"
-    assert close_order.inline_keyboard[1][0].callback_data == "op:cancel:17"
-    assert close_order.inline_keyboard[1][0].style == "danger"
-    assert close_order.inline_keyboard[1][1].callback_data == "op:close:17"
-    assert close_order.inline_keyboard[1][1].style == "success"
+    assert len(close_order.inline_keyboard) == 1
+    assert [button.callback_data for button in close_order.inline_keyboard[0]] == [
+        "op:cancel:17",
+        "op:close:17",
+    ]
+    assert close_order.inline_keyboard[0][0].style == "danger"
+    assert close_order.inline_keyboard[0][1].style == "success"
     assert review.inline_keyboard[0][0].url == "https://example.com/review"
     assert review.inline_keyboard[0][0].style == "success"
     assert review.inline_keyboard[1][0].callback_data == "fsm:cancel"
@@ -557,7 +558,8 @@ def test_manager_order_keyboards_have_equivalent_english_labels() -> None:
         "❌ Cancel order",
         "✅ Take order",
     ]
-    assert [row[0].text for row in processing.inline_keyboard] == [
-        "🔔 Remind client",
+    assert len(processing.inline_keyboard) == 1
+    assert [button.text for button in processing.inline_keyboard[0]] == [
         "❌ Cancel order",
+        "✅ Close order",
     ]

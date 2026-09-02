@@ -464,7 +464,7 @@ def manager_order_close(
     order_id: int | None = None,
     **kwargs,
 ) -> InlineKeyboardMarkup:
-    """Действия заявки в работе без перехода в чат."""
+    """Отмена и завершение заявки в работе без напоминания клиенту."""
     del kwargs
     if order_id is None and isinstance(_, int):
         order_id = _
@@ -475,13 +475,6 @@ def manager_order_close(
     rows: list[list[InlineKeyboardButton]] = []
     rows.extend(
         [
-            [
-                InlineKeyboardButton(
-                    text=translate("btn-remind-client"),
-                    callback_data=f"op:remind:{order_id}",
-                    style="primary",
-                ),
-            ],
             [
                 InlineKeyboardButton(
                     text=translate("btn-cancel-order"),

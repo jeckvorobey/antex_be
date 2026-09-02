@@ -60,9 +60,8 @@ async def list_chats(
     limit: int = Query(50, ge=1, le=100),
     offset: int = Query(0, ge=0),
 ) -> ChatListResponse:
-    del manager
-    repo = ChatRepository(db)
-    service = ChatService(db)
+    repo = ChatRepository(db, manager_id=manager.id)
+    service = ChatService(db, manager_id=manager.id)
     conversations, total = await repo.list_conversations(
         unread_only=unreadOnly,
         query=query,
@@ -79,11 +78,10 @@ async def get_chat(
     db: DbDep,
     manager: ManagerUser,
 ) -> ChatConversationOut:
-    del manager
-    conversation = await ChatRepository(db).get_conversation(conversation_id)
+    conversation = await ChatRepository(db, manager_id=manager.id).get_conversation(conversation_id)
     if conversation is None:
         raise _not_found("Conversation not found")
-    return await ChatService(db).conversation_out(conversation)
+    return await ChatService(db, manager_id=manager.id).conversation_out(conversation)
 
 
 @router.get("/chats/{conversation_id}/messages", response_model=ChatMessagesResponse)
@@ -94,8 +92,7 @@ async def get_chat_messages(
     limit: int = Query(50, ge=1, le=100),
     beforeId: int | None = Query(None, ge=1),  # noqa: N803
 ) -> ChatMessagesResponse:
-    del manager
-    repo = ChatRepository(db)
+    repo = ChatRepository(db, manager_id=manager.id)
     if await repo.get_conversation(conversation_id) is None:
         raise _not_found("Conversation not found")
     messages, has_more = await repo.list_messages(
@@ -116,8 +113,7 @@ async def send_chat_message(
     db: DbDep,
     manager: ManagerUser,
 ) -> ChatMessageOut:
-    del manager
-    service = ChatService(db)
+    service = ChatService(db, manager_id=manager.id)
     try:
         message, conversation, created = await service.send_manager_message(
             conversation_id=conversation_id,
@@ -143,10 +139,10 @@ async def forward_chat_message(
     manager: ManagerUser,
 ) -> ChatMessageOut:
     """Переслать доступное сообщение нативным методом Telegram."""
-    del manager
     try:
         message, conversation, attempted = await forward_manager_message(
             db,
+            manager_id=manager.id,
             conversation_id=conversation_id,
             client_request_id=body.clientRequestId,
             source_message_id=body.sourceMessageId,
@@ -156,7 +152,7 @@ async def forward_chat_message(
     except ValueError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
     await db.commit()
-    service = ChatService(db)
+    service = ChatService(db, manager_id=manager.id)
     if attempted:
         await service.publish_outbound(message, conversation)
     return service.message_out(message)
@@ -168,8 +164,7 @@ async def mark_chat_read(
     db: DbDep,
     manager: ManagerUser,
 ) -> ChatReadResponse:
-    del manager
-    service = ChatService(db)
+    service = ChatService(db, manager_id=manager.id)
     try:
         conversation = await service.mark_read(conversation_id)
     except LookupError as exc:
@@ -179,7 +174,7 @@ async def mark_chat_read(
     return ChatReadResponse(
         conversationId=conversation.id,
         unreadCount=conversation.unread_count,
-        unreadTotal=await ChatRepository(db).unread_total(),
+        unreadTotal=await ChatRepository(db, manager_id=manager.id).unread_total(),
     )
 
 
@@ -189,8 +184,7 @@ async def close_chat(
     db: DbDep,
     manager: ManagerUser,
 ) -> ChatConversationOut:
-    del manager
-    service = ChatService(db)
+    service = ChatService(db, manager_id=manager.id)
     try:
         conversation = await service.close_conversation(conversation_id)
     except LookupError as exc:
@@ -200,6 +194,7 @@ async def close_chat(
     await manager_realtime_hub.publish(
         "chat.conversation.updated",
         {"conversation": payload.model_dump(mode="json")},
+        manager_id=manager.id,
     )
     return payload
 
@@ -212,7 +207,6 @@ async def list_manager_orders(
     offset: Annotated[int, Query(ge=0)] = 0,
     todayFrom: Annotated[AwareDatetime | None, Query()] = None,  # noqa: N803
 ) -> ManagerOrderListResponse:
-    del manager
     today_from = (
         todayFrom.astimezone(UTC)
         if todayFrom is not None
@@ -249,16 +243,15 @@ async def ensure_order_chat(
     db: DbDep,
     manager: ManagerUser,
 ) -> ChatConversationOut:
-    del manager
     order = await OrderRepository(db).get_one(order_id)
     if order is None:
         raise _not_found("Order not found")
-    repo = ChatRepository(db)
+    repo = ChatRepository(db, manager_id=manager.id)
     conversation, created = await repo.get_or_create_conversation(order.UserId)
     if created:
         conversation.user = order.user
     await db.commit()
-    return await ChatService(db).conversation_out(conversation)
+    return await ChatService(db, manager_id=manager.id).conversation_out(conversation)
 
 
 @router.patch("/orders/{order_id}/status", response_model=ManagerOrderSummary)
@@ -296,7 +289,7 @@ async def manager_realtime_stream(
             status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid connection id"
         ) from exc
     async with create_db_session() as db:
-        unread_total = await ChatRepository(db).unread_total()
+        unread_total = await ChatRepository(db, manager_id=manager.id).unread_total()
 
     async def events():
         connection = await manager_realtime_hub.register(manager.id, connection_id)
@@ -333,7 +326,15 @@ async def manager_realtime_stream(
 async def update_realtime_viewing(
     body: ManagerRealtimeViewingRequest,
     manager: ManagerUser,
+    db: DbDep,
 ) -> Response:
+    """Сохраняет viewing только собственной беседы менеджера."""
+    if body.conversationId is not None:
+        conversation = await ChatRepository(db, manager_id=manager.id).get_conversation(
+            body.conversationId
+        )
+        if conversation is None:
+            raise _not_found("Conversation not found")
     if not await manager_realtime_hub.set_viewing(
         manager.id, body.connectionId, body.conversationId
     ):

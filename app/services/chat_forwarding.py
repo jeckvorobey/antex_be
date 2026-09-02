@@ -27,11 +27,12 @@ async def forward_manager_message(
     db: AsyncSession,
     *,
     conversation_id: int,
+    manager_id: int | None = None,
     client_request_id: str,
     source_message_id: int,
 ) -> tuple[ChatMessage, ChatConversation, bool]:
     """Сохранить источник и метаданные до внешней отправки; повторить по ключу."""
-    repo = ChatRepository(db)
+    repo = ChatRepository(db, manager_id=manager_id)
     conversation = await repo.get_conversation(conversation_id)
     if conversation is None:
         raise LookupError("conversation_not_found")
@@ -95,6 +96,7 @@ async def forward_manager_message(
             # Параллельный запрос уже записал тот же durable ключ.
             return await forward_manager_message(
                 db,
+                manager_id=manager_id,
                 conversation_id=conversation_id,
                 client_request_id=client_request_id,
                 source_message_id=source_message_id,

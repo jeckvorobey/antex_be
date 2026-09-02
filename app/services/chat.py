@@ -1,4 +1,4 @@
-"""Business logic for the single-manager chat workspace."""
+"""Переписка конкретной пары менеджер-клиент."""
 
 from __future__ import annotations
 
@@ -26,6 +26,7 @@ from app.schemas.chat import (
     ManagerOrderCity,
     ManagerOrderSummary,
 )
+from app.services.chat_delivery_errors import telegram_rejection_reason
 from app.services.chat_realtime import manager_realtime_hub, trigger_manager_refresh
 from app.services.order_notifications import (
     DeliveryOutcome,
@@ -51,9 +52,12 @@ class InboundAttachment:
 
 
 class ChatService:
-    def __init__(self, db: AsyncSession) -> None:
+    """Сохраняет сообщения и соблюдает принадлежность бесед их владельцам."""
+
+    def __init__(self, db: AsyncSession, *, manager_id: int | None = None) -> None:
+        """Ограничивает менеджерские операции идентификатором авторизованного пользователя."""
         self.db = db
-        self.repo = ChatRepository(db)
+        self.repo = ChatRepository(db, manager_id=manager_id)
         self.user_repo = UserRepository(db)
         self.order_repo = OrderRepository(db)
 
@@ -81,7 +85,9 @@ class ChatService:
                 raise RuntimeError("Chat conversation disappeared for stored message")
             return existing, conversation, False
 
-        conversation, created_conversation = await self.repo.get_or_create_conversation(user.id)
+        manager = await self.user_repo.get_manager()
+        inbound_repo = ChatRepository(self.db, manager_id=manager.id if manager else None)
+        conversation, created_conversation = await inbound_repo.get_or_create_conversation(user.id)
         if created_conversation:
             conversation.user = user
 
@@ -91,7 +97,7 @@ class ChatService:
                 telegram_chat_id,
                 reply_to_telegram_message_id,
             )
-            if replied is not None:
+            if replied is not None and replied.conversation_id == conversation.id:
                 reply_to_id = replied.id
 
         message = await self.repo.create_message(
@@ -120,7 +126,6 @@ class ChatService:
             )
 
         increment_unread = True
-        manager = await self.user_repo.get_manager()
         if manager is not None:
             try:
                 increment_unread = not await manager_realtime_hub.is_viewing(
@@ -179,7 +184,7 @@ class ChatService:
         if existing is not None:
             conversation = await self.repo.get_conversation(existing.conversation_id)
             if conversation is None:
-                raise RuntimeError("Chat conversation disappeared for idempotent message")
+                raise LookupError("conversation_not_found")
             if conversation.id != conversation_id:
                 raise LookupError("conversation_not_found")
             if existing.forward_source_message_id is not None or existing.message_type != "text":
@@ -223,6 +228,7 @@ class ChatService:
         message: ChatMessage,
         conversation: ChatConversation,
     ) -> tuple[ChatMessage, bool]:
+        """Занимает отправку и загружает серверный timestamp перед синхронным DTO."""
         claimed_at = datetime.now(UTC)
         claim_token = uuid4().hex
         claimed = await self.repo.claim_text_delivery(
@@ -241,6 +247,9 @@ class ChatService:
             conversation,
             claim_token=claim_token,
         )
+        # UPDATE onupdate=func.now() инвалидирует updatedAt даже при expire_on_commit=False.
+        # Обновляем поле после последнего flush, включая failed/no-chat ветки доставки.
+        await self.db.refresh(delivered, attribute_names=["updatedAt"])
         return delivered, True
 
     async def _deliver_text_message(
@@ -250,6 +259,7 @@ class ChatService:
         *,
         claim_token: str,
     ) -> ChatMessage:
+        """Отправляет сохранённый текст и фиксирует результат без повторного внешнего вызова."""
         user = conversation.user
 
         if user.telegram_id is None:
@@ -288,17 +298,24 @@ class ChatService:
             ):
                 outcome = DeliveryOutcome.INACCESSIBLE
             logger.warning(
-                "Manager chat delivery failed: conversation_id=%s user_id=%s error=%s",
+                "Manager chat delivery failed: conversation_id=%s user_id=%s "
+                "message_id=%s error=%s reason=%s",
                 conversation.id,
                 user.id,
+                message.id,
                 type(exc).__name__,
+                telegram_rejection_reason(exc),
             )
             message.delivery_status = "failed"
-        except Exception:
-            logger.exception(
-                "Manager chat delivery failed unexpectedly: conversation_id=%s user_id=%s",
+        except Exception as exc:
+            # Transport exception может содержать URL или текст запроса: выводим только класс.
+            logger.error(
+                "Manager chat delivery failed unexpectedly: conversation_id=%s user_id=%s "
+                "message_id=%s error=%s reason=unexpected_error",
                 conversation.id,
                 user.id,
+                message.id,
+                type(exc).__name__,
             )
             message.delivery_status = "failed"
 
@@ -444,7 +461,7 @@ class ChatService:
         """После commit независимо обновляет чаты и уведомляет менеджера в Telegram."""
         try:
             await trigger_manager_refresh(
-                await self.user_repo.get_manager(), "chat.message.created"
+                await self._conversation_manager(conversation), "chat.message.created"
             )
         except Exception:
             # Недоступность realtime не должна прерывать Telegram-доставку.
@@ -452,21 +469,43 @@ class ChatService:
         await self._notify_manager(message, conversation)
 
     async def publish_message_updated(self, message: ChatMessage) -> None:
-        await trigger_manager_refresh(await self.user_repo.get_manager(), "chat.message.updated")
+        """Обновляет только владельца отредактированной истории."""
+        conversation = await self.repo.get_conversation(message.conversation_id)
+        if conversation is not None:
+            await self.publish_outbound(message, conversation)
 
     async def publish_outbound(self, message: ChatMessage, conversation: ChatConversation) -> None:
-        del message, conversation
-        await trigger_manager_refresh(await self.user_repo.get_manager(), "chat.message.updated")
+        """Адресует обновление владельцу, не текущему назначенному менеджеру."""
+        del message
+        await trigger_manager_refresh(
+            await self._conversation_manager(conversation), "chat.message.updated"
+        )
+
+    async def _conversation_manager(self, conversation: ChatConversation) -> User | None:
+        """Уведомляет владельца только при сохранении менеджерской роли."""
+        if conversation.manager_id is None:
+            return None
+        manager = await self.user_repo.get_one(conversation.manager_id)
+        return manager if manager is not None and manager.isManager() else None
 
     async def publish_read(self, conversation: ChatConversation) -> None:
-        unread_total = await self.repo.unread_total()
+        """Публикует счётчики только владельцу прочитанной беседы."""
+        if await self._conversation_manager(conversation) is None:
+            return
+        unread_total = await ChatRepository(
+            self.db, manager_id=conversation.manager_id
+        ).unread_total()
         payload = {
             "conversationId": conversation.id,
             "unreadCount": conversation.unread_count,
             "unreadTotal": unread_total,
         }
-        await manager_realtime_hub.publish("chat.read.updated", payload)
-        await manager_realtime_hub.publish("chat.unread.updated", payload)
+        await manager_realtime_hub.publish(
+            "chat.read.updated", payload, manager_id=conversation.manager_id
+        )
+        await manager_realtime_hub.publish(
+            "chat.unread.updated", payload, manager_id=conversation.manager_id
+        )
 
     async def _notify_manager(
         self,
@@ -474,7 +513,7 @@ class ChatService:
         conversation: ChatConversation,
     ) -> None:
         """Доставляет новое входящее уведомление независимо от presence менеджера."""
-        manager = await self.user_repo.get_manager()
+        manager = await self._conversation_manager(conversation)
         if manager is None or manager.telegram_id is None:
             return
         customer = conversation.user
