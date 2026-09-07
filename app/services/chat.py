@@ -281,11 +281,14 @@ class ChatService:
         try:
             async with sender_bot() as bot:
                 if telegram_reply_message_id is None:
-                    sent = await bot.send_message(chat_id=user.telegram_id, text=message.text or "")
+                    sent = await bot.send_message(
+                        chat_id=user.telegram_id, text=message.text or "", parse_mode=None
+                    )
                 else:
                     sent = await bot.send_message(
                         chat_id=user.telegram_id,
                         text=message.text or "",
+                        parse_mode=None,
                         reply_parameters=ReplyParameters(message_id=telegram_reply_message_id),
                     )
             message.telegram_message_id = sent.message_id

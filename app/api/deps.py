@@ -121,3 +121,16 @@ async def get_manager_user(user: CurrentUser) -> User:
 
 
 ManagerUser = Annotated[User, Depends(get_manager_user)]
+
+
+async def get_realtime_manager_id(
+    db: Annotated[AsyncSession, Depends(get_db_session, scope="function")],
+    authorization: Annotated[str | None, Header()] = None,
+) -> int:
+    """Проверяет роль для SSE, освобождая auth-сессию до начала StreamingResponse."""
+    user = await get_current_user(db, authorization)
+    manager = await get_manager_user(user)
+    return manager.id
+
+
+RealtimeManagerId = Annotated[int, Depends(get_realtime_manager_id)]

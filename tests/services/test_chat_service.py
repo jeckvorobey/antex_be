@@ -83,11 +83,12 @@ async def test_manager_send_is_idempotent(db_session, monkeypatch) -> None:
     calls = 0
 
     class FakeBot:
-        async def send_message(self, *, chat_id: int, text: str):
+        async def send_message(self, *, chat_id: int, text: str, parse_mode="HTML"):
             nonlocal calls
+            assert parse_mode is None
             calls += 1
             assert chat_id == 810003
-            assert text == "Ответ менеджера"
+            assert text == "Сумма < 100 & <b>буквально</b>"
             return SimpleNamespace(message_id=777)
 
     @asynccontextmanager
@@ -99,12 +100,12 @@ async def test_manager_send_is_idempotent(db_session, monkeypatch) -> None:
     first, _conversation, created = await service.send_manager_message(
         conversation_id=conversation.id,
         client_request_id="request-123456",
-        text="Ответ менеджера",
+        text="Сумма < 100 & <b>буквально</b>",
     )
     duplicate, _conversation, duplicate_created = await service.send_manager_message(
         conversation_id=conversation.id,
         client_request_id="request-123456",
-        text="Ответ менеджера",
+        text="Сумма < 100 & <b>буквально</b>",
     )
 
     assert created is True
@@ -131,9 +132,12 @@ async def test_manager_reply_forwards_telegram_message_id(db_session, monkeypatc
     )
 
     class FakeBot:
-        async def send_message(self, *, chat_id: int, text: str, reply_parameters):
+        async def send_message(
+            self, *, chat_id: int, text: str, reply_parameters, parse_mode="HTML"
+        ):
+            assert parse_mode is None
             assert chat_id == 810004
-            assert text == "Ответ на сообщение"
+            assert text == "Ответ < 100 & <b>буквально</b>"
             assert reply_parameters.message_id == 456
             return SimpleNamespace(message_id=778)
 
@@ -146,7 +150,7 @@ async def test_manager_reply_forwards_telegram_message_id(db_session, monkeypatc
     reply, _conversation, created = await service.send_manager_message(
         conversation_id=conversation.id,
         client_request_id="request-reply-123",
-        text="Ответ на сообщение",
+        text="Ответ < 100 & <b>буквально</b>",
         reply_to_message_id=inbound.id,
     )
 
@@ -178,8 +182,9 @@ async def test_pending_manager_text_is_retried_from_durable_record(
     calls = 0
 
     class FakeBot:
-        async def send_message(self, *, chat_id: int, text: str):
+        async def send_message(self, *, chat_id: int, text: str, parse_mode="HTML"):
             nonlocal calls
+            assert parse_mode is None
             calls += 1
             assert chat_id == customer.telegram_id
             assert text == pending.text

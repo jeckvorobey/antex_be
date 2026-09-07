@@ -31,6 +31,24 @@ def _normalize_message(message: Message) -> tuple[str, list[InboundAttachment]]:
             )
         )
         return "photo", attachments
+    if message.animation:
+        animation = message.animation
+        attachments.append(
+            InboundAttachment(
+                kind="animation",
+                file_id=animation.file_id,
+                file_unique_id=animation.file_unique_id,
+                filename=animation.file_name or "animation.mp4",
+                mime_type=animation.mime_type or "video/mp4",
+                size=animation.file_size,
+                metadata={
+                    "width": animation.width,
+                    "height": animation.height,
+                    "duration": animation.duration,
+                },
+            )
+        )
+        return "animation", attachments
     if message.document:
         document = message.document
         attachments.append(
@@ -99,24 +117,6 @@ def _normalize_message(message: Message) -> tuple[str, list[InboundAttachment]]:
             )
         )
         return "sticker", attachments
-    if message.animation:
-        animation = message.animation
-        attachments.append(
-            InboundAttachment(
-                kind="animation",
-                file_id=animation.file_id,
-                file_unique_id=animation.file_unique_id,
-                filename=animation.file_name or "animation.mp4",
-                mime_type=animation.mime_type or "video/mp4",
-                size=animation.file_size,
-                metadata={
-                    "width": animation.width,
-                    "height": animation.height,
-                    "duration": animation.duration,
-                },
-            )
-        )
-        return "animation", attachments
     if message.audio:
         audio = message.audio
         attachments.append(
@@ -229,12 +229,13 @@ async def capture_unhandled_private_message(message: Message) -> None:
     try:
         await _capture(message)
     except Exception as exc:
-        logger.exception(
-            "Failed to capture Telegram chat message: chat_id=%s message_id=%s",
+        logger.error(
+            "Failed to capture Telegram chat message: chat_id=%s message_id=%s error=%s",
             message.chat.id,
             message.message_id,
+            type(exc).__name__,
         )
-        raise TelegramCaptureRetryError("Telegram chat capture requires retry") from exc
+        raise TelegramCaptureRetryError("Telegram chat capture requires retry") from None
 
 
 @router.edited_message(F.chat.type == "private")
@@ -243,9 +244,10 @@ async def capture_edited_private_message(message: Message) -> None:
     try:
         await _capture(message, edited=True)
     except Exception as exc:
-        logger.exception(
-            "Failed to capture edited Telegram chat message: chat_id=%s message_id=%s",
+        logger.error(
+            "Failed to capture edited Telegram chat message: chat_id=%s message_id=%s error=%s",
             message.chat.id,
             message.message_id,
+            type(exc).__name__,
         )
-        raise TelegramCaptureRetryError("Edited Telegram chat capture requires retry") from exc
+        raise TelegramCaptureRetryError("Edited Telegram chat capture requires retry") from None

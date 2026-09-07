@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import traceback
 from types import SimpleNamespace
 
 import pytest
@@ -168,7 +169,7 @@ async def test_transient_failure_of_regular_update_is_raised_for_redelivery(monk
 
     with pytest.raises(TelegramCaptureRetryError) as exc_info:
         await capture_unhandled_private_message(message)
-    assert isinstance(exc_info.value.__cause__, RuntimeError)
+    assert exc_info.value.__cause__ is None
 
 
 async def test_transient_failure_of_edited_update_is_raised_for_redelivery(monkeypatch) -> None:
@@ -183,4 +184,39 @@ async def test_transient_failure_of_edited_update_is_raised_for_redelivery(monke
 
     with pytest.raises(TelegramCaptureRetryError) as exc_info:
         await capture_edited_private_message(message)
-    assert isinstance(exc_info.value.__cause__, RuntimeError)
+    assert exc_info.value.__cause__ is None
+
+
+@pytest.mark.parametrize("edited", [False, True])
+async def test_capture_failure_does_not_expose_message_payload(monkeypatch, caplog, edited) -> None:
+    """Исключения БД не должны переносить message text/caption в лог или retry traceback."""
+    sentinel = "private-chat-payload-fixture"
+
+    async def fail_capture(*args, **kwargs):
+        raise RuntimeError(sentinel)
+
+    monkeypatch.setattr("app.telegram.handlers.chat._capture", fail_capture)
+    handler = capture_edited_private_message if edited else capture_unhandled_private_message
+    with pytest.raises(TelegramCaptureRetryError) as error:
+        await handler(SimpleNamespace(text="hello", chat=SimpleNamespace(id=101), message_id=11))
+    assert sentinel not in caplog.text
+    assert sentinel not in "".join(traceback.format_exception(error.value))
+    assert "RuntimeError" in caplog.text
+
+
+def test_animation_takes_precedence_over_compatibility_document() -> None:
+    """Telegram animation содержит также document, но должна остаться анимацией."""
+    media = SimpleNamespace(
+        file_id="animation",
+        file_unique_id="unique",
+        file_name="loop.mp4",
+        mime_type="video/mp4",
+        file_size=128,
+        width=320,
+        height=240,
+        duration=3,
+    )
+    kind, attachments = _normalize_message(_message(animation=media, document=media))
+    assert kind == "animation"
+    assert attachments[0].kind == "animation"
+    assert attachments[0].metadata == {"width": 320, "height": 240, "duration": 3}

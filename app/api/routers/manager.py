@@ -13,7 +13,7 @@ from fastapi import APIRouter, Header, HTTPException, Query, Response, status
 from fastapi.responses import StreamingResponse
 from pydantic import AwareDatetime
 
-from app.api.deps import DbDep, ManagerUser
+from app.api.deps import DbDep, ManagerUser, RealtimeManagerId
 from app.core.config import settings
 from app.core.database import create_db_session
 from app.repositories.chat import ChatRepository
@@ -279,7 +279,7 @@ def _sse_event(envelope: dict[str, object]) -> str:
 
 @router.get("/realtime/stream")
 async def manager_realtime_stream(
-    manager: ManagerUser,
+    manager_id: RealtimeManagerId,
     connection_id: str = Header(..., alias="X-Manager-Realtime-Connection-Id"),
 ) -> StreamingResponse:
     try:
@@ -289,16 +289,16 @@ async def manager_realtime_stream(
             status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid connection id"
         ) from exc
     async with create_db_session() as db:
-        unread_total = await ChatRepository(db, manager_id=manager.id).unread_total()
+        unread_total = await ChatRepository(db, manager_id=manager_id).unread_total()
 
     async def events():
-        connection = await manager_realtime_hub.register(manager.id, connection_id)
+        connection = await manager_realtime_hub.register(manager_id, connection_id)
         try:
             yield _sse_event(
                 {
                     "type": "realtime.ready",
                     "payload": {"unreadTotal": unread_total},
-                    "managerId": manager.id,
+                    "managerId": manager_id,
                 }
             )
             while True:
@@ -307,13 +307,13 @@ async def manager_realtime_stream(
                         connection.events.get(), timeout=settings.manager_realtime_keepalive_seconds
                     )
                 except TimeoutError:
-                    await manager_realtime_hub.refresh_presence(manager.id, connection_id)
+                    await manager_realtime_hub.refresh_presence(manager_id, connection_id)
                     yield ": keepalive\n\n"
                 else:
                     yield _sse_event(envelope)
         finally:
             with suppress(Exception):
-                await manager_realtime_hub.unregister(manager.id, connection_id)
+                await manager_realtime_hub.unregister(manager_id, connection_id)
 
     return StreamingResponse(
         events(),
