@@ -310,6 +310,7 @@ async def manager_realtime_stream(
                     await manager_realtime_hub.refresh_presence(manager_id, connection_id)
                     yield ": keepalive\n\n"
                 else:
+                    await manager_realtime_hub.refresh_presence(manager_id, connection_id)
                     yield _sse_event(envelope)
         finally:
             with suppress(Exception):

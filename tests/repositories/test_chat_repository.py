@@ -2,7 +2,8 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 
-from sqlalchemy import func, select
+import pytest
+from sqlalchemy import func, inspect, select
 from sqlalchemy.ext.asyncio import async_sessionmaker
 
 from app.enums.country import Country
@@ -10,6 +11,7 @@ from app.models.chat import ChatMessageRevision
 from app.models.order import Order
 from app.models.user import User
 from app.repositories.chat import ChatRepository
+from app.services.chat import ChatService
 
 
 async def test_chat_repository_get_or_create_and_unread(db_session) -> None:
@@ -154,3 +156,43 @@ async def test_concurrent_unread_increments_are_not_lost(db_session) -> None:
         stored = await ChatRepository(verification_session).get_conversation(conversation_id)
         assert stored is not None
         assert stored.unread_count == 2
+
+
+@pytest.mark.parametrize("listing", ["history", "latest"])
+async def test_chat_lists_do_not_load_binary_payload(db_session, listing) -> None:
+    """История читает только metadata; payload загружается явно для скачивания."""
+    customer = User(telegram_id=700010)
+    db_session.add(customer)
+    await db_session.flush()
+    repo = ChatRepository(db_session)
+    conversation, _ = await repo.get_or_create_conversation(customer.id)
+    message = await repo.create_message(
+        conversation_id=conversation.id,
+        direction="outbound",
+        message_type="document",
+        delivery_status="failed",
+    )
+    attachment = await repo.add_attachment(
+        message,
+        kind="document",
+        telegram_file_id=None,
+        filename="pending.pdf",
+        payload=b"pending-file-bytes",
+        mime_type="application/pdf",
+    )
+    conversation_id, attachment_id = conversation.id, attachment.id
+    await db_session.commit()
+    factory = async_sessionmaker(db_session.bind, expire_on_commit=False)
+    async with factory() as db:
+        read_repo = ChatRepository(db)
+        if listing == "history":
+            rows, _ = await read_repo.list_messages(conversation_id)
+        else:
+            rows = list(
+                (await read_repo.latest_messages_by_conversation([conversation_id])).values()
+            )
+        assert "payload" in inspect(rows[0].attachments[0]).unloaded
+        assert ChatService.message_out(rows[0]).attachments[0].filename == "pending.pdf"
+        downloadable = await read_repo.get_attachment(attachment_id)
+        assert downloadable is not None
+        assert downloadable.payload == b"pending-file-bytes"

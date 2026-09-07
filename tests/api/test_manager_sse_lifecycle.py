@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 from contextlib import asynccontextmanager
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
@@ -65,3 +66,33 @@ async def test_sse_releases_auth_session_before_first_event(monkeypatch) -> None
     assert '"unreadTotal": 3' in response.text
     manager.manager_realtime_hub.register.assert_awaited_once()
     manager.manager_realtime_hub.unregister.assert_awaited_once()
+
+
+async def test_sse_refreshes_presence_when_events_arrive_without_timeout(monkeypatch) -> None:
+    """Поток частых событий не должен позволять presence истечь."""
+
+    @asynccontextmanager
+    async def transient_session():
+        yield SimpleNamespace()
+
+    queue = asyncio.Queue()
+    await queue.put({"type": "chat.message.created", "payload": {}})
+    monkeypatch.setattr(manager, "create_db_session", transient_session)
+    monkeypatch.setattr(manager.ChatRepository, "unread_total", AsyncMock(return_value=0))
+    monkeypatch.setattr(
+        manager.manager_realtime_hub,
+        "register",
+        AsyncMock(return_value=SimpleNamespace(events=queue)),
+    )
+    refresh = AsyncMock()
+    monkeypatch.setattr(manager.manager_realtime_hub, "refresh_presence", refresh)
+    monkeypatch.setattr(manager.manager_realtime_hub, "unregister", AsyncMock())
+    connection_id = str(uuid4())
+    response = await manager.manager_realtime_stream(manager_id=42, connection_id=connection_id)
+    events = response.body_iterator
+    try:
+        assert "realtime.ready" in await anext(events)
+        assert "chat.message.created" in await anext(events)
+        refresh.assert_awaited_with(42, connection_id)
+    finally:
+        await events.aclose()

@@ -134,10 +134,13 @@ class ChatRepository(BaseRepository[ChatConversation]):
         limit: int = 50,
         before_id: int | None = None,
     ) -> tuple[list[ChatMessage], bool]:
+        """Возвращает историю вместе metadata вложений, без чтения бинарных payload."""
         statement = (
             select(ChatMessage)
             .where(ChatMessage.conversation_id == conversation_id)
-            .options(selectinload(ChatMessage.attachments))
+            .options(
+                selectinload(ChatMessage.attachments).defer(ChatAttachment.payload, raiseload=True)
+            )
             .order_by(ChatMessage.id.desc())
         )
         if before_id is not None:
@@ -153,7 +156,7 @@ class ChatRepository(BaseRepository[ChatConversation]):
         self,
         conversation_ids: list[int],
     ) -> dict[int, ChatMessage]:
-        """Загрузить последние сообщения страницы бесед одним bulk-запросом."""
+        """Загружает preview страницы бесед без бинарных payload вложений."""
         if not conversation_ids:
             return {}
         latest_ids = (
@@ -164,7 +167,9 @@ class ChatRepository(BaseRepository[ChatConversation]):
         result = await self.session.execute(
             select(ChatMessage)
             .where(ChatMessage.id.in_(latest_ids))
-            .options(selectinload(ChatMessage.attachments))
+            .options(
+                selectinload(ChatMessage.attachments).defer(ChatAttachment.payload, raiseload=True)
+            )
         )
         return {message.conversation_id: message for message in result.scalars().all()}
 

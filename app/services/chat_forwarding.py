@@ -114,6 +114,8 @@ async def forward_manager_message(
     await db.commit()
     if not claimed:
         return await repo.get_message(message.id) or message, conversation, False
+    # Bulk claim меняет status без ORM synchronization: повторный failed должен стать dirty.
+    await db.refresh(message)
     outcome = DeliveryOutcome.FAILED
     try:
         if conversation.user.telegram_id is None:

@@ -6,7 +6,9 @@ from types import SimpleNamespace
 import pytest
 from aiogram.exceptions import TelegramBadRequest
 from aiogram.methods import ForwardMessage
+from sqlalchemy import select
 
+from app.models.chat import ChatMessage
 from app.models.user import User
 from app.repositories.chat import ChatRepository
 from app.services.chat import ChatService
@@ -103,13 +105,19 @@ async def test_forward_protected_content_fails_without_copy(db_session, monkeypa
         yield Bot()
 
     monkeypatch.setattr("app.services.chat_forwarding.sender_bot", sender)
-    message, _, attempted = await forward_manager_message(
-        db_session,
-        conversation_id=target.id,
-        client_request_id="forward-protected",
-        source_message_id=source.id,
-    )
-    assert attempted and message.delivery_status == "failed"
+    for _ in range(2):
+        message, _, attempted = await forward_manager_message(
+            db_session,
+            conversation_id=target.id,
+            client_request_id="forward-protected",
+            source_message_id=source.id,
+        )
+        assert attempted and message.delivery_status == "failed"
+        await db_session.commit()
+        stored_status = await db_session.scalar(
+            select(ChatMessage.delivery_status).where(ChatMessage.id == message.id)
+        )
+        assert stored_status == "failed"
 
 
 async def test_forward_missing_source(db_session):
