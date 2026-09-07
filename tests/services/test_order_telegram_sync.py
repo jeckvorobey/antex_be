@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 from datetime import UTC, datetime
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
@@ -7,10 +8,43 @@ from unittest.mock import AsyncMock
 import pytest
 from aiogram.exceptions import TelegramBadRequest
 from sqlalchemy import func, select
+from sqlalchemy.ext.asyncio import async_sessionmaker
 
 from app.models.order_telegram_sync_task import OrderTelegramSyncTask
 from app.repositories.order_telegram_sync_task import OrderTelegramSyncTaskRepository
 from app.services import order_telegram_sync
+
+
+async def test_batch_cancels_delivery_before_lease_expiry(db_session, monkeypatch) -> None:
+    """Зависшая внешняя доставка отменяется до переаренды задания другим worker."""
+    task = await OrderTelegramSyncTaskRepository(db_session).enqueue(
+        order_id=1, status=2, target="user"
+    )
+    task_id = task.id
+    await db_session.commit()
+    monkeypatch.setattr(
+        "app.core.database.async_session",
+        async_sessionmaker(db_session.bind, expire_on_commit=False),
+    )
+    monkeypatch.setattr(order_telegram_sync.settings, "order_telegram_sync_lease_seconds", 0.1)
+    monkeypatch.setattr(order_telegram_sync.settings, "order_telegram_sync_batch_size", 1)
+    cancelled = asyncio.Event()
+
+    async def slow_delivery(*args):
+        try:
+            await asyncio.Event().wait()
+        finally:
+            cancelled.set()
+
+    monkeypatch.setattr(order_telegram_sync, "process_order_telegram_sync_task", slow_delivery)
+    async with asyncio.timeout(1):
+        assert await order_telegram_sync.process_order_telegram_sync_batch() == 1
+    assert cancelled.is_set()
+    await db_session.refresh(task)
+    assert task.id == task_id
+    assert task.state == "retry"
+    assert task.lastErrorCode == "delivery_timeout"
+    assert task.lockedAt is None
 
 
 @pytest.mark.asyncio

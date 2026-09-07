@@ -210,6 +210,7 @@ async def _deliver_manager_attachment(
             claim_token=claim_token,
         )
         await db.flush()
+        await db.refresh(message, attribute_names=["updatedAt"])
         return message
 
     outcome = DeliveryOutcome.FAILED

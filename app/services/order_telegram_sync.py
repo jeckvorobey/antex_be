@@ -172,6 +172,16 @@ async def process_order_telegram_sync_task(
         task.nextAttemptAt = now + timedelta(seconds=delay)
 
 
+def _owns_claim(task: OrderTelegramSyncTask | None, claimed_at: datetime) -> bool:
+    """Проверяет владельца задания перед фиксацией результата доставки."""
+    return (
+        task is not None
+        and task.state == "processing"
+        and task.lockedAt is not None
+        and task.lockedAt.replace(tzinfo=UTC) == claimed_at.replace(tzinfo=UTC)
+    )
+
+
 async def process_order_telegram_sync_batch() -> int:
     from app.core.database import async_session
 
@@ -186,17 +196,40 @@ async def process_order_telegram_sync_batch() -> int:
         if not tasks:
             break
         task = tasks[0]
+        task_id, claimed_at = task.id, task.lockedAt
+        if claimed_at is None:
+            continue
         async with async_session() as db:
-            persisted = await db.get(type(task), task.id)
-            if persisted is None:
+            # SKIP LOCKED других workers не заберёт выполняемое задание даже при задержке commit.
+            persisted = await db.get(OrderTelegramSyncTask, task_id, with_for_update=True)
+            if not _owns_claim(persisted, claimed_at):
+                continue
+            remaining = (
+                claimed_at.replace(tzinfo=UTC)
+                + timedelta(seconds=settings.order_telegram_sync_lease_seconds)
+                - datetime.now(UTC)
+            ).total_seconds()
+            if remaining <= 0:
                 continue
             try:
-                await process_order_telegram_sync_task(db, persisted)
-            except Exception:
-                logger.exception("Order Telegram sync task failed: task_id=%s", persisted.id)
+                async with asyncio.timeout(remaining * 0.8):
+                    await process_order_telegram_sync_task(db, persisted)
+            except Exception as exc:
+                logger.warning(
+                    "Order Telegram sync task failed: task_id=%s error=%s",
+                    task_id,
+                    type(exc).__name__,
+                )
+                # После отменённого SQL нужно восстановить транзакцию и повторно проверить lease.
+                await db.rollback()
+                persisted = await db.get(OrderTelegramSyncTask, task_id, with_for_update=True)
+                if not _owns_claim(persisted, claimed_at):
+                    continue
                 persisted.attemptCount += 1
                 persisted.lockedAt = None
-                persisted.lastErrorCode = "unexpected_error"
+                persisted.lastErrorCode = (
+                    "delivery_timeout" if isinstance(exc, TimeoutError) else "unexpected_error"
+                )
                 if persisted.attemptCount >= settings.order_telegram_sync_max_attempts:
                     persisted.state = "failed"
                 else:

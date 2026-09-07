@@ -14,7 +14,31 @@ from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from app.models.base import Base
 from app.models.user import User
 from app.repositories.chat import ChatRepository
+from app.services.chat import ChatService
 from app.services.chat_attachments import retry_manager_attachment, send_manager_attachment
+
+
+async def test_attachment_without_telegram_id_returns_serializable_failure(db_session) -> None:
+    """Отсутствующий Telegram ID возвращает failed DTO, включая серверный timestamp."""
+    user = User(telegram_id=None)
+    db_session.add(user)
+    await db_session.flush()
+    conversation, _ = await ChatRepository(db_session).get_or_create_conversation(user.id)
+    for _ in range(2):
+        message, _, attempted = await send_manager_attachment(
+            db_session,
+            conversation_id=conversation.id,
+            client_request_id="no-telegram-id",
+            content=b"test-file",
+            filename="file.pdf",
+            mime_type="application/pdf",
+            kind="document",
+        )
+        assert attempted
+        payload = ChatService.message_out(message)
+        assert payload.deliveryStatus == "failed"
+        assert payload.updatedAt is not None
+        await db_session.commit()
 
 
 @pytest.mark.parametrize("kind", ["voice", "video_note"])
