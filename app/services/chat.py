@@ -150,14 +150,22 @@ class ChatService:
         message = await self.repo.get_by_telegram_identity(
             telegram_chat_id,
             telegram_message_id,
+            for_update=True,
         )
         if message is None:
             return None
+        if message.telegram_edit_date is not None and (
+            telegram_edit_date is None
+            or telegram_edit_date.replace(tzinfo=UTC)
+            < message.telegram_edit_date.replace(tzinfo=UTC)
+        ):
+            return message
         old_rendered = message.text if message.text is not None else message.caption
         new_rendered = text if text is not None else caption
         if old_rendered == new_rendered:
             message.telegram_edit_date = telegram_edit_date
             await self.db.flush()
+            await self.db.refresh(message, attribute_names=["updatedAt"])
             return message
 
         await self.repo.add_revision(
@@ -170,6 +178,7 @@ class ChatService:
         message.caption = caption
         message.telegram_edit_date = telegram_edit_date
         await self.db.flush()
+        await self.db.refresh(message, attribute_names=["updatedAt"])
         return message
 
     async def send_manager_message(
@@ -203,7 +212,7 @@ class ChatService:
             if replied is None or replied.conversation_id != conversation.id:
                 raise LookupError("reply_message_not_found")
 
-        message = await self.repo.create_message(
+        message, created = await self.repo.create_outgoing_message(
             conversation_id=conversation.id,
             direction="outbound",
             message_type="text",
@@ -213,6 +222,13 @@ class ChatService:
             client_request_id=client_request_id,
             reply_to_message_id=reply_to_message_id,
         )
+        if not created:
+            return await self.send_manager_message(
+                conversation_id=conversation_id,
+                client_request_id=client_request_id,
+                text=text,
+                reply_to_message_id=reply_to_message_id,
+            )
         await self.repo.touch_outbound(conversation)
 
         # Idempotency key должен стать durable до внешнего Telegram side effect.

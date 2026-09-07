@@ -119,7 +119,7 @@ async def process_order_telegram_sync_task(
     db: AsyncSession,
     task,
 ) -> None:
-    order = await OrderRepository(db).get_one(task.OrderId)
+    order = await OrderRepository(db).get_one_for_update(task.OrderId)
     now = datetime.now(UTC)
     if order is None:
         task.state = "failed"

@@ -83,6 +83,7 @@ class OrderRepository(BaseRepository[Order]):
             .where(Order.id == order_id, Order.destroyTime.is_(None))
             .options(selectinload(Order.user), selectinload(Order.city))
             .with_for_update()
+            .execution_options(populate_existing=True)
         )
         return result.scalar_one_or_none()
 

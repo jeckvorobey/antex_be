@@ -92,7 +92,7 @@ async def send_manager_attachment(
         content, filename, mime_type = normalized.content, normalized.filename, normalized.mime_type
         metadata = normalized.metadata
     user = conversation.user
-    message = await repo.create_message(
+    message, created = await repo.create_outgoing_message(
         conversation_id=conversation.id,
         direction="outbound",
         message_type=kind,
@@ -103,6 +103,18 @@ async def send_manager_attachment(
         client_request_id=client_request_id,
         reply_to_message_id=reply_to_message_id,
     )
+    if not created:
+        return await send_manager_attachment(
+            db,
+            manager_id=manager_id,
+            conversation_id=conversation_id,
+            client_request_id=client_request_id,
+            content=content,
+            filename=filename,
+            mime_type=mime_type,
+            kind=kind,
+            reply_to_message_id=reply_to_message_id,
+        )
     await repo.touch_outbound(conversation)
     attachment = await repo.add_attachment(
         message,

@@ -202,8 +202,10 @@ class ChatRepository(BaseRepository[ChatConversation]):
         self,
         telegram_chat_id: int,
         telegram_message_id: int,
+        *,
+        for_update: bool = False,
     ) -> ChatMessage | None:
-        result = await self.session.execute(
+        statement = (
             select(ChatMessage)
             .where(
                 ChatMessage.telegram_chat_id == telegram_chat_id,
@@ -211,6 +213,9 @@ class ChatRepository(BaseRepository[ChatConversation]):
             )
             .options(selectinload(ChatMessage.attachments))
         )
+        if for_update:
+            statement = statement.with_for_update().execution_options(populate_existing=True)
+        result = await self.session.execute(statement)
         return result.scalar_one_or_none()
 
     async def get_by_client_request_id(self, client_request_id: str) -> ChatMessage | None:
@@ -226,6 +231,18 @@ class ChatRepository(BaseRepository[ChatConversation]):
         self.session.add(message)
         await self.session.flush()
         return message
+
+    async def create_outgoing_message(self, **values: object) -> tuple[ChatMessage, bool]:
+        """Разрешает гонку UNIQUE clientRequestId без отката внешней транзакции."""
+        try:
+            async with self.session.begin_nested():
+                message = await self.create_message(**values)
+        except IntegrityError:
+            existing = await self.get_by_client_request_id(str(values["client_request_id"]))
+            if existing is None:
+                raise
+            return existing, False
+        return message, True
 
     async def claim_text_delivery(
         self,

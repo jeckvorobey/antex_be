@@ -47,6 +47,39 @@ async def test_batch_cancels_delivery_before_lease_expiry(db_session, monkeypatc
     assert task.lockedAt is None
 
 
+async def test_sync_checks_status_after_order_delivery_lock(monkeypatch) -> None:
+    """После ожидания общей блокировки устаревшее задание не перерисовывает карточку."""
+    task = SimpleNamespace(
+        OrderId=5,
+        status=2,
+        target="manager",
+        state="processing",
+        lockedAt=datetime.now(UTC),
+        deliveredAt=None,
+        lastErrorCode=None,
+        attemptCount=0,
+    )
+
+    class Repo:
+        def __init__(self, db):
+            pass
+
+        async def get_one(self, order_id):
+            return SimpleNamespace(id=order_id, status=2)
+
+        async def get_one_for_update(self, order_id):
+            return SimpleNamespace(id=order_id, status=3)
+
+    deliver = AsyncMock(return_value=(order_telegram_sync.SyncResult.DELIVERED, None))
+    monkeypatch.setattr(order_telegram_sync, "OrderRepository", Repo)
+    monkeypatch.setattr(order_telegram_sync, "_deliver_manager", deliver)
+    await order_telegram_sync.process_order_telegram_sync_task(
+        SimpleNamespace(scalar=AsyncMock(return_value=None)), task
+    )
+    deliver.assert_not_awaited()
+    assert task.lastErrorCode == "stale_status"
+
+
 @pytest.mark.asyncio
 async def test_enqueue_deduplicates_same_order_status_and_target(db_session) -> None:
     repo = OrderTelegramSyncTaskRepository(db_session)
@@ -79,7 +112,7 @@ async def test_stale_task_finishes_without_telegram_delivery(monkeypatch) -> Non
         def __init__(self, db) -> None:
             del db
 
-        async def get_one(self, order_id: int):
+        async def get_one_for_update(self, order_id: int):
             assert order_id == 5
             return current_order
 
@@ -120,7 +153,7 @@ async def test_missing_manager_message_link_is_retried(monkeypatch) -> None:
         def __init__(self, db) -> None:
             del db
 
-        async def get_one(self, order_id: int):
+        async def get_one_for_update(self, order_id: int):
             return current_order
 
     monkeypatch.setattr(order_telegram_sync, "OrderRepository", FakeOrderRepository)
@@ -154,7 +187,7 @@ async def test_temporary_failure_schedules_exponential_retry(monkeypatch) -> Non
         def __init__(self, db) -> None:
             del db
 
-        async def get_one(self, order_id: int):
+        async def get_one_for_update(self, order_id: int):
             return current_order
 
     monkeypatch.setattr(order_telegram_sync, "OrderRepository", FakeOrderRepository)

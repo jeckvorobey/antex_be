@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from contextlib import asynccontextmanager
+from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
 
 from sqlalchemy import func, select
@@ -71,6 +72,34 @@ async def test_capture_edit_preserves_revision(db_session) -> None:
     assert revision is not None
     assert revision.old_text == "до"
     assert revision.new_text == "после"
+
+
+async def test_outdated_telegram_edit_does_not_revert_message(db_session) -> None:
+    user = User(telegram_id=810020)
+    db_session.add(user)
+    await db_session.flush()
+    service = ChatService(db_session)
+    message, _, _ = await service.capture_inbound(
+        user=user,
+        telegram_chat_id=810020,
+        telegram_message_id=20,
+        message_type="text",
+        text="initial",
+        caption=None,
+    )
+    latest = datetime.now(UTC)
+    for text, edit_date in [("latest", latest), ("outdated", latest - timedelta(seconds=5))]:
+        await service.capture_edit(
+            telegram_chat_id=810020,
+            telegram_message_id=20,
+            text=text,
+            caption=None,
+            telegram_edit_date=edit_date,
+        )
+        await db_session.commit()
+    assert message.text == "latest"
+    assert message.telegram_edit_date.replace(tzinfo=UTC) == latest
+    assert await db_session.scalar(select(func.count(ChatMessageRevision.id))) == 1
 
 
 async def test_manager_send_is_idempotent(db_session, monkeypatch) -> None:
