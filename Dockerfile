@@ -7,7 +7,8 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     UV_COMPILE_BYTECODE=1 \
     UV_LINK_MODE=copy
 
-RUN apt-get update && apt-get install -y --no-install-recommends ffmpeg \
+# Coolify переопределяет HEALTHCHECK и использует curl для HTTP-проверки.
+RUN apt-get update && apt-get install -y --no-install-recommends curl ffmpeg \
     && rm -rf /var/lib/apt/lists/*
 
 COPY pyproject.toml uv.lock ./
