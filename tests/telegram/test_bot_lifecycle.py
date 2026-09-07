@@ -179,7 +179,8 @@ async def test_polling_process_propagates_capture_failure_before_offset_ack(
     finally:
         await memory_storage.close()
 
-    assert isinstance(exc_info.value.__cause__, RuntimeError)
+    assert exc_info.value.__cause__ is None
+    assert exc_info.value.__suppress_context__ is True
     assert bot.requested_offsets == [None]
 
 
