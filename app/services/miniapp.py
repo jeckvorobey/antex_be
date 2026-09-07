@@ -65,7 +65,7 @@ from app.services.exchange import (
     get_client_rate,
 )
 from app.services.manager_working_hours import ManagerWorkingHoursService
-from app.services.order_notifications import build_chat_url_for_user
+from app.services.order_notifications import build_official_bot_chat_url
 from app.services.referral import ReferralService, build_referral_link
 from app.telegram.i18n import get_translator
 
@@ -418,8 +418,7 @@ async def calculate_miniapp_quote(
 
 async def get_miniapp_profile_screen(db, user) -> MiniappProfileScreenResponse:
     """Возвращает профиль в формате, который ожидает текущий экран miniapp."""
-    manager = await UserRepository(db).get_manager()
-    manager_chat_url = build_chat_url_for_user(manager) if manager is not None else None
+    official_bot_url = build_official_bot_chat_url()
 
     return MiniappProfileScreenResponse(
         user=build_miniapp_profile_summary(user),
@@ -435,8 +434,8 @@ async def get_miniapp_profile_screen(db, user) -> MiniappProfileScreenResponse:
                 id="support",
                 title="Поддержка",
                 icon="support_agent",
-                action="link" if manager_chat_url else "sheet",
-                href=manager_chat_url,
+                action="link" if official_bot_url else "sheet",
+                href=official_bot_url,
             ),
         ],
         version="1.0.0",

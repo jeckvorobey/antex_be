@@ -109,40 +109,37 @@ def test_order_summary_escapes_persisted_telegram_values() -> None:
 
 
 @pytest.mark.parametrize(
-    ("locale", "required_copy"),
+    ("locale", "action_copy", "reply_copy"),
     [
         (
             "ru",
-            "Напишите менеджеру первым, чтобы открыть диалог. После этого он сможет "
-            "ответить и согласовать детали обмена.",
+            "просто отправьте сообщение этому боту",
+            "Менеджер ответит здесь через официальный бот",
         ),
         (
             "en",
-            "Message the manager first to open the conversation. The manager can then reply "
-            "and confirm the exchange details.",
+            "send a message to this bot",
+            "The manager will reply here through the official bot",
         ),
     ],
 )
-def test_handoff_copy_explains_why_customer_must_write_first(
+def test_handoff_copy_uses_official_bot_conversation(
     order_view: OrderMessageView,
     locale: str,
-    required_copy: str,
+    action_copy: str,
+    reply_copy: str,
 ) -> None:
     rich = messages.order_handoff_rich(order_view, locale=locale)
     regular = messages.order_handoff_html(order_view, locale=locale)
 
     assert "<footer>" in rich
     assert "<table bordered striped>" in rich
-    assert "<ol>" in rich
+    assert "<h3>" in rich
     assert "<blockquote>" not in rich
     assert "<details>" not in rich
-    assert "Отправьте сообщение с предзаполненным текстом" in rich or "Send the pre-filled" in rich
-    assert required_copy in rich
-    assert required_copy in regular
-    assert (
-        "⚠️ Важно. Напишите менеджеру первым" in rich
-        or "⚠️ Important. Message the manager first" in rich
-    )
+    for required_copy in (action_copy, reply_copy):
+        assert required_copy in rich
+        assert required_copy in regular
 
 
 def test_reminder_reuses_handoff_details_and_instructions(order_view: OrderMessageView) -> None:
@@ -152,12 +149,12 @@ def test_reminder_reuses_handoff_details_and_instructions(order_view: OrderMessa
     assert "#2026080096" in rich
     assert "Менеджер ожидает ваше сообщение" in rich
     assert "<table bordered striped>" in rich
-    assert "Что нужно сделать" in rich
-    assert "Отправьте сообщение с предзаполненным текстом" in rich
+    assert "Связь с менеджером" in rich
+    assert "просто отправьте сообщение этому боту" in rich
     assert "<blockquote>" not in rich
     assert "<details>" not in rich
-    assert "⚠️ Важно. Напишите менеджеру первым" in rich
-    assert "Напишите менеджеру первым, чтобы открыть диалог" in regular
+    assert "Менеджер ответит здесь через официальный бот" in rich
+    assert "Менеджер ответит здесь через официальный бот" in regular
 
 
 @pytest.mark.parametrize(

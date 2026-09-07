@@ -293,9 +293,9 @@ def test_cash_delivery_rate_rub_matrix(
     effective_conversion_rate = Decimal(str(conversion_price)) * (
         Decimal("1") - Decimal(str(conversion_margin)) / Decimal("100")
     )
-    assert (
-        Decimal("10") * effective_conversion_rate
-    ).to_integral_value(rounding=ROUND_CEILING) == expected_fee
+    assert (Decimal("10") * effective_conversion_rate).to_integral_value(
+        rounding=ROUND_CEILING
+    ) == expected_fee
     assert result.amount_buy == pytest.approx(expected_amount)
     assert result.delivery_rate == pytest.approx(expected_delivery_rate)
 

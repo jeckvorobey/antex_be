@@ -118,7 +118,9 @@ async def _safe_notify_manager_order_created(db, order, user) -> None:
     """Keep manager notification failures from changing the order creation result."""
     try:
         await _notify_manager_order_created(db, order, user)
+        await db.commit()
     except Exception:
+        await db.rollback()
         logger.exception(
             "Failed to send deferred manager notification: order_id=%s public_number=%s",
             getattr(order, "id", None),

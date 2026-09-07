@@ -18,6 +18,7 @@ from app.repositories.rate import RateRepository
 from app.repositories.user import UserRepository
 from app.schemas.miniapp import MiniappOrderCreate
 from app.services.aex import AexService
+from app.services.chat_realtime import trigger_manager_refresh
 from app.services.exchange import (
     CANONICAL_BUY_CURRENCIES,
     ExchangeQuoteInput,
@@ -186,10 +187,16 @@ async def create_order_for_user(
         getattr(order, "status", None),
     )
 
+    await trigger_manager_refresh(manager, "order.created")
+
     if defer_notifications:
         return hydrated
 
     notification_message_id_before = getattr(hydrated, "userNotificationMessageId", None)
+    manager_message_link_before = (
+        getattr(hydrated, "managerNotificationChatId", None),
+        getattr(hydrated, "managerNotificationMessageId", None),
+    )
     write_access_before = bool(getattr(user, "telegram_write_access", False))
     try:
         logger.info(
@@ -229,10 +236,18 @@ async def create_order_for_user(
         )
     finally:
         notification_message_id = getattr(hydrated, "userNotificationMessageId", None)
+        manager_message_link = (
+            getattr(hydrated, "managerNotificationChatId", None),
+            getattr(hydrated, "managerNotificationMessageId", None),
+        )
         write_access_changed = (
             bool(getattr(user, "telegram_write_access", False)) != write_access_before
         )
-        if notification_message_id != notification_message_id_before or write_access_changed:
+        if (
+            notification_message_id != notification_message_id_before
+            or manager_message_link != manager_message_link_before
+            or write_access_changed
+        ):
             try:
                 await db.commit()
             except Exception:

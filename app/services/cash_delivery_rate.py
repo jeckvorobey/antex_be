@@ -69,9 +69,9 @@ class CashDeliveryRatePolicy:
             MONEY_QUANTUM,
             rounding=ROUND_HALF_EVEN,
         )
-        internal_equivalent = (
-            CASH_DELIVERY_USDT_AMOUNT * usdt_buy_rate
-        ).to_integral_value(rounding=ROUND_CEILING)
+        internal_equivalent = (CASH_DELIVERY_USDT_AMOUNT * usdt_buy_rate).to_integral_value(
+            rounding=ROUND_CEILING
+        )
         net_amount = gross_amount - internal_equivalent
         if net_amount <= 0:
             raise _rate_unavailable()

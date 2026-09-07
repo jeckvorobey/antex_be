@@ -27,6 +27,18 @@ class _FakeRedis:
         return True
 
 
+async def test_new_user_token_contains_no_role(auth_api_client) -> None:
+    """Клиенту выдаётся identity token без переносимого role claim."""
+    from app.core.security import decode_access_token
+
+    client, _ = auth_api_client
+    response = await client.post("/api/auth/telegram", json={"init_data": "role-free"})
+    assert response.status_code == 200
+    claims = decode_access_token(response.json()["access_token"])
+    assert "role" not in claims
+    assert claims["type"] == "user"
+
+
 @pytest.fixture
 async def auth_api_client(
     db_session: AsyncSession,

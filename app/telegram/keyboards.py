@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-from urllib.parse import parse_qsl, quote, urlencode, urlparse, urlunparse
-
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup, WebAppInfo
 
 from app.core.config import settings
@@ -14,40 +12,6 @@ from app.telegram.messages import format_currency_button_label
 
 def _resolve_translator(translator=None):
     return translator or get_translator()
-
-
-def _chat_url_with_draft(chat_url: str, message_text: str | None = None) -> str:
-    if not message_text:
-        return chat_url
-
-    parsed = urlparse(chat_url)
-    if parsed.scheme in {"http", "https"} and parsed.netloc == "t.me":
-        path = parsed.path.strip("/")
-        if path:
-            query = dict(parse_qsl(parsed.query, keep_blank_values=True))
-            query["text"] = message_text
-            return urlunparse(parsed._replace(query=urlencode(query, quote_via=quote)))
-
-    if parsed.scheme == "tg" and parsed.netloc == "resolve":
-        query = dict(parse_qsl(parsed.query, keep_blank_values=True))
-        if query.get("domain"):
-            query["text"] = message_text
-            return urlunparse(parsed._replace(query=urlencode(query, quote_via=quote)))
-
-    return chat_url
-
-
-def _chat_button(
-    translate,
-    chat_url: str,
-    *,
-    label_key: str,
-    message_text: str | None = None,
-) -> InlineKeyboardButton:
-    return InlineKeyboardButton(
-        text=translate(label_key),
-        url=_chat_url_with_draft(chat_url, message_text),
-    )
 
 
 def _city_label(city: object) -> str:
@@ -465,12 +429,10 @@ def confirm_order(
     _=None,
     *,
     order_id: int | None = None,
-    chat_url: str | None = None,
-    message_text: str | None = None,
     **kwargs,
 ) -> InlineKeyboardMarkup:
     """Клавиатура подтверждения заявки оператором."""
-    del kwargs, chat_url, message_text
+    del kwargs
     if order_id is None and isinstance(_, int):
         order_id = _
         _ = None
@@ -496,53 +458,23 @@ def confirm_order(
     )
 
 
-def manager_order_open_chat(
-    _=None,
-    *,
-    order_id: int | None = None,
-    chat_url: str | None = None,
-    message_text: str | None = None,
-    **kwargs,
-) -> InlineKeyboardMarkup:
-    del kwargs
-    return confirm_order(_, order_id=order_id, chat_url=chat_url, message_text=message_text)
-
-
 def manager_order_close(
     _=None,
     *,
     order_id: int | None = None,
-    chat_url: str | None = None,
-    message_text: str | None = None,
     **kwargs,
 ) -> InlineKeyboardMarkup:
+    """Отмена и завершение заявки в работе без напоминания клиенту."""
     del kwargs
     if order_id is None and isinstance(_, int):
         order_id = _
         _ = None
     if order_id is None:
         raise ValueError("order_id is required")
-    if not chat_url:
-        raise ValueError("chat_url is required")
-
     translate = _resolve_translator(_)
-    return InlineKeyboardMarkup(
-        inline_keyboard=[
-            [
-                _chat_button(
-                    translate,
-                    chat_url,
-                    label_key="btn-open-client-chat",
-                    message_text=message_text,
-                ),
-            ],
-            [
-                InlineKeyboardButton(
-                    text=translate("btn-remind-client"),
-                    callback_data=f"op:remind:{order_id}",
-                    style="primary",
-                ),
-            ],
+    rows: list[list[InlineKeyboardButton]] = []
+    rows.extend(
+        [
             [
                 InlineKeyboardButton(
                     text=translate("btn-cancel-order"),
@@ -557,6 +489,7 @@ def manager_order_close(
             ],
         ]
     )
+    return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
 def manager_order_cancel_confirm(
@@ -589,58 +522,6 @@ def manager_order_cancel_confirm(
                     style="primary",
                 ),
             ],
-        ]
-    )
-
-
-def manager_order_chat_only(
-    _=None,
-    *,
-    chat_url: str | None = None,
-    message_text: str | None = None,
-    **kwargs,
-) -> InlineKeyboardMarkup:
-    del kwargs
-    if not chat_url:
-        raise ValueError("chat_url is required")
-
-    translate = _resolve_translator(_)
-    return InlineKeyboardMarkup(
-        inline_keyboard=[
-            [
-                _chat_button(
-                    translate,
-                    chat_url,
-                    label_key="btn-open-client-chat",
-                    message_text=message_text,
-                ),
-            ]
-        ]
-    )
-
-
-def user_order_write_manager(
-    _=None,
-    *,
-    chat_url: str | None = None,
-    message_text: str | None = None,
-    **kwargs,
-) -> InlineKeyboardMarkup:
-    del kwargs
-    if not chat_url:
-        raise ValueError("chat_url is required")
-
-    translate = _resolve_translator(_)
-    return InlineKeyboardMarkup(
-        inline_keyboard=[
-            [
-                _chat_button(
-                    translate,
-                    chat_url,
-                    label_key="btn-write-manager",
-                    message_text=message_text,
-                ),
-            ]
         ]
     )
 

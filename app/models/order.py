@@ -6,7 +6,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import TYPE_CHECKING
 
-from sqlalchemy import DateTime, Enum, Float, ForeignKey, Index, Integer, String
+from sqlalchemy import BigInteger, DateTime, Enum, Float, ForeignKey, Index, Integer, String
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.enums.country import Country
@@ -28,6 +28,12 @@ class Order(Base, TimestampMixin):
         Integer,
         ForeignKey("Users.id"),
         nullable=False,
+    )
+    ManagerId: Mapped[int | None] = mapped_column(
+        "ManagerId",
+        Integer,
+        ForeignKey("Users.id"),
+        nullable=True,
     )
     CityId: Mapped[int | None] = mapped_column(
         "CityId",
@@ -78,6 +84,16 @@ class Order(Base, TimestampMixin):
         Integer,
         nullable=True,
     )
+    managerNotificationChatId: Mapped[int | None] = mapped_column(
+        "managerNotificationChatId",
+        BigInteger,
+        nullable=True,
+    )
+    managerNotificationMessageId: Mapped[int | None] = mapped_column(
+        "managerNotificationMessageId",
+        Integer,
+        nullable=True,
+    )
     endTime: Mapped[datetime | None] = mapped_column(
         "endTime",
         DateTime(timezone=True),
@@ -90,5 +106,6 @@ class Order(Base, TimestampMixin):
         nullable=True,
     )
 
-    user: Mapped[User] = relationship("User", back_populates="orders")
+    user: Mapped[User] = relationship("User", back_populates="orders", foreign_keys=[UserId])
+    manager: Mapped[User | None] = relationship("User", foreign_keys=[ManagerId])
     city: Mapped[City | None] = relationship("City", back_populates="orders")

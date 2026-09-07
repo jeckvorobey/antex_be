@@ -82,7 +82,7 @@ async def test_operator_take_moves_order_to_processing(monkeypatch) -> None:
         return fake_db
 
     async def _fake_check_user(db, tg_user):
-        return SimpleNamespace(role=2), False
+        return SimpleNamespace(id=7, role=2), False
 
     class _FakeOrderRepository:
         def __init__(self, session) -> None:
@@ -92,8 +92,9 @@ async def test_operator_take_moves_order_to_processing(monkeypatch) -> None:
             assert order_id == 5
             return SimpleNamespace(status=int(OrderStatus.CREATED))
 
-    async def _fake_take_order_in_work(db, *, order_id: int):
+    async def _fake_take_order_in_work(db, *, order_id: int, manager):
         assert order_id == 5
+        assert manager.id == 7
         return OrderTakeResult(order=updated_order, delivery=DeliveryOutcome.RICH)
 
     monkeypatch.setattr(operator_handler, "_get_db", _fake_get_db)
@@ -109,16 +110,18 @@ async def test_operator_take_moves_order_to_processing(monkeypatch) -> None:
         "url": None,
     }
     assert (
-        callback.message.edits[0]["reply_markup"].inline_keyboard[2][0].callback_data
+        callback.message.edits[0]["reply_markup"].inline_keyboard[0][0].callback_data
         == "op:cancel:5"
     )
     assert (
-        callback.message.edits[0]["reply_markup"].inline_keyboard[2][1].callback_data
+        callback.message.edits[0]["reply_markup"].inline_keyboard[0][1].callback_data
         == "op:close:5"
     )
-    chat_url = callback.message.edits[0]["reply_markup"].inline_keyboard[0][0].url
-    assert chat_url is not None
-    assert chat_url.startswith("https://t.me/customer?text=")
+    assert all(
+        button.web_app is None
+        for row in callback.message.edits[0]["reply_markup"].inline_keyboard
+        for button in row
+    )
     rich_html = callback.message.edits[0]["rich_message"].html
     assert "✅ Заявка #2026050001 принята в работу" in rich_html
     assert "Клиенту отправлена просьба начать диалог" in rich_html
@@ -148,9 +151,10 @@ async def test_operator_take_shows_honest_failed_delivery_state(monkeypatch) -> 
         return _FakeDbSession()
 
     async def _fake_check_user(db, tg_user):
-        return SimpleNamespace(role=2), False
+        return SimpleNamespace(id=7, role=2), False
 
-    async def _fake_take_order_in_work(db, *, order_id: int):
+    async def _fake_take_order_in_work(db, *, order_id: int, manager):
+        assert manager.id == 7
         return OrderTakeResult(order=order, delivery=DeliveryOutcome.FAILED)
 
     monkeypatch.setattr(operator_handler, "_get_db", _fake_get_db)
@@ -167,33 +171,36 @@ async def test_operator_take_shows_honest_failed_delivery_state(monkeypatch) -> 
     assert "клиенту не удалось отправить" in callback.answers[-1]["text"]
 
 
-async def test_operator_take_rejects_stale_callback(monkeypatch) -> None:
+async def test_operator_take_same_manager_retry_is_idempotent(monkeypatch) -> None:
     callback = _FakeCallback("op:take:5")
-    take_order = AsyncMock()
-
-    class _FakeOrderRepository:
-        def __init__(self, session) -> None:
-            self.session = session
-
-        async def get_one(self, order_id: int):
-            return SimpleNamespace(status=int(OrderStatus.PROCESSING))
+    order = SimpleNamespace(
+        id=5,
+        publicNumber="2026050001",
+        status=int(OrderStatus.PROCESSING),
+        user=SimpleNamespace(username="customer", telegram_id=700002),
+        currencySell="RUB",
+        currencyBuy="THB",
+        amountSell=10000,
+    )
+    take_order = AsyncMock(
+        return_value=OrderTakeResult(order=order, delivery=DeliveryOutcome.SKIPPED)
+    )
 
     async def _fake_get_db():
         return _FakeDbSession()
 
     async def _fake_check_user(db, tg_user):
-        return SimpleNamespace(role=2), False
+        return SimpleNamespace(id=7, role=2), False
 
     monkeypatch.setattr(operator_handler, "_get_db", _fake_get_db)
     monkeypatch.setattr(operator_handler, "check_user", _fake_check_user)
-    monkeypatch.setattr(operator_handler, "OrderRepository", _FakeOrderRepository)
     monkeypatch.setattr(operator_handler, "take_order_in_work", take_order)
 
     await operator_handler.operator_take(callback)
 
-    take_order.assert_not_awaited()
-    assert callback.message.edits == []
-    assert callback.answers[-1]["text"] == "Заявка уже изменила статус"
+    take_order.assert_awaited_once()
+    assert len(callback.message.edits) == 1
+    assert callback.answers[-1]["show_alert"] is False
 
 
 async def test_operator_take_preserves_operator_access_control(monkeypatch) -> None:
@@ -211,7 +218,11 @@ async def test_operator_take_preserves_operator_access_control(monkeypatch) -> N
     await operator_handler.operator_take(callback)
 
     assert callback.message.edits == []
-    assert callback.answers[-1] == {"text": "Нет прав", "show_alert": True, "url": None}
+    assert callback.answers[-1] == {
+        "text": "Недостаточно прав.",
+        "show_alert": True,
+        "url": None,
+    }
 
 
 @pytest.mark.parametrize(
@@ -230,7 +241,6 @@ async def test_operator_remind_reports_actual_delivery(
 ) -> None:
     callback = _FakeCallback("op:remind:5")
     order = SimpleNamespace(id=5, status=int(OrderStatus.PROCESSING))
-    manager = SimpleNamespace(id=7, username="manager")
     reminder = AsyncMock(return_value=delivery)
 
     class _FakeOrderRepository:
@@ -239,13 +249,6 @@ async def test_operator_remind_reports_actual_delivery(
 
         async def get_one(self, order_id: int):
             return order
-
-    class _FakeUserRepository:
-        def __init__(self, session) -> None:
-            self.session = session
-
-        async def get_manager(self):
-            return manager
 
     async def _fake_get_db():
         return _FakeDbSession()
@@ -256,12 +259,11 @@ async def test_operator_remind_reports_actual_delivery(
     monkeypatch.setattr(operator_handler, "_get_db", _fake_get_db)
     monkeypatch.setattr(operator_handler, "check_user", _fake_check_user)
     monkeypatch.setattr(operator_handler, "OrderRepository", _FakeOrderRepository)
-    monkeypatch.setattr(operator_handler, "UserRepository", _FakeUserRepository)
     monkeypatch.setattr(operator_handler, "send_customer_reminder", reminder)
 
     await operator_handler.operator_remind(callback)
 
-    reminder.assert_awaited_once_with(order, manager)
+    reminder.assert_awaited_once_with(order, None)
     assert callback.answers[-1] == {"text": answer, "show_alert": show_alert, "url": None}
 
 
@@ -286,13 +288,6 @@ async def test_operator_remind_reconciles_inaccessible_customer_chat(monkeypatch
         async def get_one(self, order_id: int):
             return order
 
-    class _FakeUserRepository:
-        def __init__(self, session) -> None:
-            self.session = session
-
-        async def get_manager(self):
-            return SimpleNamespace(id=7, username="manager")
-
     async def _fake_get_db():
         return _ReminderDb()
 
@@ -302,7 +297,6 @@ async def test_operator_remind_reconciles_inaccessible_customer_chat(monkeypatch
     monkeypatch.setattr(operator_handler, "_get_db", _fake_get_db)
     monkeypatch.setattr(operator_handler, "check_user", _fake_check_user)
     monkeypatch.setattr(operator_handler, "OrderRepository", _FakeOrderRepository)
-    monkeypatch.setattr(operator_handler, "UserRepository", _FakeUserRepository)
     monkeypatch.setattr(
         operator_handler,
         "send_customer_reminder",
@@ -357,29 +351,6 @@ async def test_operator_remind_rejects_missing_or_inactive_order(
     assert callback.answers[-1] == {"text": answer, "show_alert": True, "url": None}
 
 
-async def test_operator_open_chat_handler_is_no_longer_used(monkeypatch) -> None:
-    fake_db = _FakeDbSession()
-    callback = _FakeCallback("op:open_chat:5")
-
-    async def _fake_get_db():
-        return fake_db
-
-    async def _fake_check_user(db, tg_user):
-        return SimpleNamespace(role=2), False
-
-    monkeypatch.setattr(operator_handler, "_get_db", _fake_get_db)
-    monkeypatch.setattr(operator_handler, "check_user", _fake_check_user)
-
-    await operator_handler.operator_open_chat(callback)
-
-    assert callback.answers[-1] == {
-        "text": "Кнопка чата устарела",
-        "show_alert": True,
-        "url": None,
-    }
-    assert callback.message.edits == []
-
-
 async def test_operator_cancel_requests_confirmation(monkeypatch) -> None:
     fake_db = _FakeDbSession()
     callback = _FakeCallback("op:cancel:9")
@@ -424,11 +395,12 @@ async def test_operator_cancel_confirm_marks_order_cancelled(monkeypatch) -> Non
         return fake_db
 
     async def _fake_check_user(db, tg_user):
-        return SimpleNamespace(role=2), False
+        return SimpleNamespace(id=7, role=2), False
 
-    async def _fake_update_order_status(db, *, order_id: int, status):
+    async def _fake_update_order_status(db, *, order_id: int, status, manager_id: int):
         assert order_id == 9
         assert status == OrderStatus.CANCELLED
+        assert manager_id == 7
         return updated_order
 
     monkeypatch.setattr(operator_handler, "_get_db", _fake_get_db)
@@ -438,10 +410,7 @@ async def test_operator_cancel_confirm_marks_order_cancelled(monkeypatch) -> Non
     await operator_handler.operator_cancel_confirm(callback)
 
     assert callback.answers[-1] == {"text": "Заявка отменена", "show_alert": True, "url": None}
-    assert (
-        callback.message.edits[0]["reply_markup"].inline_keyboard[0][0].url
-        == "https://t.me/customer"
-    )
+    assert callback.message.edits[0]["reply_markup"].inline_keyboard == []
     rich_html = callback.message.edits[0]["rich_message"].html
     assert "❌ Заявка #2026050002 отменена" in rich_html
     assert "Работа по заявке остановлена" in rich_html
@@ -463,7 +432,7 @@ async def test_operator_cancel_keep_restores_processing_keyboard(monkeypatch) ->
         return fake_db
 
     async def _fake_check_user(db, tg_user):
-        return SimpleNamespace(role=2), False
+        return SimpleNamespace(id=7, role=2), False
 
     class _FakeOrderRepository:
         def __init__(self, session) -> None:
@@ -481,11 +450,9 @@ async def test_operator_cancel_keep_restores_processing_keyboard(monkeypatch) ->
 
     assert callback.answers[-1] == {"text": None, "show_alert": False, "url": None}
     markup = callback.message.edits[0]["reply_markup"]
-    assert markup.inline_keyboard[2][0].callback_data == "op:cancel:9"
-    assert markup.inline_keyboard[2][1].callback_data == "op:close:9"
-    chat_url = markup.inline_keyboard[0][0].url
-    assert chat_url is not None
-    assert chat_url.startswith("https://t.me/customer?text=")
+    assert len(markup.inline_keyboard) == 1
+    assert markup.inline_keyboard[0][0].callback_data == "op:cancel:9"
+    assert markup.inline_keyboard[0][1].callback_data == "op:close:9"
 
 
 async def test_operator_close_marks_order_completed(monkeypatch) -> None:
@@ -510,11 +477,12 @@ async def test_operator_close_marks_order_completed(monkeypatch) -> None:
         return fake_db
 
     async def _fake_check_user(db, tg_user):
-        return SimpleNamespace(role=2), False
+        return SimpleNamespace(id=7, role=2), False
 
-    async def _fake_update_order_status(db, *, order_id: int, status):
+    async def _fake_update_order_status(db, *, order_id: int, status, manager_id: int):
         assert order_id == 9
         assert status == OrderStatus.COMPLETED
+        assert manager_id == 7
         return updated_order
 
     monkeypatch.setattr(operator_handler, "_get_db", _fake_get_db)
@@ -524,10 +492,7 @@ async def test_operator_close_marks_order_completed(monkeypatch) -> None:
     await operator_handler.operator_close(callback)
 
     assert callback.answers[-1] == {"text": None, "show_alert": False, "url": None}
-    assert (
-        callback.message.edits[0]["reply_markup"].inline_keyboard[0][0].url
-        == "https://t.me/customer"
-    )
+    assert callback.message.edits[0]["reply_markup"].inline_keyboard == []
     text = str(callback.message.edits[0]["rich_message"].html)
     assert "✅ Заявка #2026050002 завершена" in text
     assert "Страна</td><td><b>Грузия" in text

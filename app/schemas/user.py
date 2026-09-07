@@ -9,10 +9,83 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
-from app.enums.user import get_role_title, is_assignable_user_role, normalize_user_role
+from app.enums.user import UserRole, get_role_title, is_assignable_user_role, normalize_user_role
 from app.schemas.auth import build_trusted_contact
 from app.schemas.city import CityOut
 from app.services.aex_rate import DEFAULT_ATXG_RATE, normalize_aex_rate, rate_to_percent
+
+
+class UserNavigationItem(BaseModel):
+    name: str
+    label: str
+    icon: str
+    route: str
+    badge_key: str | None = None
+
+
+def get_role_navigation(role: int | UserRole) -> list[UserNavigationItem]:
+    normalized_role = normalize_user_role(role)
+    if normalized_role == int(UserRole.MANAGER):
+        return [
+            UserNavigationItem(
+                name="managerDashboard",
+                label="Дашборд",
+                icon="space_dashboard",
+                route="managerDashboard",
+                badge_key=None,
+            ),
+            UserNavigationItem(
+                name="managerOrders",
+                label="Заявки",
+                icon="receipt_long",
+                route="managerOrders",
+                badge_key=None,
+            ),
+            UserNavigationItem(
+                name="managerChats",
+                label="Чаты",
+                icon="chat_bubble_outline",
+                route="managerChats",
+                badge_key="unread_chats",
+            ),
+            UserNavigationItem(
+                name="managerSettings",
+                label="Настройки",
+                icon="settings",
+                route="managerProfile",
+                badge_key=None,
+            ),
+        ]
+    return [
+        UserNavigationItem(
+            name="home",
+            label="Главная",
+            icon="home",
+            route="home",
+            badge_key=None,
+        ),
+        UserNavigationItem(
+            name="exchange",
+            label="Обмен",
+            icon="currency_exchange",
+            route="exchange",
+            badge_key=None,
+        ),
+        UserNavigationItem(
+            name="history",
+            label="История",
+            icon="history",
+            route="history",
+            badge_key=None,
+        ),
+        UserNavigationItem(
+            name="profile",
+            label="Профиль",
+            icon="person_outline",
+            route="profile",
+            badge_key=None,
+        ),
+    ]
 
 
 class UserAttributionOut(BaseModel):
@@ -61,6 +134,7 @@ class UserOut(BaseModel):
     aex_balance: str = "0"
     balance: str = "0"
     attribution: UserAttributionOut | None = None
+    navigation: list[UserNavigationItem] = Field(default_factory=list)
     createdAt: datetime
     updatedAt: datetime
 
@@ -151,6 +225,7 @@ def build_user_out(
         aex_balance=aex_balance,
         balance=aex_balance,
         attribution=UserAttributionOut(**attribution) if attribution is not None else None,
+        navigation=get_role_navigation(user.role),
         createdAt=user.createdAt,
         updatedAt=user.updatedAt,
     )

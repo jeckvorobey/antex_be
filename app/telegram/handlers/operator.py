@@ -1,5 +1,4 @@
 """Обработчики менеджера для жизненного цикла заявки."""
-# ruff: noqa: RUF001
 
 from __future__ import annotations
 
@@ -12,23 +11,19 @@ from sqlalchemy.exc import SQLAlchemyError
 from app.core.database import create_db_session
 from app.enums.order import OrderStatus
 from app.enums.user import has_operator_access
+from app.exceptions import AntExException
 from app.repositories.order import OrderRepository
-from app.repositories.user import UserRepository
 from app.services.order_notifications import (
-    build_chat_url_for_user,
+    DeliveryOutcome,
+    build_manager_status_markup,
     edit_manager_order_card,
     is_delivery_success,
     reconcile_telegram_write_access,
     send_customer_reminder,
 )
 from app.services.order_status import take_order_in_work, update_order_status
-from app.telegram import messages
-from app.telegram.keyboards import (
-    manager_order_cancel_confirm,
-    manager_order_chat_only,
-    manager_order_close,
-    manager_order_open_chat,
-)
+from app.telegram.i18n import get_translator, normalize_locale
+from app.telegram.keyboards import manager_order_cancel_confirm
 from app.telegram.services.user_service import check_user
 
 logger = logging.getLogger(__name__)
@@ -39,100 +34,70 @@ async def _get_db():
     return create_db_session()
 
 
-def _manager_chat_draft_text(order) -> str:
-    return messages.manager_chat_open_text(
-        order_id=order.publicNumber,
-        amount_sell=getattr(order, "amountSell", 0) or 0,
-        currency_sell=getattr(order, "currencySell", "—"),
-        translator=None,
-        locale="ru",
-    )
-
-
-def _build_active_order_markup(order):
-    if int(getattr(order, "status", 0)) == int(OrderStatus.PROCESSING):
-        chat_url = build_chat_url_for_user(getattr(order, "user", None))
-        if not chat_url:
-            return manager_order_open_chat(order_id=order.id)
-        return manager_order_close(
-            order_id=order.id,
-            chat_url=chat_url,
-            message_text=_manager_chat_draft_text(order),
-        )
-
-    return manager_order_open_chat(order_id=order.id)
+def _operator_translate(callback: CallbackQuery):
+    """Выбрать Fluent translator по языку Telegram-оператора."""
+    return get_translator(normalize_locale(callback.from_user.language_code))
 
 
 @router.callback_query(F.data.startswith("op:take:"))
 async def operator_take(callback: CallbackQuery) -> None:
+    translate = _operator_translate(callback)
     order_id = int(callback.data.split(":")[2])  # type: ignore[union-attr]
     db = await _get_db()
     async with db:
         user, _ = await check_user(db, callback.from_user)
         if not has_operator_access(user.role):
-            await callback.answer("Нет прав", show_alert=True)
+            await callback.answer(translate("manager-access-denied"), show_alert=True)
             return
 
-        current = await OrderRepository(db).get_one(order_id)
-        if current is None:
-            await callback.answer("Заявка не найдена", show_alert=True)
+        try:
+            result = await take_order_in_work(db, order_id=order_id, manager=user)
+        except AntExException as exc:
+            message_key = (
+                "operator-order-not-found"
+                if exc.code == "ORDER_NOT_FOUND"
+                else "operator-order-status-changed"
+            )
+            await callback.answer(translate(message_key), show_alert=True)
             return
-        if int(current.status) != int(OrderStatus.CREATED):
-            await callback.answer("Заявка уже изменила статус", show_alert=True)
-            return
-
-        result = await take_order_in_work(db, order_id=order_id)
         order = result.order
-        chat_url = build_chat_url_for_user(getattr(order, "user", None))
-        if not chat_url:
-            await callback.answer("У пользователя нет Telegram-ссылки", show_alert=True)
-            return
 
     card_delivery = await edit_manager_order_card(
         message=callback.message,
         order=order,
-        reply_markup=manager_order_close(
-            order_id=order.id,
-            chat_url=chat_url,
-            message_text=_manager_chat_draft_text(order),
+        reply_markup=build_manager_status_markup(order),
+        customer_notified=(
+            is_delivery_success(result.delivery) or result.delivery == DeliveryOutcome.SKIPPED
         ),
-        customer_notified=is_delivery_success(result.delivery),
     )
     if not is_delivery_success(card_delivery):
-        await callback.answer("Не удалось обновить карточку заявки", show_alert=True)
+        await callback.answer(translate("operator-card-update-failed"), show_alert=True)
         return
-    if not is_delivery_success(result.delivery):
-        await callback.answer(
-            "Заявка принята, но клиенту не удалось отправить инструкцию. "
-            "Проверьте username менеджера и повторите напоминание.",
-            show_alert=True,
-        )
+    if result.delivery != DeliveryOutcome.SKIPPED and not is_delivery_success(result.delivery):
+        await callback.answer(translate("operator-handoff-delivery-failed"), show_alert=True)
         return
     await callback.answer()
 
 
 @router.callback_query(F.data.startswith("op:remind:"))
 async def operator_remind(callback: CallbackQuery) -> None:
+    translate = _operator_translate(callback)
     order_id = int(callback.data.split(":")[2])  # type: ignore[union-attr]
     db = await _get_db()
     async with db:
         user, _ = await check_user(db, callback.from_user)
         if not has_operator_access(user.role):
-            await callback.answer("Нет прав", show_alert=True)
+            await callback.answer(translate("manager-access-denied"), show_alert=True)
             return
 
         order = await OrderRepository(db).get_one(order_id)
         if order is None:
-            await callback.answer("Заявка не найдена", show_alert=True)
+            await callback.answer(translate("operator-order-not-found"), show_alert=True)
             return
         if int(order.status) != int(OrderStatus.PROCESSING):
-            await callback.answer(
-                "Напоминание доступно только для заявки в работе",
-                show_alert=True,
-            )
+            await callback.answer(translate("operator-reminder-processing-only"), show_alert=True)
             return
-        manager = await UserRepository(db).get_manager()
-        delivery = await send_customer_reminder(order, manager)
+        delivery = await send_customer_reminder(order, None)
         if reconcile_telegram_write_access(
             getattr(order, "user", None),
             delivery,
@@ -149,22 +114,20 @@ async def operator_remind(callback: CallbackQuery) -> None:
                 )
 
     if not is_delivery_success(delivery):
-        await callback.answer(
-            "Не удалось отправить напоминание. Попробуйте ещё раз.",
-            show_alert=True,
-        )
+        await callback.answer(translate("operator-reminder-failed"), show_alert=True)
         return
-    await callback.answer("🔔 Напоминание отправлено клиенту", show_alert=False)
+    await callback.answer(translate("operator-reminder-sent"), show_alert=False)
 
 
 @router.callback_query(F.data.startswith("op:cancel:"))
 async def operator_cancel(callback: CallbackQuery) -> None:
+    translate = _operator_translate(callback)
     order_id = int(callback.data.split(":")[2])  # type: ignore[union-attr]
     db = await _get_db()
     async with db:
         user, _ = await check_user(db, callback.from_user)
         if not has_operator_access(user.role):
-            await callback.answer("Нет прав", show_alert=True)
+            await callback.answer(translate("manager-access-denied"), show_alert=True)
             return
 
     await callback.message.edit_reply_markup(  # type: ignore[union-attr]
@@ -175,81 +138,79 @@ async def operator_cancel(callback: CallbackQuery) -> None:
 
 @router.callback_query(F.data.startswith("op:cancel_confirm:"))
 async def operator_cancel_confirm(callback: CallbackQuery) -> None:
+    translate = _operator_translate(callback)
     order_id = int(callback.data.split(":")[2])  # type: ignore[union-attr]
     db = await _get_db()
     async with db:
         user, _ = await check_user(db, callback.from_user)
         if not has_operator_access(user.role):
-            await callback.answer("Нет прав", show_alert=True)
+            await callback.answer(translate("manager-access-denied"), show_alert=True)
             return
 
-        order = await update_order_status(db, order_id=order_id, status=OrderStatus.CANCELLED)
-        chat_url = build_chat_url_for_user(getattr(order, "user", None))
-
-    reply_markup = None
-    if chat_url:
-        reply_markup = manager_order_chat_only(chat_url=chat_url)
+        order = await update_order_status(
+            db,
+            order_id=order_id,
+            status=OrderStatus.CANCELLED,
+            manager_id=user.id,
+        )
 
     card_delivery = await edit_manager_order_card(
         message=callback.message,
         order=order,
-        reply_markup=reply_markup,
+        reply_markup=build_manager_status_markup(order),
     )
     if not is_delivery_success(card_delivery):
-        await callback.answer("Не удалось обновить карточку заявки", show_alert=True)
+        await callback.answer(translate("operator-card-update-failed"), show_alert=True)
         return
-    await callback.answer("Заявка отменена", show_alert=True)
+    await callback.answer(translate("operator-order-cancelled"), show_alert=True)
 
 
 @router.callback_query(F.data.startswith("op:cancel_keep:"))
 async def operator_cancel_keep(callback: CallbackQuery) -> None:
+    translate = _operator_translate(callback)
     order_id = int(callback.data.split(":")[2])  # type: ignore[union-attr]
     db = await _get_db()
     async with db:
         user, _ = await check_user(db, callback.from_user)
         if not has_operator_access(user.role):
-            await callback.answer("Нет прав", show_alert=True)
+            await callback.answer(translate("manager-access-denied"), show_alert=True)
             return
 
         order = await OrderRepository(db).get_one(order_id)
         if order is None:
-            await callback.answer("Заявка не найдена", show_alert=True)
+            await callback.answer(translate("operator-order-not-found"), show_alert=True)
             return
 
     await callback.message.edit_reply_markup(  # type: ignore[union-attr]
-        reply_markup=_build_active_order_markup(order)
+        reply_markup=build_manager_status_markup(order)
     )
     await callback.answer()
 
 
-@router.callback_query(F.data.startswith("op:open_chat:"))
-async def operator_open_chat(callback: CallbackQuery) -> None:
-    await callback.answer("Кнопка чата устарела", show_alert=True)
-
-
 @router.callback_query(F.data.startswith("op:close:"))
 async def operator_close(callback: CallbackQuery) -> None:
+    translate = _operator_translate(callback)
     order_id = int(callback.data.split(":")[2])  # type: ignore[union-attr]
     db = await _get_db()
     async with db:
         user, _ = await check_user(db, callback.from_user)
         if not has_operator_access(user.role):
-            await callback.answer("Нет прав", show_alert=True)
+            await callback.answer(translate("manager-access-denied"), show_alert=True)
             return
 
-        order = await update_order_status(db, order_id=order_id, status=OrderStatus.COMPLETED)
-        chat_url = build_chat_url_for_user(getattr(order, "user", None))
-
-    reply_markup = None
-    if chat_url:
-        reply_markup = manager_order_chat_only(chat_url=chat_url)
+        order = await update_order_status(
+            db,
+            order_id=order_id,
+            status=OrderStatus.COMPLETED,
+            manager_id=user.id,
+        )
 
     card_delivery = await edit_manager_order_card(
         message=callback.message,
         order=order,
-        reply_markup=reply_markup,
+        reply_markup=build_manager_status_markup(order),
     )
     if not is_delivery_success(card_delivery):
-        await callback.answer("Не удалось обновить карточку заявки", show_alert=True)
+        await callback.answer(translate("operator-card-update-failed"), show_alert=True)
         return
     await callback.answer()

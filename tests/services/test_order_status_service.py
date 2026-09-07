@@ -8,6 +8,7 @@ import pytest
 from sqlalchemy.exc import SQLAlchemyError
 
 from app.enums.order import OrderStatus
+from app.exceptions import AntExException
 from app.repositories import aex as aex_repositories
 from app.services import aex as aex_service_module
 from app.services import order_status
@@ -63,8 +64,46 @@ async def test_take_order_in_work_uses_single_manager_and_reports_delivery(
         order_id=5,
         status=OrderStatus.PROCESSING,
         notify_user=False,
+        manager_id=7,
     )
     handoff.assert_awaited_once_with(hydrated_order, manager)
+
+
+@pytest.mark.asyncio
+async def test_take_order_in_work_same_manager_retry_is_idempotent(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    manager = SimpleNamespace(id=7, username="manager")
+    current_order = SimpleNamespace(
+        id=5,
+        status=int(OrderStatus.PROCESSING),
+        ManagerId=manager.id,
+    )
+    handoff = AsyncMock()
+    status_update = AsyncMock()
+
+    class _FakeOrderRepository:
+        def __init__(self, db) -> None:
+            del db
+
+        async def get_one_for_update(self, order_id: int):
+            assert order_id == 5
+            return current_order
+
+    monkeypatch.setattr(order_status, "OrderRepository", _FakeOrderRepository)
+    monkeypatch.setattr(order_status, "send_customer_handoff", handoff)
+    monkeypatch.setattr(order_status, "update_order_status", status_update)
+
+    result = await order_status.take_order_in_work(
+        SimpleNamespace(),
+        order_id=5,
+        manager=manager,
+    )
+
+    assert result.order is current_order
+    assert result.delivery == order_status.DeliveryOutcome.SKIPPED
+    status_update.assert_not_awaited()
+    handoff.assert_not_awaited()
 
 
 @pytest.mark.asyncio
@@ -253,7 +292,7 @@ async def test_update_order_status_persists_and_notifies(monkeypatch) -> None:
 
     monkeypatch.setattr(order_status, "OrderRepository", _FakeRepo)
     monkeypatch.setattr(order_status, "UserRepository", _FakeUserRepo)
-    monkeypatch.setattr(order_status, "notify_order_status_changed", notify_mock)
+    monkeypatch.setattr(order_status, "enqueue_order_telegram_sync_tasks", notify_mock)
 
     updated = await update_order_status(
         db,
@@ -262,10 +301,11 @@ async def test_update_order_status_persists_and_notifies(monkeypatch) -> None:
     )
 
     assert updated is hydrated_order
-    assert commit_mock.await_count == 2
+    assert commit_mock.await_count == 1
     notify_mock.assert_awaited_once_with(
-        hydrated_order,
-        manager_chat_url="https://t.me/manager",
+        db,
+        order_id=5,
+        status=OrderStatus.PROCESSING,
     )
 
 
@@ -308,15 +348,15 @@ async def test_update_order_status_reconciles_inaccessible_customer_chat(monkeyp
     monkeypatch.setattr(order_status, "UserRepository", _FakeUserRepo)
     monkeypatch.setattr(
         order_status,
-        "notify_order_status_changed",
+        "enqueue_order_telegram_sync_tasks",
         AsyncMock(return_value=order_status.DeliveryOutcome.INACCESSIBLE),
     )
     db = SimpleNamespace(commit=commit_mock, rollback=AsyncMock())
 
     await update_order_status(db, order_id=5, status=OrderStatus.PROCESSING)
 
-    assert customer.telegram_write_access is False
-    assert commit_mock.await_count == 2
+    assert customer.telegram_write_access is True
+    assert commit_mock.await_count == 1
 
 
 @pytest.mark.asyncio
@@ -346,7 +386,7 @@ async def test_update_order_status_keeps_success_when_notification_fails(monkeyp
             return updated_order
 
     db = SimpleNamespace(commit=commit_mock, rollback=rollback_mock)
-    notify_mock = AsyncMock(side_effect=RuntimeError("proxy down"))
+    notify_mock = AsyncMock()
     manager = SimpleNamespace(telegram_id=700001, username="manager")
 
     class _FakeUserRepo:
@@ -358,7 +398,7 @@ async def test_update_order_status_keeps_success_when_notification_fails(monkeyp
 
     monkeypatch.setattr(order_status, "OrderRepository", _FakeRepo)
     monkeypatch.setattr(order_status, "UserRepository", _FakeUserRepo)
-    monkeypatch.setattr(order_status, "notify_order_status_changed", notify_mock)
+    monkeypatch.setattr(order_status, "enqueue_order_telegram_sync_tasks", notify_mock)
 
     updated = await update_order_status(
         db,
@@ -368,10 +408,11 @@ async def test_update_order_status_keeps_success_when_notification_fails(monkeyp
 
     assert updated is hydrated_order
     assert commit_mock.await_count == 1
-    rollback_mock.assert_awaited_once()
+    rollback_mock.assert_not_awaited()
     notify_mock.assert_awaited_once_with(
-        hydrated_order,
-        manager_chat_url="https://t.me/manager",
+        db,
+        order_id=5,
+        status=OrderStatus.PROCESSING,
     )
 
 
@@ -437,7 +478,7 @@ async def test_update_order_status_passes_public_number_to_referral_notification
     monkeypatch.setattr(order_status, "OrderRepository", _FakeRepo)
     monkeypatch.setattr(order_status, "UserRepository", _FakeUserRepo)
     monkeypatch.setattr(referral_service_module, "ReferralService", _FakeReferralService)
-    monkeypatch.setattr(order_status, "notify_order_status_changed", status_notify_mock)
+    monkeypatch.setattr(order_status, "enqueue_order_telegram_sync_tasks", status_notify_mock)
 
     updated = await update_order_status(
         db,
@@ -456,8 +497,9 @@ async def test_update_order_status_passes_public_number_to_referral_notification
         currency_buy="VND",
     )
     status_notify_mock.assert_awaited_once_with(
-        hydrated_order,
-        manager_chat_url="https://t.me/manager",
+        db,
+        order_id=5,
+        status=OrderStatus.COMPLETED,
     )
 
 
@@ -524,7 +566,7 @@ async def test_update_order_status_sends_referral_reversal_notification(monkeypa
     monkeypatch.setattr(order_status, "OrderRepository", _FakeRepo)
     monkeypatch.setattr(order_status, "UserRepository", _FakeUserRepo)
     monkeypatch.setattr(order_status, "_notify_referral_reversal", referral_notify_mock)
-    monkeypatch.setattr(order_status, "notify_order_status_changed", status_notify_mock)
+    monkeypatch.setattr(order_status, "enqueue_order_telegram_sync_tasks", status_notify_mock)
     monkeypatch.setattr(aex_repositories, "AexWalletRepository", _FakeWalletRepo)
     monkeypatch.setattr(aex_service_module, "AexService", _FakeAexService)
 
@@ -535,7 +577,7 @@ async def test_update_order_status_sends_referral_reversal_notification(monkeypa
     )
 
     assert updated is hydrated_order
-    assert commit_mock.await_count == 3
+    assert commit_mock.await_count == 2
     reversal_debit.assert_awaited_once_with(
         db,
         77,
@@ -552,8 +594,9 @@ async def test_update_order_status_sends_referral_reversal_notification(monkeypa
         amount=Decimal("12.345"),
     )
     status_notify_mock.assert_awaited_once_with(
-        hydrated_order,
-        manager_chat_url="https://t.me/manager",
+        db,
+        order_id=5,
+        status=OrderStatus.CANCELLED,
     )
 
 
@@ -622,7 +665,7 @@ async def test_update_order_status_ignores_referral_reversal_notification_failur
     monkeypatch.setattr(order_status, "OrderRepository", _FakeRepo)
     monkeypatch.setattr(order_status, "UserRepository", _FakeUserRepo)
     monkeypatch.setattr(order_status, "_notify_referral_reversal", referral_notify_mock)
-    monkeypatch.setattr(order_status, "notify_order_status_changed", status_notify_mock)
+    monkeypatch.setattr(order_status, "enqueue_order_telegram_sync_tasks", status_notify_mock)
     monkeypatch.setattr(aex_repositories, "AexWalletRepository", _FakeWalletRepo)
     monkeypatch.setattr(aex_service_module, "AexService", _FakeAexService)
 
@@ -633,7 +676,7 @@ async def test_update_order_status_ignores_referral_reversal_notification_failur
     )
 
     assert updated is hydrated_order
-    assert commit_mock.await_count == 3
+    assert commit_mock.await_count == 2
     reversal_debit.assert_awaited_once_with(
         db,
         77,
@@ -650,6 +693,81 @@ async def test_update_order_status_ignores_referral_reversal_notification_failur
         amount=Decimal("12.345"),
     )
     status_notify_mock.assert_awaited_once_with(
-        hydrated_order,
-        manager_chat_url="https://t.me/manager",
+        db,
+        order_id=5,
+        status=OrderStatus.CANCELLED,
     )
+
+
+@pytest.mark.parametrize(
+    ("current", "target"),
+    [
+        (OrderStatus.CREATED, OrderStatus.PROCESSING),
+        (OrderStatus.CREATED, OrderStatus.CANCELLED),
+        (OrderStatus.PROCESSING, OrderStatus.COMPLETED),
+        (OrderStatus.PROCESSING, OrderStatus.CANCELLED),
+    ],
+)
+def test_order_workflow_allows_only_documented_edges(current, target) -> None:
+    order_status.validate_order_status_transition(
+        SimpleNamespace(status=int(current), ManagerId=None),
+        target,
+        manager_id=7,
+    )
+
+
+@pytest.mark.parametrize(
+    ("current", "target"),
+    [
+        (OrderStatus.CREATED, OrderStatus.COMPLETED),
+        (OrderStatus.PROCESSING, OrderStatus.CREATED),
+        (OrderStatus.COMPLETED, OrderStatus.CANCELLED),
+        (OrderStatus.CANCELLED, OrderStatus.PROCESSING),
+    ],
+)
+def test_order_workflow_rejects_undocumented_edges(current, target) -> None:
+    with pytest.raises(AntExException) as caught:
+        order_status.validate_order_status_transition(
+            SimpleNamespace(status=int(current), ManagerId=None),
+            target,
+            manager_id=7,
+        )
+
+    assert caught.value.code == "ORDER_STATUS_CONFLICT"
+    assert caught.value.status_code == 409
+
+
+def test_order_workflow_allows_idempotent_same_status() -> None:
+    order_status.validate_order_status_transition(
+        SimpleNamespace(status=int(OrderStatus.PROCESSING), ManagerId=7),
+        OrderStatus.PROCESSING,
+        manager_id=7,
+    )
+
+
+def test_order_workflow_rejects_action_by_another_manager() -> None:
+    with pytest.raises(AntExException) as caught:
+        order_status.validate_order_status_transition(
+            SimpleNamespace(status=int(OrderStatus.PROCESSING), ManagerId=7),
+            OrderStatus.COMPLETED,
+            manager_id=8,
+        )
+
+    assert caught.value.code == "ORDER_STATUS_CONFLICT"
+    assert caught.value.status_code == 409
+
+
+def test_aex_terminal_transition_preserves_domain_error() -> None:
+    with pytest.raises(AntExException) as caught:
+        order_status.validate_order_status_transition(
+            SimpleNamespace(
+                status=int(OrderStatus.COMPLETED),
+                ManagerId=7,
+                currencySell="ATXG",
+            ),
+            OrderStatus.CANCELLED,
+            manager_id=7,
+        )
+
+    assert caught.value.code == "ATXG_ORDER_FINAL_STATUS_LOCKED"
+    assert caught.value.status_code == 422

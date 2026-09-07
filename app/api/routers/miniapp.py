@@ -23,6 +23,7 @@ from app.schemas.miniapp import (
     MiniappQuoteResponse,
     MiniappRatesResponse,
 )
+from app.schemas.user import UserNavigationItem, get_role_navigation
 from app.services.miniapp import (
     calculate_miniapp_quote,
     get_miniapp_aex_referral,
@@ -114,6 +115,12 @@ async def create_order(
 @router.get("/profile", response_model=MiniappProfileScreenResponse)
 async def get_profile(db: DbDep, user: MiniappUser) -> MiniappProfileScreenResponse:
     return await get_miniapp_profile_screen(db, user)
+
+
+@router.get("/navigation", response_model=list[UserNavigationItem])
+async def get_navigation(user: MiniappUser) -> list[UserNavigationItem]:
+    """Вернуть пункты навигации Mini App исходя из роли пользователя."""
+    return get_role_navigation(user.role)
 
 
 @router.get("/aex/referral", response_model=MiniappAexReferralResponse)

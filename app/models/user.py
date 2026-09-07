@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING
 from sqlalchemy import BigInteger, Boolean, DateTime, ForeignKey, Integer, String, Text, false
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from app.enums.user import UserRole
+from app.enums.user import UserRole, has_operator_access
 from app.models.base import Base, TimestampMixin
 
 if TYPE_CHECKING:
@@ -57,7 +57,11 @@ class User(Base, TimestampMixin):
         nullable=True,
     )
 
-    orders: Mapped[list[Order]] = relationship("Order", back_populates="user")
+    orders: Mapped[list[Order]] = relationship(
+        "Order",
+        back_populates="user",
+        foreign_keys="Order.UserId",
+    )
     city: Mapped[City | None] = relationship("City", back_populates="users")
     aex_wallet: Mapped[AexWallet | None] = relationship(
         "AexWallet",
@@ -74,3 +78,7 @@ class User(Base, TimestampMixin):
         back_populates="user",
         uselist=False,
     )
+
+    def isManager(self) -> bool:  # noqa: N802
+        """Определяет, имеет ли пользователь доступ к manager Mini App."""
+        return has_operator_access(self.role)

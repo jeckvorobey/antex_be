@@ -3,7 +3,6 @@ from __future__ import annotations
 import os
 from datetime import time
 from types import SimpleNamespace
-from urllib.parse import parse_qs, urlparse
 
 from aiogram.types import User as TgUser
 
@@ -13,7 +12,6 @@ from app.enums.country import Country
 from app.telegram.handlers import start as start_handler
 from app.telegram.i18n import get_translator
 from app.telegram.keyboards import (
-    _chat_url_with_draft,
     amount_controls,
     back_to_main_menu,
     choose_city,
@@ -22,34 +20,14 @@ from app.telegram.keyboards import (
     choose_service,
     confirm_exchange,
     confirm_off_hours_exchange,
+    confirm_order,
     manager_home,
     manager_order_close,
-    manager_order_open_chat,
     obtaining,
     order_created_actions,
     orders_pagination,
     review_link,
-    user_order_write_manager,
 )
-
-
-def test_chat_url_with_draft_percent_encodes_message_text() -> None:
-    """Черновик сохраняется после percent-encoding для обоих Telegram URL."""
-    message_text = "Привет мир 👋\n& ? +"
-
-    for chat_url in ("https://t.me/manager", "tg://resolve?domain=manager"):
-        generated_url = _chat_url_with_draft(chat_url, message_text)
-        query = urlparse(generated_url).query
-
-        assert "%20" in query
-        assert "+" not in query
-        assert "%D0%9F" in query
-        assert "%F0%9F%91%8B" in query
-        assert "%0A" in query
-        assert "%26" in query
-        assert "%3F" in query
-        assert "%2B" in query
-        assert parse_qs(query)["text"] == [message_text]
 
 
 class _FakeDbSession:
@@ -536,15 +514,13 @@ async def test_exchange_keyboards_are_backend_driven() -> None:
 async def test_manager_order_keyboards_use_new_callbacks() -> None:
     translator = get_translator("ru")
 
-    open_chat = manager_order_open_chat(
+    open_chat = confirm_order(
         translator,
         order_id=17,
-        chat_url="https://t.me/customer",
     )
     close_order = manager_order_close(
         translator,
         order_id=17,
-        chat_url="https://t.me/customer",
     )
     review = review_link(translator, "https://example.com/review")
 
@@ -556,77 +532,34 @@ async def test_manager_order_keyboards_use_new_callbacks() -> None:
     assert open_chat.inline_keyboard[0][1].text == "✅ Взять в работу"
     assert open_chat.inline_keyboard[0][1].style == "success"
 
-    assert close_order.inline_keyboard[0][0].text == "💬 Открыть чат с клиентом"  # noqa: RUF001
-    assert close_order.inline_keyboard[0][0].url == "https://t.me/customer"
-    assert close_order.inline_keyboard[1][0].callback_data == "op:remind:17"
-    assert close_order.inline_keyboard[1][0].text == "🔔 Напомнить клиенту"
-    assert close_order.inline_keyboard[2][0].callback_data == "op:cancel:17"
-    assert close_order.inline_keyboard[2][0].style == "danger"
-    assert close_order.inline_keyboard[2][1].callback_data == "op:close:17"
-    assert close_order.inline_keyboard[2][1].style == "success"
+    assert len(close_order.inline_keyboard) == 1
+    assert [button.callback_data for button in close_order.inline_keyboard[0]] == [
+        "op:cancel:17",
+        "op:close:17",
+    ]
+    assert close_order.inline_keyboard[0][0].style == "danger"
+    assert close_order.inline_keyboard[0][1].style == "success"
     assert review.inline_keyboard[0][0].url == "https://example.com/review"
     assert review.inline_keyboard[0][0].style == "success"
     assert review.inline_keyboard[1][0].callback_data == "fsm:cancel"
     assert review.inline_keyboard[1][0].style == "primary"
 
 
-async def test_chat_buttons_open_direct_chat_with_prepared_text() -> None:
-    translator = get_translator("ru")
-
-    manager_btn = manager_order_close(
-        translator,
-        order_id=17,
-        chat_url="https://t.me/customer",
-        message_text=(
-            "Здравствуйте! Вы оставляли заявку #2006877777 на обмен 10 000 USDT. Готовы продолжить?"
-        ),
-    )
-    user_btn = user_order_write_manager(
-        translator,
-        chat_url="https://t.me/manager",
-        message_text="Здравствуйте! Я по заявке #367383776. Готов продолжить обмен.",
-    )
-
-    manager_url = manager_btn.inline_keyboard[0][0].url
-    user_url = user_btn.inline_keyboard[0][0].url
-    assert manager_url is not None and user_url is not None
-
-    assert urlparse(manager_url).path == "/customer"
-    manager_qs = parse_qs(urlparse(manager_url).query)
-    user_qs = parse_qs(urlparse(user_url).query)
-    assert manager_qs["text"][0].startswith("Здравствуйте! Вы оставляли заявку #2006877777")
-    assert user_qs["text"][0] == "Здравствуйте! Я по заявке #367383776. Готов продолжить обмен."
-
-
 def test_manager_order_keyboards_have_equivalent_english_labels() -> None:
     translator = get_translator("en")
 
-    created = manager_order_open_chat(translator, order_id=17)
+    created = confirm_order(translator, order_id=17)
     processing = manager_order_close(
         translator,
         order_id=17,
-        chat_url="https://t.me/customer",
     )
 
     assert [button.text for button in created.inline_keyboard[0]] == [
         "❌ Cancel order",
         "✅ Take order",
     ]
-    assert [row[0].text for row in processing.inline_keyboard[:2]] == [
-        "💬 Open chat with client",
-        "🔔 Remind client",
+    assert len(processing.inline_keyboard) == 1
+    assert [button.text for button in processing.inline_keyboard[0]] == [
+        "❌ Cancel order",
+        "✅ Close order",
     ]
-
-
-def test_chat_button_keeps_plain_tg_user_link_without_username() -> None:
-    translator = get_translator("ru")
-
-    user_btn = user_order_write_manager(
-        translator,
-        chat_url="tg://user?id=700002",
-        message_text=(
-            "Здравствуйте! По заявке #367383776 на сумму 5,000 RUB подтверждаю готовность к обмену."
-        ),
-    )
-
-    assert user_btn.inline_keyboard[0][0].url == "tg://user?id=700002"

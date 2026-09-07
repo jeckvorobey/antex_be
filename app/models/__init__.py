@@ -8,6 +8,7 @@ from app.models.attribution import (
     OrderAttribution,
     UserAcquisition,
 )
+from app.models.chat import ChatAttachment, ChatConversation, ChatMessage, ChatMessageRevision
 from app.models.city import City
 from app.models.config import Config
 from app.models.marketing import (
@@ -19,6 +20,7 @@ from app.models.marketing import (
 )
 from app.models.order import Order
 from app.models.order_number_counter import OrderNumberCounter
+from app.models.order_telegram_sync_task import OrderTelegramSyncTask
 from app.models.rate import Rate
 from app.models.site_lead import SiteLead
 from app.models.user import User
@@ -33,6 +35,10 @@ __all__ = [
     "AexWallet",
     "AttributionAuditEvent",
     "Broadcast",
+    "ChatAttachment",
+    "ChatConversation",
+    "ChatMessage",
+    "ChatMessageRevision",
     "City",
     "Config",
     "MarketingAttribution",
@@ -44,6 +50,7 @@ __all__ = [
     "Order",
     "OrderAttribution",
     "OrderNumberCounter",
+    "OrderTelegramSyncTask",
     "Rate",
     "SiteLead",
     "User",
