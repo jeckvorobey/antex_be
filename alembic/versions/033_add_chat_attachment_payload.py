@@ -9,6 +9,7 @@ from __future__ import annotations
 import sqlalchemy as sa
 
 from alembic import op
+from app.databases.migration_compatibility import restore_legacy_main_chat_schema
 
 revision = "033"
 down_revision = "032"
@@ -18,6 +19,7 @@ depends_on = None
 
 def upgrade() -> None:
     """Разрешить pending Telegram file id и сохранить bytes в PostgreSQL."""
+    restore_legacy_main_chat_schema(include_payload=False)
     op.alter_column(
         "ChatAttachments",
         "telegram_file_id",

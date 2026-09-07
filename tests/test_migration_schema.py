@@ -229,7 +229,8 @@ def test_broadcast_button_type_migration_is_safe_for_existing_rows() -> None:
 
     assert result.returncode == 0, result.stderr
     assert (
-        "ALTER TABLE \"Broadcasts\" ADD COLUMN button_type VARCHAR(16) DEFAULT 'url' NOT NULL"
+        'ALTER TABLE "Broadcasts" ADD COLUMN IF NOT EXISTS button_type '
+        "VARCHAR(16) DEFAULT 'url' NOT NULL"
     ) in result.stdout
 
 

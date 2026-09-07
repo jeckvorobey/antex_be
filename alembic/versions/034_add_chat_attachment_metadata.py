@@ -9,6 +9,7 @@ from __future__ import annotations
 import sqlalchemy as sa
 
 from alembic import op
+from app.databases.migration_compatibility import restore_legacy_main_chat_schema
 
 revision = "034"
 down_revision = "033"
@@ -18,6 +19,7 @@ depends_on = None
 
 def upgrade() -> None:
     """Добавить JSON metadata для render/download contract Telegram media."""
+    restore_legacy_main_chat_schema(include_payload=True)
     op.add_column("ChatAttachments", sa.Column("media_metadata", sa.JSON(), nullable=True))
 
 

@@ -20,6 +20,7 @@ def upgrade() -> None:
     op.add_column(
         "Admins",
         sa.Column("session_version", sa.Integer(), nullable=False, server_default="0"),
+        if_not_exists=True,
     )
     op.alter_column("Admins", "session_version", server_default=None)
 

@@ -25,6 +25,7 @@ def upgrade() -> None:
             nullable=False,
             comment="Тип кнопки рассылки: обычная URL-ссылка или Telegram web_app",
         ),
+        if_not_exists=True,
     )
 
 
