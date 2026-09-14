@@ -115,25 +115,31 @@ async def test_direct_message_is_saved_once_and_notifies_manager(
         (4, []),
     ],
 )
-def test_manager_status_actions_exclude_chat_entry(monkeypatch, status, callbacks) -> None:
-    """Все статусы оставляют только действия заявки, даже при настроенном Mini App."""
+def test_manager_status_actions_include_panel_for_created(monkeypatch, status, callbacks) -> None:
+    """Новая заявка открывает панель отдельной кнопкой, сохраняя действия статуса."""
     monkeypatch.setattr(
         "app.services.order_notifications.settings.frontend_webapp_url", "https://miniapp.example"
     )
     markup = build_manager_status_markup(SimpleNamespace(id=17, status=status))
     buttons = [button for row in markup.inline_keyboard for button in row]
-    assert [button.callback_data for button in buttons] == callbacks
-    assert all(button.web_app is None and button.url is None for button in buttons)
+    assert [button.callback_data for button in buttons if button.callback_data] == callbacks
+    panel = [button for button in buttons if button.web_app]
+    assert len(panel) == (1 if status == 1 else 0)
+    if panel:
+        assert panel[0].web_app.url == "https://miniapp.example"
+        assert panel[0].style == "primary"
+        assert markup.inline_keyboard[-1] == panel
 
 
 @pytest.mark.parametrize("locale", ["ru", "en"])
 @pytest.mark.parametrize("offline", [False, True])
-def test_order_created_explains_direct_bot_messaging(locale, offline) -> None:
-    """В обеих локалях подтверждение заявки объясняет прямую связь с менеджером."""
+def test_order_created_omits_direct_bot_messaging(locale, offline) -> None:
+    """Подтверждение сохраняет номер, но не приглашает к связи до принятия заявки."""
     text = messages.order_created(
         "123", translator=get_translator(locale), managers_offline=offline
     )
     expected = (
         "просто отправьте сообщение этому боту" if locale == "ru" else "send a message to this bot"
     )
-    assert expected in text
+    assert expected not in text
+    assert "123" in text
