@@ -9,3 +9,5 @@ __pycache__/
 .venv/
 env.prod
 .hermes/
+.env.*
+!.env.example
