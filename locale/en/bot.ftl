@@ -113,6 +113,7 @@ btn-cancel-order = ❌ Cancel order
 btn-confirm-cancel-order = ❌ Confirm cancel
 btn-keep-order = ✅ Keep order
 btn-take-order = ✅ Take order
+btn-manager-panel = 🧑‍💼 Manager panel
 btn-close-order = ✅ Close order
 btn-leave-review = ⭐ Leave a review
 menu-open-site = 🚀 Open app
@@ -140,14 +141,10 @@ manager-access-denied = Access denied.
 ## Order statuses
 order-created =
     ✅ Order #{ $id } created. Please wait for confirmation.
-
-    { customer-chat-instruction }
 order-created-offline =
     ✅ Order #{ $id } created. Your request has been accepted.
 
     <blockquote>A manager will process the order in the morning after the working day begins.</blockquote>
-
-    { customer-chat-instruction }
 order-creation-failed = Could not create the order right now. Please try again in a minute.
 order-created-notification-failed = Order #{ $id } was created, but the confirmation could not be sent. Open “My orders” to check its status.
 order-creation-limit-reached = You already have too many active orders. Please wait for the current ones to be processed.

@@ -114,6 +114,7 @@ btn-cancel-order = ❌ Отменить заявку
 btn-confirm-cancel-order = ❌ Подтвердить отмену
 btn-keep-order = ✅ Оставить
 btn-take-order = ✅ Взять в работу
+btn-manager-panel = 🧑‍💼 Панель менеджера
 btn-close-order = ✅ Закрыть заявку
 btn-leave-review = ⭐ Оставить отзыв
 menu-open-site = 🚀 Открыть приложение
@@ -145,16 +146,12 @@ order-created =
     ⏳ Мы получили ваш запрос и уже начали обработку.
 
     Пожалуйста, ожидайте подтверждения. Статус заявки будет обновлён автоматически.
-
-    { customer-chat-instruction }
 order-created-offline =
     ✅ Заявка #{ $id } создана.
 
     Заявка принята.
 
     <blockquote>Менеджер обработает заявку утром после начала рабочего дня.</blockquote>
-
-    { customer-chat-instruction }
 order-creation-failed = Не удалось создать заявку. Попробуйте ещё раз через минуту.
 order-created-notification-failed = Заявка #{ $id } создана, но подтверждение не удалось отправить. Откройте «Мои заявки», чтобы проверить статус.
 order-creation-limit-reached = У вас уже слишком много активных заявок. Дождитесь обработки текущих или завершите их.

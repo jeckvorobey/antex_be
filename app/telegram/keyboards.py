@@ -440,22 +440,31 @@ def confirm_order(
         raise ValueError("order_id is required")
 
     translate = _resolve_translator(_)
-    return InlineKeyboardMarkup(
-        inline_keyboard=[
+    rows = [
+        [
+            InlineKeyboardButton(
+                text=translate("btn-cancel-order"),
+                callback_data=f"op:cancel:{order_id}",
+                style="danger",
+            ),
+            InlineKeyboardButton(
+                text=translate("btn-take-order"),
+                callback_data=f"op:take:{order_id}",
+                style="success",
+            ),
+        ],
+    ]
+    if settings.frontend_webapp_url:
+        rows.append(
             [
                 InlineKeyboardButton(
-                    text=translate("btn-cancel-order"),
-                    callback_data=f"op:cancel:{order_id}",
-                    style="danger",
-                ),
-                InlineKeyboardButton(
-                    text=translate("btn-take-order"),
-                    callback_data=f"op:take:{order_id}",
-                    style="success",
-                ),
-            ],
-        ]
-    )
+                    text=translate("btn-manager-panel"),
+                    web_app=WebAppInfo(url=settings.frontend_webapp_url),
+                    style="primary",
+                )
+            ]
+        )
+    return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
 def manager_order_close(

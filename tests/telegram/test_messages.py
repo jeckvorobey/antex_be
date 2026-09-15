@@ -23,6 +23,39 @@ def test_exchange_rate_formats_all_rates_with_two_decimals() -> None:
     assert "35.114" not in text
 
 
+def test_confirmation_rounds_rate_without_changing_amounts() -> None:
+    text = messages.exchange_confirm_summary(
+        country="vietnam",
+        rate="298.04154247990994",
+        rate_value=298.04154247990994,
+        amount=45000,
+        from_currency="RUB",
+        result=13411869.41,
+        to_currency="VND",
+        method="qrcode",
+        locale="ru",
+    )
+    assert "298.04</b>" in text
+    assert "298.041542" not in text
+    assert "13 411 869.41" in text
+    assert "45 000" in text
+
+
+def test_confirmation_rate_keeps_two_decimal_places() -> None:
+    text = messages.exchange_confirm_summary(
+        country="thailand",
+        rate="32.5",
+        rate_value=32.5,
+        amount=100,
+        from_currency="USDT",
+        result=3250,
+        to_currency="THB",
+        method="qrcode",
+        locale="en",
+    )
+    assert "32.50</b>" in text
+
+
 def test_order_created_includes_order_number() -> None:
     text = messages.order_created(2026050008)
     normalized = text.replace("\u2068", "").replace("\u2069", "").replace("\u00a0", "")

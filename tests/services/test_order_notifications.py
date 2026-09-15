@@ -135,6 +135,9 @@ async def test_user_status_message_treats_not_modified_as_success() -> None:
 async def test_notify_order_created_sends_user_message_with_order_payload(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    monkeypatch.setattr(
+        order_notifications.settings, "frontend_webapp_url", "https://miniapp.example"
+    )
     bot = _FakeBot()
     order = SimpleNamespace(
         id=8,
@@ -176,7 +179,9 @@ async def test_notify_order_created_sends_user_message_with_order_payload(
     assert bot.sent[0]["reply_markup"].inline_keyboard[0][0].callback_data == "menu:orders"
     assert bot.sent[0]["reply_markup"].inline_keyboard[1][0].callback_data == "fsm:cancel"
     manager_markup = cast(Any, bot.rich_sent[0]["reply_markup"])
-    assert len(manager_markup.inline_keyboard) == 1
+    assert len(manager_markup.inline_keyboard) == 2
+    assert manager_markup.inline_keyboard[1][0].web_app.url == "https://miniapp.example"
+    assert manager_markup.inline_keyboard[1][0].style == "primary"
     assert manager_markup.inline_keyboard[0][0].callback_data == "op:cancel:8"
     assert manager_markup.inline_keyboard[0][1].callback_data == "op:take:8"
     text = str(bot.rich_sent[0]["rich_message"].html)
@@ -615,7 +620,7 @@ def test_build_manager_status_text_uses_new_middle_format_for_processing() -> No
     assert "✅ Заявка #2026050020 принята в работу" in text
     assert "Страна: <b>Таиланд</b>" in text
     assert "Город: <b>Бангкок</b>" in text
-    assert "Курс: <b>32.8723</b>" in text
+    assert "Курс: <b>32.87</b>" in text
     assert "Отдаёте: <b>2 350 ₮ USDT</b>" in text
     assert "Получаете: <b>77 250 🇹🇭 THB</b>" in text
     assert "Способ получения: <b>Наличные по QR</b>" in text
@@ -764,10 +769,15 @@ async def test_notify_order_status_changed_has_no_chat_button_for_processing(
     assert bot.edited[0]["reply_markup"] is None
 
 
-def test_notify_order_created_manager_keyboard_has_no_chat_button() -> None:
+def test_notify_order_created_manager_keyboard_has_panel(monkeypatch) -> None:
+    monkeypatch.setattr(
+        order_notifications.settings, "frontend_webapp_url", "https://miniapp.example"
+    )
     markup = order_notifications.build_manager_status_markup(SimpleNamespace(id=8, status=1))
 
-    assert len(markup.inline_keyboard) == 1
+    assert len(markup.inline_keyboard) == 2
+    assert markup.inline_keyboard[1][0].web_app.url == "https://miniapp.example"
+    assert markup.inline_keyboard[1][0].style == "primary"
     assert markup.inline_keyboard[0][0].callback_data == "op:cancel:8"
     assert markup.inline_keyboard[0][1].callback_data == "op:take:8"
 
@@ -792,7 +802,7 @@ def test_build_manager_order_text_uses_new_created_format() -> None:
     assert "🆕 Новая заявка #2026050019" in text
     assert "Страна: <b>Таиланд</b>" in text
     assert "Город: <b>Паттайя</b>" in text
-    assert "Курс: <b>31</b>" in text
+    assert "Курс: <b>31.00</b>" in text
     assert "Отдаёте: <b>1 000 ₮ USDT</b>" in text
     assert "Получаете: <b>31 000 🇹🇭 THB</b>" in text
     assert "Способ получения: <b>Доставка наличных</b>" in text

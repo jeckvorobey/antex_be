@@ -4,6 +4,7 @@ import os
 from datetime import time
 from types import SimpleNamespace
 
+import pytest
 from aiogram.types import User as TgUser
 
 os.environ.setdefault("DATABASE_URL", "sqlite+aiosqlite:///:memory:")
@@ -511,7 +512,8 @@ async def test_exchange_keyboards_are_backend_driven() -> None:
     assert created_kb.inline_keyboard[1][0].style == "primary"
 
 
-async def test_manager_order_keyboards_use_new_callbacks() -> None:
+async def test_manager_order_keyboards_use_new_callbacks(monkeypatch) -> None:
+    monkeypatch.setattr("app.telegram.keyboards.settings.frontend_webapp_url", "")
     translator = get_translator("ru")
 
     open_chat = confirm_order(
@@ -543,6 +545,23 @@ async def test_manager_order_keyboards_use_new_callbacks() -> None:
     assert review.inline_keyboard[0][0].style == "success"
     assert review.inline_keyboard[1][0].callback_data == "fsm:cancel"
     assert review.inline_keyboard[1][0].style == "primary"
+
+
+@pytest.mark.parametrize(
+    "locale,label", [("ru", "🧑‍💼 Панель менеджера"), ("en", "🧑‍💼 Manager panel")]
+)
+def test_new_order_opens_manager_miniapp(monkeypatch, locale, label) -> None:
+    monkeypatch.setattr(
+        "app.telegram.keyboards.settings.frontend_webapp_url", "https://miniapp.example/#/manager"
+    )
+    markup = confirm_order(get_translator(locale), order_id=17)
+    assert len(markup.inline_keyboard) == 2
+    assert len(markup.inline_keyboard[1]) == 1
+    button = markup.inline_keyboard[1][0]
+    assert button.text == label
+    assert button.style == "primary"
+    assert button.web_app.url == "https://miniapp.example/#/manager"
+    assert button.callback_data is None and button.url is None
 
 
 def test_manager_order_keyboards_have_equivalent_english_labels() -> None:
