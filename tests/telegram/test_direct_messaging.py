@@ -134,14 +134,28 @@ def test_manager_status_actions_exclude_chat_entry(monkeypatch, status, callback
     assert all(button.web_app is None and button.url is None for button in buttons)
 
 
-@pytest.mark.parametrize("locale", ["ru", "en"])
-@pytest.mark.parametrize("offline", [False, True])
-def test_order_created_explains_direct_bot_messaging(locale, offline) -> None:
-    """В обеих локалях подтверждение заявки объясняет прямую связь с менеджером."""
-    text = messages.order_created(
-        "123", translator=get_translator(locale), managers_offline=offline
-    )
-    expected = (
-        "просто отправьте сообщение этому боту" if locale == "ru" else "send a message to this bot"
-    )
-    assert expected in text
+@pytest.mark.parametrize(
+    ("locale", "instruction"),
+    [
+        ("ru", "просто отправьте сообщение этому боту"),
+        ("en", "send a message to this bot"),
+    ],
+)
+def test_online_order_created_omits_direct_bot_instruction(locale, instruction) -> None:
+    """Обычное подтверждение заявки содержит только согласованный краткий текст."""
+    text = messages.order_created("123", translator=get_translator(locale))
+
+    assert instruction not in text
+
+
+@pytest.mark.parametrize(
+    ("locale", "instruction"),
+    [
+        ("ru", "просто отправьте сообщение этому боту"),
+        ("en", "send a message to this bot"),
+    ],
+)
+def test_offline_order_created_keeps_direct_bot_instruction(locale, instruction) -> None:
+    """Нерабочее время сохраняет отдельную подсказку для связи с менеджером."""
+    text = messages.order_created("123", translator=get_translator(locale), managers_offline=True)
+    assert instruction in text

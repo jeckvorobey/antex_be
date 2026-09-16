@@ -139,9 +139,11 @@ manager-access-denied = Access denied.
 
 ## Order statuses
 order-created =
-    ✅ Order #{ $id } created. Please wait for confirmation.
+    ✅ Order #{ $id } created
 
-    { customer-chat-instruction }
+    Thank you! We received your order and sent it for confirmation.
+
+    ⏳ Please wait a moment. Once the order is accepted for processing, its status will update automatically.
 order-created-offline =
     ✅ Order #{ $id } created. Your request has been accepted.
 

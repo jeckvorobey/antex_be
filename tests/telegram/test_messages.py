@@ -30,6 +30,12 @@ def test_order_created_includes_order_number() -> None:
     assert "".join(re.findall(r"\d", text)) == "2026050008"
     assert "#2026050008" in normalized
     assert "№" not in text
+    assert normalized == (
+        "✅ Заявка #2026050008 создана\n\n"
+        "Спасибо! Мы получили вашу заявку и передали её на подтверждение.\n\n"
+        "⏳ Пожалуйста, немного подождите. Когда заявка будет принята в работу, "
+        "её статус обновится автоматически."
+    )
 
 
 def test_order_created_adds_queue_notice_only_for_offline_managers() -> None:
@@ -45,8 +51,8 @@ def test_order_created_adds_queue_notice_only_for_offline_managers() -> None:
     assert "<blockquote>A manager will process the order in the morning" in offline_english_text
     assert "Менеджер обработает заявку утром" not in usual_text
     assert "после начала рабочего дня в порядке очереди" not in offline_text
-    assert "Пожалуйста, ожидайте подтверждения" not in offline_text
-    assert "Пожалуйста, ожидайте подтверждения" in usual_text
+    assert "Пожалуйста, немного подождите" not in offline_text
+    assert "Пожалуйста, немного подождите" in usual_text
 
 
 def test_exchange_off_hours_confirmation_is_localized() -> None:
