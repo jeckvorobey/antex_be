@@ -6,6 +6,7 @@ from types import SimpleNamespace
 
 from sqlalchemy import func, select
 
+from app.enums.user import UserRole
 from app.models.chat import ChatMessage, ChatMessageRevision
 from app.models.user import User
 from app.services.chat import ChatService, InboundAttachment
@@ -41,6 +42,97 @@ async def test_capture_inbound_is_idempotent(db_session) -> None:
     assert duplicate_conversation.id == conversation.id
     assert conversation.unread_count == 1
     assert count == 1
+
+
+async def test_manager_notification_is_compact_and_replaces_previous(
+    db_session, monkeypatch
+) -> None:
+    manager = User(
+        telegram_id=820001,
+        first_name="Manager",
+        role=int(UserRole.MANAGER),
+        language_code_app="ru",
+    )
+    customer = User(
+        telegram_id=820002,
+        first_name="Sergey",
+        last_name="TEST",
+    )
+    db_session.add_all([manager, customer])
+    await db_session.flush()
+    service = ChatService(db_session, manager_id=manager.id)
+    conversation, _ = await service.repo.get_or_create_conversation(customer.id)
+    conversation.user = customer
+    message = await service.repo.create_message(
+        conversation_id=conversation.id,
+        direction="inbound",
+        message_type="text",
+        text="Это превью не должно попасть в уведомление",
+        telegram_chat_id=customer.telegram_id,
+        telegram_message_id=1,
+        delivery_status="received",
+    )
+
+    sent: list[dict[str, object]] = []
+    deleted: list[tuple[int, int]] = []
+
+    class FakeBot:
+        async def send_message(self, **kwargs):
+            sent.append(kwargs)
+            return SimpleNamespace(message_id=100 + len(sent))
+
+        async def delete_message(self, *, chat_id: int, message_id: int) -> None:
+            deleted.append((chat_id, message_id))
+
+    @asynccontextmanager
+    async def fake_sender_bot():
+        yield FakeBot()
+
+    async def miniapp_closed(_manager) -> bool:
+        return False
+
+    monkeypatch.setattr("app.services.chat.sender_bot", fake_sender_bot)
+    monkeypatch.setattr("app.services.chat.is_manager_miniapp_open", miniapp_closed)
+    monkeypatch.setattr(
+        "app.services.chat.settings.frontend_webapp_url", "https://miniapp.example/"
+    )
+
+    await service._notify_manager(message, conversation)
+    await service._notify_manager(message, conversation)
+
+    assert len(sent) == 2
+    assert sent[0]["text"] == ('Новое сообщение от <a href="tg://user?id=820002">Sergey TEST</a>')
+    assert "превью" not in str(sent[0]["text"]).lower()
+    button = sent[0]["reply_markup"].inline_keyboard[0][0]
+    assert button.text == "Открыть чат"
+    assert button.web_app.url == f"https://miniapp.example/manager/chats/{conversation.id}"
+    assert deleted == [(manager.telegram_id, 101)]
+
+
+async def test_manager_notification_is_suppressed_while_miniapp_is_open(
+    db_session, monkeypatch
+) -> None:
+    manager = User(telegram_id=820003, role=int(UserRole.MANAGER))
+    customer = User(telegram_id=820004, first_name="Sergey")
+    db_session.add_all([manager, customer])
+    await db_session.flush()
+    service = ChatService(db_session, manager_id=manager.id)
+    conversation, _ = await service.repo.get_or_create_conversation(customer.id)
+    conversation.user = customer
+    message = SimpleNamespace(text="Привет", caption=None, message_type="text")
+
+    async def miniapp_open(_manager) -> bool:
+        return True
+
+    @asynccontextmanager
+    async def forbidden_sender_bot():
+        raise AssertionError("Telegram notification must not be sent")
+        yield
+
+    monkeypatch.setattr("app.services.chat.is_manager_miniapp_open", miniapp_open)
+    monkeypatch.setattr("app.services.chat.sender_bot", forbidden_sender_bot)
+
+    await service._notify_manager(message, conversation)
 
 
 async def test_capture_edit_preserves_revision(db_session) -> None:

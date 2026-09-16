@@ -201,7 +201,8 @@ order-completed-bottom-rich =
     <p>⭐ <b>We’d be glad to receive your review!</b><br/>It helps us improve.</p>
 order-cancelled = ❌ Order #{ $id } cancelled.
 btn-remind-client = 🔔 Remind client
-manager-chat-fallback-title = New customer message
+manager-chat-fallback-title = New message from
+manager-chat-open-button = Open chat
 manager-chat-fallback-anonymous = Customer #{ $user_id }
 manager-chat-fallback-media = Attachment: { $media_type }
 operator-order-not-found = Order not found

@@ -212,7 +212,8 @@ order-completed-bottom-rich =
     <p>⭐ <b>Будем рады вашему отзыву!</b><br/>Это помогает нам становиться лучше.</p>
 order-cancelled = ❌ Заявка #{ $id } отменена.
 btn-remind-client = 🔔 Напомнить клиенту
-manager-chat-fallback-title = Новое сообщение клиента
+manager-chat-fallback-title = Новое сообщение от
+manager-chat-open-button = Открыть чат
 manager-chat-fallback-anonymous = Клиент #{ $user_id }
 manager-chat-fallback-media = Вложение: { $media_type }
 operator-order-not-found = Заявка не найдена

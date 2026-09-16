@@ -24,10 +24,10 @@ from app.telegram.i18n import get_translator
 @pytest.mark.parametrize("online", [False, True])
 @pytest.mark.parametrize("realtime_fails", [False, True])
 @pytest.mark.parametrize("telegram_fails", [False, True])
-async def test_direct_message_is_saved_once_and_notifies_manager(
+async def test_direct_message_is_saved_once_and_notifies_manager_when_closed(
     db_session, monkeypatch, caplog, online: bool, realtime_fails: bool, telegram_fails: bool
 ) -> None:
-    """Presence/Redis не подавляют доставку, повтор update не создаёт дубль."""
+    """Открытый Mini App подавляет Telegram-уведомление, повтор update не создаёт дубль."""
     customer = User(telegram_id=830001, first_name="Клиент", role=UserRole.USER)
     manager = User(telegram_id=830002, role=UserRole.MANAGER, language_code="ru")
     db_session.add_all([customer, manager])
@@ -67,6 +67,7 @@ async def test_direct_message_is_saved_once_and_notifies_manager(
 
     monkeypatch.setattr(chat_handler, "create_db_session", fake_session)
     monkeypatch.setattr(chat_service, "sender_bot", fake_sender)
+    monkeypatch.setattr(chat_service.settings, "frontend_webapp_url", "https://miniapp.example/")
     monkeypatch.setattr(
         chat_service.manager_realtime_hub, "is_online", AsyncMock(return_value=online)
     )
@@ -93,11 +94,18 @@ async def test_direct_message_is_saved_once_and_notifies_manager(
     assert len(stored) == 1
     assert stored[0].text == "Вопрос по заявке <test>"
     assert stored[0].direction == "inbound"
-    assert operations == ["commit", "send", "commit"]
-    assert len(sent) == 1
-    assert sent[0]["chat_id"] == 830002
-    assert "Вопрос по заявке &lt;test&gt;" in sent[0]["text"]
-    assert sent[0].get("reply_markup") is None
+    if online:
+        assert operations == ["commit", "commit"]
+        assert sent == []
+    else:
+        assert operations == ["commit", "send", "commit"]
+        assert len(sent) == 1
+        assert sent[0]["chat_id"] == 830002
+        assert sent[0]["text"] == ('Новое сообщение от <a href="tg://user?id=830001">Клиент</a>')
+        assert "Вопрос по заявке" not in sent[0]["text"]
+        button = sent[0]["reply_markup"].inline_keyboard[0][0]
+        assert button.text == "Открыть чат"
+        assert button.web_app.url.endswith(f"/manager/chats/{stored[0].conversation_id}")
     assert "Вопрос по заявке" not in caplog.text
     conversation = await chat_service.ChatService(db_session).repo.get_conversation(
         stored[0].conversation_id
