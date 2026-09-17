@@ -10,7 +10,7 @@ from html import escape
 from typing import Any, cast
 
 from app.enums.order import MethodGet, OrderStatus
-from app.services.exchange import ExchangePairSnapshot
+from app.services.exchange import ExchangePairSnapshot, format_rate_value
 from app.telegram.i18n import get_translator, normalize_locale
 from app.telegram.message_templates import (
     EXCHANGE_AMOUNT_TEMPLATE,
@@ -863,7 +863,10 @@ def _format_order_status_label(status: int | None, *, translate) -> str:
 def _format_order_rate(rate: int | float | str | None) -> str:
     if rate is None:
         return "—"
-    return str(rate)
+    try:
+        return format_rate_value(float(rate))
+    except (TypeError, ValueError):
+        return str(rate)
 
 
 def _format_order_amount(amount: int | float) -> str:

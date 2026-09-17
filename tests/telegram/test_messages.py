@@ -186,6 +186,23 @@ def test_exchange_confirm_summary_uses_human_currency_labels() -> None:
     assert "Если всё верно, нажмите «Подтвердить»." in text
 
 
+def test_exchange_confirm_summary_formats_quote_rate_with_two_decimal_places() -> None:
+    text = messages.exchange_confirm_summary(
+        country="Таиланд",
+        rate="1 RUB = 0.38154803162820966 THB",
+        rate_value=0.38154803162820966,
+        amount=30000,
+        from_currency="RUB",
+        result=11446.44,
+        to_currency="THB",
+        method="🏧 Наличные по QR",
+        locale="ru",
+    )
+
+    assert "Курс</td><td><b>0.38</b>" in text
+    assert "0.38154803162820966" not in text
+
+
 def test_exchange_confirm_summary_omits_city_when_missing() -> None:
     text = messages.exchange_confirm_summary(
         country="Грузия",
@@ -257,7 +274,7 @@ def test_orders_item_respects_english_locale() -> None:
         currency_sell="USDT",
         amount_buy=35738752.0,
         currency_buy="VND",
-        rate=25527.68,
+        rate=31.0,
         method="cash",
         created_at=datetime(2026, 6, 13, 0, 45, tzinfo=UTC),
         updated_at=None,
@@ -267,7 +284,7 @@ def test_orders_item_respects_english_locale() -> None:
 
     assert "#2026060011: In progress" in text
     assert "1,400 ₮ USDT → 35,738,752.0 🇻🇳 VND" in text
-    assert "Rate: 25527.68" in text
+    assert "Rate: 31.00" in text
     assert "Payout method: Cash delivery" in text
 
 

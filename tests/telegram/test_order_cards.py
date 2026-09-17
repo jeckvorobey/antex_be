@@ -92,6 +92,20 @@ def test_order_summary_uses_saved_display_rate_snapshot() -> None:
     assert "0.0291" not in rich
 
 
+def test_order_summary_formats_raw_rate_with_two_decimal_places() -> None:
+    view = OrderMessageView(
+        public_number="2026090001",
+        rate=0.38154803162820966,
+    )
+
+    rich = render_order_rich(view, locale="ru")
+    regular = render_order_regular(view, locale="ru")
+
+    assert "Курс</td><td><b>0.38</b>" in rich
+    assert "Курс: <b>0.38</b>" in regular
+    assert "0.38154803162820966" not in rich
+
+
 def test_order_summary_escapes_persisted_telegram_values() -> None:
     view = OrderMessageView(
         public_number="2026080096",

@@ -615,7 +615,7 @@ def test_build_manager_status_text_uses_new_middle_format_for_processing() -> No
     assert "✅ Заявка #2026050020 принята в работу" in text
     assert "Страна: <b>Таиланд</b>" in text
     assert "Город: <b>Бангкок</b>" in text
-    assert "Курс: <b>32.8723</b>" in text
+    assert "Курс: <b>32.87</b>" in text
     assert "Отдаёте: <b>2 350 ₮ USDT</b>" in text
     assert "Получаете: <b>77 250 🇹🇭 THB</b>" in text
     assert "Способ получения: <b>Наличные по QR</b>" in text
@@ -716,7 +716,7 @@ async def test_notify_order_status_changed_adds_summary_for_completed_order(
     assert "<table bordered striped>" in rich
     assert "Страна</td><td><b>Таиланд" in rich
     assert "Город</td><td><b>Бангкок" in rich
-    assert "Курс</td><td><b>31.5" in rich
+    assert "Курс</td><td><b>31.50" in rich
     assert "Отдаёте</td><td><b>1 500 ₮ USDT" in rich
     assert "Получаете</td><td><b>47 250 🇹🇭 THB" in rich
     assert "Способ получения</td><td><b>Доставка наличных" in rich
@@ -792,7 +792,7 @@ def test_build_manager_order_text_uses_new_created_format() -> None:
     assert "🆕 Новая заявка #2026050019" in text
     assert "Страна: <b>Таиланд</b>" in text
     assert "Город: <b>Паттайя</b>" in text
-    assert "Курс: <b>31</b>" in text
+    assert "Курс: <b>31.00</b>" in text
     assert "Отдаёте: <b>1 000 ₮ USDT</b>" in text
     assert "Получаете: <b>31 000 🇹🇭 THB</b>" in text
     assert "Способ получения: <b>Доставка наличных</b>" in text

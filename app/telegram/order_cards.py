@@ -7,6 +7,7 @@ from decimal import Decimal
 from html import escape
 from typing import Any
 
+from app.services.exchange import format_rate_value
 from app.services.order_rate import build_order_rate_presentation
 from app.telegram.i18n import get_translator, normalize_locale
 
@@ -140,9 +141,7 @@ def _order_rows(
     if view.rate_text:
         rows.append((translate("exchange-summary-rate"), view.rate_text))
     elif view.rate is not None:
-        rows.append(
-            (translate("exchange-summary-rate"), format_order_number(view.rate, locale=locale))
-        )
+        rows.append((translate("exchange-summary-rate"), format_rate_value(float(view.rate))))
     method = _localized_value(view.method, _METHOD_KEYS, locale=locale)
     if method:
         rows.append((translate("exchange-summary-method"), method))

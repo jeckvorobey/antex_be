@@ -13,6 +13,7 @@ from aiogram.types import InlineKeyboardMarkup, InputRichMessage
 from app.core.config import settings
 from app.enums.country import Country
 from app.enums.order import MethodGet, OrderStatus
+from app.services.exchange import format_rate_value
 from app.telegram import messages
 from app.telegram.i18n import get_translator, get_user_translator, normalize_locale
 from app.telegram.keyboards import (
@@ -755,7 +756,7 @@ def _format_amount(amount: int | float | None, currency: str | None) -> str:
 def _format_rate(rate: float | None) -> str:
     if rate is None:
         return "—"
-    return str(rate)
+    return format_rate_value(rate)
 
 
 def _format_method(method: str | None) -> str:
