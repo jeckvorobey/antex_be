@@ -151,8 +151,8 @@ def test_online_order_created_omits_direct_bot_instruction(locale, instruction) 
 @pytest.mark.parametrize(
     ("locale", "instruction"),
     [
-        ("ru", "просто отправьте сообщение этому боту"),
-        ("en", "send a message to this bot"),
+        ("ru", "менеджер долго не выходит на связь, отправьте сообщение в бот"),
+        ("en", "manager doesn't respond for a while, send a message to the bot"),
     ],
 )
 def test_offline_order_created_keeps_direct_bot_instruction(locale, instruction) -> None:

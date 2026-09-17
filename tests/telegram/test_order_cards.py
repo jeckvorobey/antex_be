@@ -113,12 +113,12 @@ def test_order_summary_escapes_persisted_telegram_values() -> None:
     [
         (
             "ru",
-            "просто отправьте сообщение этому боту",
+            "менеджер долго не выходит на связь, отправьте сообщение в бот",
             "Менеджер ответит здесь через официальный бот",
         ),
         (
             "en",
-            "send a message to this bot",
+            "respond for a while",
             "The manager will reply here through the official bot",
         ),
     ],
@@ -150,7 +150,7 @@ def test_reminder_reuses_handoff_details_and_instructions(order_view: OrderMessa
     assert "Менеджер ожидает ваше сообщение" in rich
     assert "<table bordered striped>" in rich
     assert "Связь с менеджером" in rich
-    assert "просто отправьте сообщение этому боту" in rich
+    assert "менеджер долго не выходит на связь, отправьте сообщение в бот" in rich
     assert "<blockquote>" not in rich
     assert "<details>" not in rich
     assert "Менеджер ответит здесь через официальный бот" in rich

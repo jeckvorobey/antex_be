@@ -156,7 +156,9 @@ order-creation-limit-reached = You already have too many active orders. Please w
 order-confirmed =
     ✅ Order #{ $id } is now being processed by the manager.
 
-    { customer-chat-instruction }
+    The manager is already handling your exchange. Sometimes they may need a little time to finish with the previous client.
+
+    💬 If the manager doesn't respond for a while, send a message to the bot — they'll definitely see it.
 order-details-caption = Order details
 order-country-thailand = Thailand
 order-country-vietnam = Vietnam
@@ -167,7 +169,7 @@ order-reminder-footer = Order reminder
 order-reminder-title = 🔔 The manager is waiting for your message about order #{ $id }
 order-contact-lead = The manager is ready to continue the exchange.
 order-contact-heading = Contact the manager
-customer-chat-instruction = 💬 To contact the manager, simply send a message to this bot.
+customer-chat-instruction = 💬 If the manager doesn't respond for a while, send a message to the bot — they'll definitely see it.
 customer-chat-reply-note = The manager will reply here through the official bot and confirm the exchange details.
 manager-order-card-footer = Order status
 manager-order-created-title = 🆕 New order #{ $id }
