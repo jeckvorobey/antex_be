@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime
+from decimal import Decimal
 
 import pytest
 
@@ -42,6 +43,22 @@ def _make_rate(
 
 
 class TestExchangeService:
+    def test_reverse_quote_uses_existing_rate_without_drift(self) -> None:
+        rate = _make_rate("RUBTHB", 0.41, 3.0, country=Country.THAILAND)
+
+        quote = ExchangeService().build_quote(
+            [rate],
+            ExchangeQuoteInput(
+                currency_sell="RUB",
+                currency_buy="THB",
+                amount_buy=Decimal("9000.00"),
+            ),
+        )
+
+        assert quote.amount_sell == Decimal("22630.12320845")
+        assert quote.amount_buy == pytest.approx(9000.0)
+        assert quote.base_rate == pytest.approx(0.3977)
+
     @pytest.mark.parametrize(
         "method_get",
         [None, MethodGet.QRCODE, MethodGet.BANK_ACCOUNT, MethodGet.PAY_SERVICES],
@@ -92,6 +109,24 @@ class TestExchangeService:
         assert quote.display_rate == pytest.approx(0.38548)
         assert quote.rate_display == "0.39"
         assert quote.rate_text == "1 RUB = 0.39 THB"
+
+    def test_reverse_cash_quote_uses_same_delivery_policy(self) -> None:
+        exchange_rate = _make_rate("RUBTHB", 0.4, 0.0, country=Country.THAILAND)
+        conversion_rate = _make_rate("USDTTHB", 36.201, 0.0, country=Country.THAILAND)
+
+        quote = ExchangeService().build_quote(
+            [exchange_rate, conversion_rate],
+            ExchangeQuoteInput(
+                currency_sell="RUB",
+                currency_buy="THB",
+                amount_buy=Decimal("9000.00"),
+                method_get=MethodGet.CASH,
+            ),
+        )
+
+        assert quote.amount_sell == Decimal("23407.50000000")
+        assert quote.amount_buy == pytest.approx(9000.0)
+        assert quote.delivery_rate == pytest.approx(9000 / 23407.5)
 
     def test_cash_quote_displays_reciprocal_of_effective_rate(self) -> None:
         """Реверсивная пара не должна показывать reciprocal исходного rate."""

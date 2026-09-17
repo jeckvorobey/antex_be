@@ -33,7 +33,7 @@ class ManagerOrderSummary(BaseModel):
     id: int
     publicNumber: str
     currencySell: str
-    amountSell: int
+    amountSell: float
     currencyBuy: str
     amountBuy: float | None
     rate: float | None

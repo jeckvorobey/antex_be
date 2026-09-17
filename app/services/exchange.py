@@ -10,6 +10,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime
+from decimal import Decimal
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -154,7 +155,8 @@ def get_direct_final_rate(rate: Rate) -> float:
 class ExchangeQuoteInput:
     currency_sell: str
     currency_buy: str
-    amount_sell: int
+    amount_sell: Decimal | None = None
+    amount_buy: Decimal | None = None
     method_get: MethodGet | str | None = None
 
 
@@ -162,7 +164,7 @@ class ExchangeQuoteInput:
 class ExchangeQuote:
     currency_sell: str
     currency_buy: str
-    amount_sell: int
+    amount_sell: Decimal
     amount_buy: float
     base_rate: float
     delivery_rate: float | None
@@ -295,7 +297,7 @@ class ExchangeService:
 
     def build_quote(self, rates: list[Rate], payload: ExchangeQuoteInput) -> ExchangeQuote:
         pair = self.normalize_pair(payload.currency_sell, payload.currency_buy)
-        if pair is None or payload.amount_sell <= 0:
+        if pair is None or (payload.amount_sell is None) == (payload.amount_buy is None):
             raise self.unsupported_pair_error()
         sell, buy = pair
         if not rates:
@@ -308,12 +310,25 @@ class ExchangeService:
         rate = get_calculation_rate(rate_model)
         if rate <= 0:
             raise self.rate_unavailable_error()
-        adjusted = CashDeliveryRatePolicy().calculate(
+        policy = CashDeliveryRatePolicy()
+        amount_sell = payload.amount_sell
+        if amount_sell is None:
+            amount_sell = policy.calculate_amount_sell(
+                rates,
+                method_get=payload.method_get,
+                currency_sell=sell,
+                currency_buy=buy,
+                amount_buy=payload.amount_buy or Decimal("0"),
+                base_rate=rate,
+            )
+        if amount_sell <= 0:
+            raise self.unsupported_pair_error()
+        adjusted = policy.calculate(
             rates,
             method_get=payload.method_get,
             currency_sell=sell,
             currency_buy=buy,
-            amount_sell=payload.amount_sell,
+            amount_sell=amount_sell,
             base_rate=rate,
         )
         effective_rate = adjusted.delivery_rate if adjusted.delivery_rate is not None else rate
@@ -322,7 +337,7 @@ class ExchangeService:
         return ExchangeQuote(
             currency_sell=sell,
             currency_buy=buy,
-            amount_sell=payload.amount_sell,
+            amount_sell=amount_sell,
             amount_buy=adjusted.amount_buy,
             base_rate=rate,
             delivery_rate=adjusted.delivery_rate,

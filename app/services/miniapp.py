@@ -399,8 +399,9 @@ async def calculate_miniapp_quote(
     db,
     currency_sell: str,
     currency_buy: str,
-    amount_sell: int,
+    amount_sell: Decimal | None,
     *,
+    amount_buy: Decimal | None = None,
     method_get: str | None = None,
 ) -> MiniappQuoteResponse:
     """Рассчитывает quote через единый exchange-domain."""
@@ -410,6 +411,7 @@ async def calculate_miniapp_quote(
             currency_sell=currency_sell,
             currency_buy=currency_buy,
             amount_sell=amount_sell,
+            amount_buy=amount_buy,
             method_get=method_get,
         ),
     )

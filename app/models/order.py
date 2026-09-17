@@ -4,9 +4,20 @@
 from __future__ import annotations
 
 from datetime import datetime
+from decimal import Decimal
 from typing import TYPE_CHECKING
 
-from sqlalchemy import BigInteger, DateTime, Enum, Float, ForeignKey, Index, Integer, String
+from sqlalchemy import (
+    BigInteger,
+    DateTime,
+    Enum,
+    Float,
+    ForeignKey,
+    Index,
+    Integer,
+    Numeric,
+    String,
+)
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.enums.country import Country
@@ -50,7 +61,11 @@ class Order(Base, TimestampMixin):
         nullable=False,
     )
     currencySell: Mapped[str] = mapped_column("currencySell", String(20), nullable=False)
-    amountSell: Mapped[int] = mapped_column("amountSell", Integer, nullable=False)
+    amountSell: Mapped[Decimal] = mapped_column(
+        "amountSell",
+        Numeric(20, 8),
+        nullable=False,
+    )
     currencyBuy: Mapped[str] = mapped_column("currencyBuy", String(20), nullable=False)
     amountBuy: Mapped[float | None] = mapped_column("amountBuy", Float, nullable=True)
     rate: Mapped[float | None] = mapped_column(Float, nullable=True)
