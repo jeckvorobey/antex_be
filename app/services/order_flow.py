@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import logging
 from datetime import UTC, datetime
-from decimal import Decimal
+from decimal import ROUND_HALF_EVEN, Decimal
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -18,6 +18,7 @@ from app.repositories.rate import RateRepository
 from app.repositories.user import UserRepository
 from app.schemas.miniapp import MiniappOrderCreate
 from app.services.aex import AexService
+from app.services.cash_delivery_rate import MONEY_QUANTUM
 from app.services.chat_realtime import trigger_manager_refresh
 from app.services.exchange import (
     CANONICAL_BUY_CURRENCIES,
@@ -309,7 +310,9 @@ async def _get_internal_aex_quote(
 
     if payload.currency_buy.upper() == "USDT":
         config = await ConfigRepository(db).get_or_create()
-        rate = round(float(config.aex_rate), 2)
+        rate = float(
+            Decimal(str(config.aex_rate)).quantize(MONEY_QUANTUM, rounding=ROUND_HALF_EVEN)
+        )
     else:
         internal_rate = await RateRepository(db).find_internal_by_currency("USDTRUB")
         if internal_rate is None:
@@ -326,7 +329,11 @@ async def _get_internal_aex_quote(
             code="RATE_PAIR_UNAVAILABLE",
             status_code=422,
         )
-    return round(float(payload.amount_sell) * rate, 2), rate
+    quote = (Decimal(str(payload.amount_sell)) * Decimal(str(rate))).quantize(
+        MONEY_QUANTUM,
+        rounding=ROUND_HALF_EVEN,
+    )
+    return float(quote), rate
 
 
 async def _resolve_city(

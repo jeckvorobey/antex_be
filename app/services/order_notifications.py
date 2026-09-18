@@ -585,15 +585,6 @@ def _format_username(user) -> str:
     return f"@{username}" if username else "—"
 
 
-def _format_amount(amount: int | float | None, currency: str | None) -> str:
-    if amount is None:
-        return f"— {currency or ''}".strip()
-    if isinstance(amount, float) and amount.is_integer():
-        amount = int(amount)
-    amount_text = f"{amount:,}".replace(",", " ")
-    return f"{amount_text} {currency or '—'}"
-
-
 def _format_rate(rate: float | None) -> str:
     if rate is None:
         return "—"

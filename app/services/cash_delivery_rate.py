@@ -143,8 +143,16 @@ class CashDeliveryRatePolicy:
         if Decimal(str(verified.amount_buy)).quantize(MONEY_QUANTUM) != amount_buy.quantize(
             MONEY_QUANTUM
         ):
-            raise _rate_unavailable()
+            raise _amount_not_representable()
         return amount_sell
+
+
+def _amount_not_representable() -> AntExException:
+    return AntExException(
+        "Requested amount cannot be represented with available rate",
+        code="AMOUNT_NOT_REPRESENTABLE",
+        status_code=422,
+    )
 
 
 def _rate_unavailable() -> AntExException:

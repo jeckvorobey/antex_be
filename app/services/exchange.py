@@ -297,8 +297,10 @@ class ExchangeService:
 
     def build_quote(self, rates: list[Rate], payload: ExchangeQuoteInput) -> ExchangeQuote:
         pair = self.normalize_pair(payload.currency_sell, payload.currency_buy)
-        if pair is None or (payload.amount_sell is None) == (payload.amount_buy is None):
+        if pair is None:
             raise self.unsupported_pair_error()
+        if (payload.amount_sell is None) == (payload.amount_buy is None):
+            raise self.amount_not_specified_error()
         sell, buy = pair
         if not rates:
             raise self.rate_unavailable_error()
@@ -441,6 +443,14 @@ class ExchangeService:
         return AntExException(
             "Unsupported currency pair",
             code="UNSUPPORTED_PAIR",
+            status_code=422,
+        )
+
+    @staticmethod
+    def amount_not_specified_error() -> AntExException:
+        return AntExException(
+            "Exactly one of amount_sell or amount_buy must be provided",
+            code="AMOUNT_NOT_SPECIFIED",
             status_code=422,
         )
 

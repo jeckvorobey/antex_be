@@ -86,4 +86,7 @@ async def cancel_my_order(order_id: int, db: DbDep, user: CurrentUser) -> OrderO
         )
         .execution_options(populate_existing=True)
     )
-    return build_order_out(refreshed.scalar_one())
+    refreshed_order = refreshed.scalar_one_or_none()
+    if refreshed_order is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Order not found")
+    return build_order_out(refreshed_order)

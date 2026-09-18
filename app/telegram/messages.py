@@ -832,8 +832,9 @@ def _format_order_rate(rate: int | float | str | None) -> str:
         return str(rate)
 
 
-def _format_order_amount(amount: int | float) -> str:
-    return f"{amount:,}"
+def _format_order_amount(amount: int | float | Decimal) -> str:
+    value = amount.normalize() if isinstance(amount, Decimal) else Decimal(str(amount))
+    return f"{value:,f}"
 
 
 def _format_order_method(method: str | None, *, translate) -> str:

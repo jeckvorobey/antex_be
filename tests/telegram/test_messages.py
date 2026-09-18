@@ -288,6 +288,26 @@ def test_orders_item_respects_english_locale() -> None:
     assert "Payout method: Cash delivery" in text
 
 
+def test_orders_item_formats_decimal_amounts_without_trailing_zeros() -> None:
+    """Numeric(20, 8) отдаёт фиксированный scale — хвостовые нули не должны попадать в текст."""
+    text = messages.orders_item(
+        order_id="2026060012",
+        status=1,
+        amount_sell=Decimal("30000.00000000"),
+        currency_sell="RUB",
+        amount_buy=Decimal("123.50000000"),
+        currency_buy="USDT",
+        rate=243.9,
+        method="cash",
+        created_at=datetime(2026, 6, 13, 0, 45, tzinfo=UTC),
+        updated_at=None,
+        end_time=None,
+        locale="ru",
+    )
+
+    assert "30,000 🇷🇺 RUB → 123.5 ₮ USDT" in text
+
+
 def test_choose_service_prompt_uses_rich_structure_and_list() -> None:
     text = messages.choose_service_prompt("thailand", locale="ru")
 
