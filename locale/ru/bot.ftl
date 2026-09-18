@@ -140,13 +140,11 @@ manager-access-denied = Недостаточно прав.
 
 ## Order statuses
 order-created =
-    ✅ Заявка #{ $id } создана.
+    ✅ Заявка #{ $id } создана
 
-    ⏳ Мы получили ваш запрос и уже начали обработку.
+    Спасибо! Мы получили вашу заявку и передали её на подтверждение.
 
-    Пожалуйста, ожидайте подтверждения. Статус заявки будет обновлён автоматически.
-
-    { customer-chat-instruction }
+    ⏳ Пожалуйста, немного подождите. Когда заявка будет принята в работу, её статус обновится автоматически.
 order-created-offline =
     ✅ Заявка #{ $id } создана.
 
@@ -159,29 +157,27 @@ order-creation-failed = Не удалось создать заявку. Поп�
 order-created-notification-failed = Заявка #{ $id } создана, но подтверждение не удалось отправить. Откройте «Мои заявки», чтобы проверить статус.
 order-creation-limit-reached = У вас уже слишком много активных заявок. Дождитесь обработки текущих или завершите их.
 order-confirmed =
-    ✅ Заявка #{ $id } принята в работу.
+    ✅ Заявка #{ $id } принята в работу
 
-    👨‍💼 Менеджер уже занимается вашим обменом.
+    👨‍💼 Менеджер уже занимается вашим обменом. Иногда ему может потребоваться немного времени, чтобы завершить работу с предыдущим клиентом.
 
-    { customer-chat-instruction }
+    💬 Если менеджер долго не выходит на связь, отправьте сообщение в бот — он обязательно его увидит.
 order-details-caption = Детали заявки
 order-country-thailand = Таиланд
 order-country-vietnam = Вьетнам
 order-country-georgia = Грузия
 order-country-internal = Внутренний обмен
 order-handoff-title = ✅ Заявка #{ $id } принята в работу
-order-reminder-footer = Напоминание по заявке
-order-reminder-title = 🔔 Менеджер ожидает ваше сообщение по заявке #{ $id }
 order-contact-lead = Менеджер готов продолжить обмен.
 order-contact-heading = Связь с менеджером
-customer-chat-instruction = 💬 Для связи с менеджером просто отправьте сообщение этому боту.
+customer-chat-instruction = 💬 Если менеджер долго не выходит на связь, отправьте сообщение в бот — он обязательно его увидит.
 customer-chat-reply-note = Менеджер ответит здесь через официальный бот и согласует детали обмена.
 manager-order-card-footer = Статус заявки
 manager-order-created-title = 🆕 Новая заявка #{ $id }
 manager-order-created-lead = Ожидает решения менеджера.
 manager-order-processing-title = ✅ Заявка #{ $id } принята в работу
 manager-order-processing-lead = Клиенту отправлена просьба начать диалог. Ожидайте сообщения клиента.
-manager-order-processing-failed-lead = Заявка в работе, но сообщение клиенту не доставлено. Отправьте напоминание после проверки настроек связи.
+manager-order-processing-failed-lead = Заявка в работе, но сообщение клиенту не доставлено. Проверьте доступность официального чата с ботом.
 manager-order-completed-title = ✅ Заявка #{ $id } завершена
 manager-order-completed-lead = Обмен успешно выполнен.
 manager-order-cancelled-title = ❌ Заявка #{ $id } отменена
@@ -211,17 +207,14 @@ order-completed-bottom-rich =
     <aside>💰 За видео-отзыв (кружок) предоставляем <b>бонус 5$ к следующему обмену 💰</b></aside>
     <p>⭐ <b>Будем рады вашему отзыву!</b><br/>Это помогает нам становиться лучше.</p>
 order-cancelled = ❌ Заявка #{ $id } отменена.
-btn-remind-client = 🔔 Напомнить клиенту
-manager-chat-fallback-title = Новое сообщение клиента
+manager-chat-fallback-title = Новое сообщение от
+manager-chat-open-button = Открыть чат
 manager-chat-fallback-anonymous = Клиент #{ $user_id }
 manager-chat-fallback-media = Вложение: { $media_type }
 operator-order-not-found = Заявка не найдена
 operator-order-status-changed = Заявка уже изменила статус
 operator-card-update-failed = Не удалось обновить карточку заявки
-operator-handoff-delivery-failed = Заявка принята, но клиенту не удалось отправить инструкцию. Проверьте доступность официального чата с ботом и повторите напоминание.
-operator-reminder-processing-only = Напоминание доступно только для заявки в работе
-operator-reminder-failed = Не удалось отправить напоминание. Попробуйте ещё раз.
-operator-reminder-sent = 🔔 Напоминание отправлено клиенту
+operator-handoff-delivery-failed = Заявка принята, но клиенту не удалось отправить инструкцию. Проверьте доступность официального чата с ботом.
 operator-order-cancelled = Заявка отменена
 referral-bonus-credited =
     🎁 Вознаграждение по реферальной программе: +{ $amount } ATXG

@@ -19,12 +19,21 @@ class FakeRedis:
     def __init__(self) -> None:
         self.values: dict[str, str] = {}
 
-    async def set(self, key: str, value: str, *, ex: int | None = None, nx: bool = False) -> bool:
+    async def set(
+        self,
+        key: str,
+        value: str,
+        *,
+        ex: int | None = None,
+        nx: bool = False,
+        get: bool = False,
+    ) -> bool | str | None:
         del ex
         if nx and key in self.values:
             return False
+        previous = self.values.get(key)
         self.values[key] = value
-        return True
+        return previous if get else True
 
     async def get(self, key: str) -> str | None:
         return self.values.get(key)

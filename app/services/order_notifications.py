@@ -13,6 +13,7 @@ from aiogram.types import InlineKeyboardMarkup, InputRichMessage
 from app.core.config import settings
 from app.enums.country import Country
 from app.enums.order import MethodGet, OrderStatus
+from app.services.exchange import format_rate_value
 from app.telegram import messages
 from app.telegram.i18n import get_translator, get_user_translator, normalize_locale
 from app.telegram.keyboards import (
@@ -99,11 +100,6 @@ def is_permanent_telegram_delivery_error(exc: Exception) -> bool:
     return "chat not found" in message or "user is deactivated" in message
 
 
-def is_telegram_message_not_modified(exc: Exception) -> bool:
-    """Telegram подтверждает, что сохранённая карточка уже актуальна."""
-    return isinstance(exc, TelegramBadRequest) and "message is not modified" in str(exc).lower()
-
-
 async def _send_rich_or_html(
     *,
     bot,
@@ -111,82 +107,8 @@ async def _send_rich_or_html(
     rich_html: str,
     fallback_html: str,
     reply_markup: InlineKeyboardMarkup | None,
-    existing_message_id: int | None = None,
 ) -> tuple[DeliveryOutcome, int | None]:
     """Отправить Rich Message и один раз перейти на обычный HTML при отказе Bot API."""
-    if existing_message_id is not None:
-        try:
-            await bot.edit_message_text(
-                chat_id=chat_id,
-                message_id=existing_message_id,
-                rich_message=InputRichMessage(html=rich_html),
-                reply_markup=reply_markup,
-            )
-            return DeliveryOutcome.RICH, existing_message_id
-        except (TelegramBadRequest, TelegramNotFound) as exc:
-            if is_telegram_message_not_modified(exc):
-                return DeliveryOutcome.RICH, existing_message_id
-            if is_permanent_telegram_delivery_error(exc):
-                logger.warning(
-                    "Order message edit skipped: chat is inaccessible chat_id=%s", chat_id
-                )
-                return DeliveryOutcome.INACCESSIBLE, None
-            logger.info(
-                "Rich order edit was rejected; using regular HTML fallback chat_id=%s",
-                chat_id,
-            )
-        except TelegramForbiddenError:
-            logger.warning("Order message edit skipped: chat is inaccessible chat_id=%s", chat_id)
-            return DeliveryOutcome.INACCESSIBLE, None
-        except Exception:
-            logger.exception("Rich order message edit failed chat_id=%s", chat_id)
-            return DeliveryOutcome.FAILED, None
-
-        try:
-            await bot.edit_message_text(
-                chat_id=chat_id,
-                message_id=existing_message_id,
-                text=fallback_html,
-                reply_markup=reply_markup,
-            )
-            return DeliveryOutcome.FALLBACK, existing_message_id
-        except (TelegramBadRequest, TelegramNotFound) as exc:
-            if is_telegram_message_not_modified(exc):
-                return DeliveryOutcome.FALLBACK, existing_message_id
-            if is_permanent_telegram_delivery_error(exc):
-                logger.warning("Order HTML edit skipped: chat is inaccessible chat_id=%s", chat_id)
-                return DeliveryOutcome.INACCESSIBLE, None
-            logger.info(
-                "Order status message is no longer editable; sending one replacement chat_id=%s",
-                chat_id,
-            )
-        except TelegramForbiddenError:
-            logger.warning("Order HTML edit skipped: chat is inaccessible chat_id=%s", chat_id)
-            return DeliveryOutcome.INACCESSIBLE, None
-        except Exception:
-            logger.exception("Order HTML fallback edit failed chat_id=%s", chat_id)
-            return DeliveryOutcome.FAILED, None
-
-        try:
-            sent = await bot.send_message(
-                chat_id=chat_id,
-                text=fallback_html,
-                reply_markup=reply_markup,
-            )
-            return DeliveryOutcome.FALLBACK, sent.message_id
-        except (TelegramBadRequest, TelegramForbiddenError) as exc:
-            if is_permanent_telegram_delivery_error(exc):
-                logger.warning(
-                    "Order replacement skipped: chat is inaccessible chat_id=%s", chat_id
-                )
-                return DeliveryOutcome.INACCESSIBLE, None
-            logger.exception("Order replacement failed chat_id=%s", chat_id)
-        except TelegramNotFound:
-            logger.warning("Order replacement skipped: chat is inaccessible chat_id=%s", chat_id)
-        except Exception:
-            logger.exception("Order replacement failed chat_id=%s", chat_id)
-        return DeliveryOutcome.FAILED, None
-
     try:
         sent = await bot.send_rich_message(
             chat_id=chat_id,
@@ -222,7 +144,8 @@ async def _send_rich_or_html(
             return DeliveryOutcome.INACCESSIBLE, None
         logger.exception("Order HTML fallback failed chat_id=%s", chat_id)
     except TelegramNotFound:
-        logger.exception("Order HTML fallback failed chat_id=%s", chat_id)
+        logger.warning("Order HTML fallback skipped: chat is inaccessible chat_id=%s", chat_id)
+        return DeliveryOutcome.INACCESSIBLE, None
     except Exception:
         logger.exception("Order HTML fallback failed chat_id=%s", chat_id)
     return DeliveryOutcome.FAILED, None
@@ -253,6 +176,59 @@ async def _delete_previous_user_status_message(
         )
 
 
+async def _replace_user_status_message(
+    *,
+    bot,
+    chat_id: int,
+    order,
+    reply_markup: InlineKeyboardMarkup | None,
+    text: str | None = None,
+    rich_html: str | None = None,
+    fallback_html: str | None = None,
+) -> tuple[DeliveryOutcome, int | None]:
+    """Отправить новую клиентскую карточку и затем удалить предыдущую этой заявки."""
+    previous_message_id = getattr(order, "userNotificationMessageId", None)
+    if rich_html is not None and fallback_html is not None:
+        delivery, message_id = await _send_rich_or_html(
+            bot=bot,
+            chat_id=chat_id,
+            rich_html=rich_html,
+            fallback_html=fallback_html,
+            reply_markup=reply_markup,
+        )
+    elif text is not None:
+        try:
+            sent = await bot.send_message(
+                chat_id=chat_id,
+                text=text,
+                reply_markup=reply_markup,
+            )
+        except (TelegramBadRequest, TelegramForbiddenError) as exc:
+            if is_permanent_telegram_delivery_error(exc):
+                return DeliveryOutcome.INACCESSIBLE, None
+            logger.exception("Failed to send order message for chat_id=%s", chat_id)
+            return DeliveryOutcome.FAILED, None
+        except TelegramNotFound:
+            logger.warning("Order message skipped: chat is inaccessible chat_id=%s", chat_id)
+            return DeliveryOutcome.INACCESSIBLE, None
+        except Exception:
+            logger.exception("Failed to send order message for chat_id=%s", chat_id)
+            return DeliveryOutcome.FAILED, None
+        delivery, message_id = DeliveryOutcome.SENT, sent.message_id
+    else:
+        raise ValueError("text or rich_html with fallback_html is required")
+
+    if message_id is None:
+        return delivery, None
+    order.userNotificationMessageId = message_id
+    await _delete_previous_user_status_message(
+        bot=bot,
+        chat_id=chat_id,
+        message_id=previous_message_id,
+    )
+    return delivery, message_id
+
+
 def build_official_bot_chat_url() -> str | None:
     """Вернуть ссылку только на официальный bot conversation."""
     username = (settings.telegram_bot_username or "").strip().removeprefix("@")
@@ -278,46 +254,12 @@ async def send_customer_handoff(order, manager) -> DeliveryOutcome:
     translate = get_user_translator(user)
     locale = normalize_locale(getattr(user, "language_code", None))
     view = OrderMessageView.from_order(order)
-    previous_message_id = getattr(order, "userNotificationMessageId", None)
-    delivery, message_id = await _send_rich_or_html(
+    delivery, _ = await _replace_user_status_message(
         bot=bot,
         chat_id=user.telegram_id,
+        order=order,
         rich_html=messages.order_handoff_rich(view, translator=translate, locale=locale),
         fallback_html=messages.order_handoff_html(view, translator=translate, locale=locale),
-        reply_markup=None,
-    )
-    if message_id is not None:
-        order.userNotificationMessageId = message_id
-        await _delete_previous_user_status_message(
-            bot=bot,
-            chat_id=user.telegram_id,
-            message_id=previous_message_id,
-        )
-    return delivery
-
-
-async def send_customer_reminder(order, manager) -> DeliveryOutcome:
-    """Отправить новое напоминание по активной заявке через существующего бота."""
-    del manager
-    bot = _get_telegram_bot()
-    user = getattr(order, "user", None)
-    if bot is None or user is None or not getattr(user, "telegram_id", None):
-        logger.warning(
-            "Customer reminder skipped order_id=%s public_number=%s reason=%s",
-            getattr(order, "id", None),
-            getattr(order, "publicNumber", None),
-            "chat_or_bot_unavailable",
-        )
-        return DeliveryOutcome.FAILED
-
-    translate = get_user_translator(user)
-    locale = normalize_locale(getattr(user, "language_code", None))
-    view = OrderMessageView.from_order(order)
-    delivery, _ = await _send_rich_or_html(
-        bot=bot,
-        chat_id=user.telegram_id,
-        rich_html=messages.order_reminder_rich(view, translator=translate, locale=locale),
-        fallback_html=messages.order_reminder_html(view, translator=translate, locale=locale),
         reply_markup=None,
     )
     return delivery
@@ -371,104 +313,6 @@ async def edit_manager_order_card(
         return DeliveryOutcome.FAILED
 
 
-async def send_or_replace_user_status_message(
-    *,
-    bot,
-    chat_id: int,
-    order,
-    text: str,
-    reply_markup: InlineKeyboardMarkup | None,
-) -> int | None:
-    """Отправляет пользовательский статус и возвращает id принятого сообщения."""
-    _, message_id = await _deliver_user_status_message(
-        bot=bot,
-        chat_id=chat_id,
-        order=order,
-        text=text,
-        reply_markup=reply_markup,
-    )
-    return message_id
-
-
-async def _deliver_user_status_message(
-    *,
-    bot,
-    chat_id: int,
-    order,
-    text: str,
-    reply_markup: InlineKeyboardMarkup | None,
-) -> tuple[DeliveryOutcome, int | None]:
-    """Доставляет статус и классифицирует постоянную недоступность чата."""
-    old_message_id = getattr(order, "userNotificationMessageId", None)
-    if old_message_id:
-        try:
-            await bot.edit_message_text(
-                text=text,
-                chat_id=chat_id,
-                message_id=old_message_id,
-                reply_markup=reply_markup,
-            )
-            order.userNotificationMessageId = old_message_id
-            return DeliveryOutcome.SENT, old_message_id
-        except TelegramBadRequest as exc:
-            if is_telegram_message_not_modified(exc):
-                return DeliveryOutcome.SENT, old_message_id
-            if is_permanent_telegram_delivery_error(exc):
-                return DeliveryOutcome.INACCESSIBLE, None
-            logger.info(
-                "Failed to edit order message %s for chat %s, sending a new message",
-                old_message_id,
-                chat_id,
-            )
-        except TelegramForbiddenError:
-            logger.warning("Cannot update order message for inaccessible chat %s", chat_id)
-            return DeliveryOutcome.INACCESSIBLE, None
-        except Exception:
-            logger.exception("Failed to update order message for chat_id=%s", chat_id)
-            return DeliveryOutcome.FAILED, None
-
-    try:
-        sent = await bot.send_message(chat_id=chat_id, text=text, reply_markup=reply_markup)
-    except (TelegramBadRequest, TelegramForbiddenError) as exc:
-        if is_permanent_telegram_delivery_error(exc):
-            return DeliveryOutcome.INACCESSIBLE, None
-        logger.exception("Failed to send order message for chat_id=%s", chat_id)
-        return DeliveryOutcome.FAILED, None
-    except Exception:
-        logger.exception("Failed to send order message for chat_id=%s", chat_id)
-        return DeliveryOutcome.FAILED, None
-    order.userNotificationMessageId = sent.message_id
-    return DeliveryOutcome.SENT, sent.message_id
-
-
-async def send_new_rich_user_status_message(
-    *,
-    bot,
-    chat_id: int,
-    order,
-    rich_html: str,
-    fallback_html: str,
-    reply_markup: InlineKeyboardMarkup | None,
-) -> DeliveryOutcome:
-    """Отправить новую Rich-карточку статуса и удалить её предшественницу."""
-    previous_message_id = getattr(order, "userNotificationMessageId", None)
-    delivery, message_id = await _send_rich_or_html(
-        bot=bot,
-        chat_id=chat_id,
-        rich_html=rich_html,
-        fallback_html=fallback_html,
-        reply_markup=reply_markup,
-    )
-    if message_id is not None:
-        order.userNotificationMessageId = message_id
-        await _delete_previous_user_status_message(
-            bot=bot,
-            chat_id=chat_id,
-            message_id=previous_message_id,
-        )
-    return delivery
-
-
 async def notify_order_created(
     order,
     user,
@@ -500,7 +344,7 @@ async def notify_order_created(
         )
         translate = get_user_translator(user)
         availability = getattr(order, "manager_availability", None)
-        user_delivery, _ = await _deliver_user_status_message(
+        user_delivery, _ = await _replace_user_status_message(
             bot=bot,
             chat_id=user.telegram_id,
             order=order,
@@ -618,9 +462,10 @@ async def notify_order_status_changed(order) -> DeliveryOutcome:
         reply_markup = review_link(translate, REVIEW_URL)
 
         locale = normalize_locale(getattr(user, "language_code", None))
-        delivery, message_id = await _send_rich_or_html(
+        delivery, _ = await _replace_user_status_message(
             bot=bot,
             chat_id=user.telegram_id,
+            order=order,
             rich_html=messages.order_completed_rich(
                 OrderMessageView.from_order(order),
                 translator=translate,
@@ -628,12 +473,9 @@ async def notify_order_status_changed(order) -> DeliveryOutcome:
             ),
             fallback_html=_build_user_status_text(order, translate=translate),
             reply_markup=reply_markup,
-            existing_message_id=getattr(order, "userNotificationMessageId", None),
         )
-        if message_id is not None:
-            order.userNotificationMessageId = message_id
         return delivery
-    delivery, _ = await _deliver_user_status_message(
+    delivery, _ = await _replace_user_status_message(
         bot=bot,
         chat_id=user.telegram_id,
         order=order,
@@ -743,19 +585,10 @@ def _format_username(user) -> str:
     return f"@{username}" if username else "—"
 
 
-def _format_amount(amount: int | float | None, currency: str | None) -> str:
-    if amount is None:
-        return f"— {currency or ''}".strip()
-    if isinstance(amount, float) and amount.is_integer():
-        amount = int(amount)
-    amount_text = f"{amount:,}".replace(",", " ")
-    return f"{amount_text} {currency or '—'}"
-
-
 def _format_rate(rate: float | None) -> str:
     if rate is None:
         return "—"
-    return str(rate)
+    return format_rate_value(rate)
 
 
 def _format_method(method: str | None) -> str:

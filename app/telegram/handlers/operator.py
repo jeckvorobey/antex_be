@@ -2,11 +2,8 @@
 
 from __future__ import annotations
 
-import logging
-
 from aiogram import F, Router
 from aiogram.types import CallbackQuery
-from sqlalchemy.exc import SQLAlchemyError
 
 from app.core.database import create_db_session
 from app.enums.order import OrderStatus
@@ -18,15 +15,12 @@ from app.services.order_notifications import (
     build_manager_status_markup,
     edit_manager_order_card,
     is_delivery_success,
-    reconcile_telegram_write_access,
-    send_customer_reminder,
 )
 from app.services.order_status import take_order_in_work, update_order_status
 from app.telegram.i18n import get_translator, normalize_locale
 from app.telegram.keyboards import manager_order_cancel_confirm
 from app.telegram.services.user_service import check_user
 
-logger = logging.getLogger(__name__)
 router = Router(name="operator")
 
 
@@ -77,46 +71,6 @@ async def operator_take(callback: CallbackQuery) -> None:
         await callback.answer(translate("operator-handoff-delivery-failed"), show_alert=True)
         return
     await callback.answer()
-
-
-@router.callback_query(F.data.startswith("op:remind:"))
-async def operator_remind(callback: CallbackQuery) -> None:
-    translate = _operator_translate(callback)
-    order_id = int(callback.data.split(":")[2])  # type: ignore[union-attr]
-    db = await _get_db()
-    async with db:
-        user, _ = await check_user(db, callback.from_user)
-        if not has_operator_access(user.role):
-            await callback.answer(translate("manager-access-denied"), show_alert=True)
-            return
-
-        order = await OrderRepository(db).get_one(order_id)
-        if order is None:
-            await callback.answer(translate("operator-order-not-found"), show_alert=True)
-            return
-        if int(order.status) != int(OrderStatus.PROCESSING):
-            await callback.answer(translate("operator-reminder-processing-only"), show_alert=True)
-            return
-        delivery = await send_customer_reminder(order, None)
-        if reconcile_telegram_write_access(
-            getattr(order, "user", None),
-            delivery,
-            operation="customer_reminder",
-        ):
-            try:
-                await db.commit()
-            except SQLAlchemyError:
-                await db.rollback()
-                logger.exception(
-                    "Failed to persist reminder write access outcome: order_id=%s outcome=%s",
-                    order_id,
-                    delivery,
-                )
-
-    if not is_delivery_success(delivery):
-        await callback.answer(translate("operator-reminder-failed"), show_alert=True)
-        return
-    await callback.answer(translate("operator-reminder-sent"), show_alert=False)
 
 
 @router.callback_query(F.data.startswith("op:cancel:"))

@@ -139,9 +139,11 @@ manager-access-denied = Access denied.
 
 ## Order statuses
 order-created =
-    ✅ Order #{ $id } created. Please wait for confirmation.
+    ✅ Order #{ $id } created
 
-    { customer-chat-instruction }
+    Thank you! We received your order and sent it for confirmation.
+
+    ⏳ Please wait a moment. Once the order is accepted for processing, its status will update automatically.
 order-created-offline =
     ✅ Order #{ $id } created. Your request has been accepted.
 
@@ -154,25 +156,25 @@ order-creation-limit-reached = You already have too many active orders. Please w
 order-confirmed =
     ✅ Order #{ $id } is now being processed by the manager.
 
-    { customer-chat-instruction }
+    The manager is already handling your exchange. Sometimes they may need a little time to finish with the previous client.
+
+    💬 If the manager doesn't respond for a while, send a message to the bot — they'll definitely see it.
 order-details-caption = Order details
 order-country-thailand = Thailand
 order-country-vietnam = Vietnam
 order-country-georgia = Georgia
 order-country-internal = Internal exchange
 order-handoff-title = ✅ Order #{ $id } is being processed
-order-reminder-footer = Order reminder
-order-reminder-title = 🔔 The manager is waiting for your message about order #{ $id }
 order-contact-lead = The manager is ready to continue the exchange.
 order-contact-heading = Contact the manager
-customer-chat-instruction = 💬 To contact the manager, simply send a message to this bot.
+customer-chat-instruction = 💬 If the manager doesn't respond for a while, send a message to the bot — they'll definitely see it.
 customer-chat-reply-note = The manager will reply here through the official bot and confirm the exchange details.
 manager-order-card-footer = Order status
 manager-order-created-title = 🆕 New order #{ $id }
 manager-order-created-lead = Waiting for a manager decision.
 manager-order-processing-title = ✅ Order #{ $id } is being processed
 manager-order-processing-lead = The customer was asked to open the conversation. Wait for their message.
-manager-order-processing-failed-lead = The order is being processed, but the message was not delivered to the customer. Check the contact settings, then send a reminder.
+manager-order-processing-failed-lead = The order is being processed, but the message was not delivered to the customer. Check access to the official bot chat.
 manager-order-completed-title = ✅ Order #{ $id } completed
 manager-order-completed-lead = The exchange has been completed successfully.
 manager-order-cancelled-title = ❌ Order #{ $id } cancelled
@@ -200,17 +202,14 @@ order-completed-bottom-rich =
     <aside>💰 Send a video review (a video note) and receive a <b>$5 bonus for your next exchange 💰</b></aside>
     <p>⭐ <b>We’d be glad to receive your review!</b><br/>It helps us improve.</p>
 order-cancelled = ❌ Order #{ $id } cancelled.
-btn-remind-client = 🔔 Remind client
-manager-chat-fallback-title = New customer message
+manager-chat-fallback-title = New message from
+manager-chat-open-button = Open chat
 manager-chat-fallback-anonymous = Customer #{ $user_id }
 manager-chat-fallback-media = Attachment: { $media_type }
 operator-order-not-found = Order not found
 operator-order-status-changed = The order status has already changed
 operator-card-update-failed = Could not update the order card
-operator-handoff-delivery-failed = The order was accepted, but the instruction could not be delivered. Check the official bot chat and send the reminder again.
-operator-reminder-processing-only = Reminders are available only while the order is in progress
-operator-reminder-failed = Could not send the reminder. Please try again.
-operator-reminder-sent = 🔔 Reminder sent to the customer
+operator-handoff-delivery-failed = The order was accepted, but the instruction could not be delivered. Check access to the official bot chat.
 operator-order-cancelled = Order cancelled
 referral-bonus-credited =
     🎁 Referral program reward: +{ $amount } ATXG

@@ -83,7 +83,7 @@ class AdminSummaryAttentionOrderOut(BaseModel):
 
     id: int
     public_number: str = Field(alias="publicNumber")
-    amount_sell: int = Field(alias="amountSell")
+    amount_sell: float = Field(alias="amountSell")
     currency_sell: str = Field(alias="currencySell")
     amount_buy: float | None = Field(alias="amountBuy")
     currency_buy: str = Field(alias="currencyBuy")

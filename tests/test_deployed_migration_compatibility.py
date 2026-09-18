@@ -30,8 +30,8 @@ def test_migration_history_has_one_unambiguous_linear_head() -> None:
         warnings.simplefilter("error", UserWarning)
         script = ScriptDirectory.from_config(Config("alembic.ini"))
         revisions = list(script.walk_revisions())
-    assert script.get_heads() == ["041"]
-    assert len(revisions) == 41
+    assert script.get_heads() == ["042"]
+    assert len(revisions) == 42
     for current, previous in pairwise(revisions):
         assert current.down_revision == previous.revision
     assert revisions[-1].down_revision is None
@@ -117,7 +117,7 @@ async def test_upgrade_supported_postgresql_histories(migration_database: str, s
     assert code == 0, error
     connection = await asyncpg.connect(migration_database)
     try:
-        assert await connection.fetchval("SELECT version_num FROM alembic_version") == "041"
+        assert await connection.fetchval("SELECT version_num FROM alembic_version") == "042"
         for table, column in [
             ("ChatConversations", "manager_id"),
             ("ChatMessages", "forward_source_message_id"),

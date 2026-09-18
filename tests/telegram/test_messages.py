@@ -30,6 +30,12 @@ def test_order_created_includes_order_number() -> None:
     assert "".join(re.findall(r"\d", text)) == "2026050008"
     assert "#2026050008" in normalized
     assert "№" not in text
+    assert normalized == (
+        "✅ Заявка #2026050008 создана\n\n"
+        "Спасибо! Мы получили вашу заявку и передали её на подтверждение.\n\n"
+        "⏳ Пожалуйста, немного подождите. Когда заявка будет принята в работу, "
+        "её статус обновится автоматически."
+    )
 
 
 def test_order_created_adds_queue_notice_only_for_offline_managers() -> None:
@@ -45,8 +51,8 @@ def test_order_created_adds_queue_notice_only_for_offline_managers() -> None:
     assert "<blockquote>A manager will process the order in the morning" in offline_english_text
     assert "Менеджер обработает заявку утром" not in usual_text
     assert "после начала рабочего дня в порядке очереди" not in offline_text
-    assert "Пожалуйста, ожидайте подтверждения" not in offline_text
-    assert "Пожалуйста, ожидайте подтверждения" in usual_text
+    assert "Пожалуйста, немного подождите" not in offline_text
+    assert "Пожалуйста, немного подождите" in usual_text
 
 
 def test_exchange_off_hours_confirmation_is_localized() -> None:
@@ -180,6 +186,23 @@ def test_exchange_confirm_summary_uses_human_currency_labels() -> None:
     assert "Если всё верно, нажмите «Подтвердить»." in text
 
 
+def test_exchange_confirm_summary_formats_quote_rate_with_two_decimal_places() -> None:
+    text = messages.exchange_confirm_summary(
+        country="Таиланд",
+        rate="1 RUB = 0.38154803162820966 THB",
+        rate_value=0.38154803162820966,
+        amount=30000,
+        from_currency="RUB",
+        result=11446.44,
+        to_currency="THB",
+        method="🏧 Наличные по QR",
+        locale="ru",
+    )
+
+    assert "Курс</td><td><b>0.38</b>" in text
+    assert "0.38154803162820966" not in text
+
+
 def test_exchange_confirm_summary_omits_city_when_missing() -> None:
     text = messages.exchange_confirm_summary(
         country="Грузия",
@@ -251,7 +274,7 @@ def test_orders_item_respects_english_locale() -> None:
         currency_sell="USDT",
         amount_buy=35738752.0,
         currency_buy="VND",
-        rate=25527.68,
+        rate=31.0,
         method="cash",
         created_at=datetime(2026, 6, 13, 0, 45, tzinfo=UTC),
         updated_at=None,
@@ -261,8 +284,28 @@ def test_orders_item_respects_english_locale() -> None:
 
     assert "#2026060011: In progress" in text
     assert "1,400 ₮ USDT → 35,738,752.0 🇻🇳 VND" in text
-    assert "Rate: 25527.68" in text
+    assert "Rate: 31.00" in text
     assert "Payout method: Cash delivery" in text
+
+
+def test_orders_item_formats_decimal_amounts_without_trailing_zeros() -> None:
+    """Numeric(20, 8) отдаёт фиксированный scale — хвостовые нули не должны попадать в текст."""
+    text = messages.orders_item(
+        order_id="2026060012",
+        status=1,
+        amount_sell=Decimal("30000.00000000"),
+        currency_sell="RUB",
+        amount_buy=Decimal("123.50000000"),
+        currency_buy="USDT",
+        rate=243.9,
+        method="cash",
+        created_at=datetime(2026, 6, 13, 0, 45, tzinfo=UTC),
+        updated_at=None,
+        end_time=None,
+        locale="ru",
+    )
+
+    assert "30,000 🇷🇺 RUB → 123.5 ₮ USDT" in text
 
 
 def test_choose_service_prompt_uses_rich_structure_and_list() -> None:

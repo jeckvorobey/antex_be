@@ -111,7 +111,7 @@ class MiniappHomeResponse(BaseModel):
 class MiniappQuoteResponse(BaseModel):
     currencySell: str
     currencyBuy: str
-    amountSell: int
+    amountSell: float
     amountBuy: float
     rate: float
     rateDisplay: str
@@ -123,7 +123,7 @@ class MiniappQuoteResponse(BaseModel):
 class MiniappCalculatorState(BaseModel):
     fromCurrency: str
     toCurrency: str
-    amountSell: int
+    amountSell: float
 
 
 class MiniappManagerAvailability(BaseModel):
@@ -247,7 +247,7 @@ class MiniappOrderCreate(BaseModel):
     country: Country
     city_id: int | None = Field(default=None, alias="cityId")
     currency_sell: str = Field(alias="currencySell", min_length=3, max_length=20)
-    amount_sell: int = Field(alias="amountSell", gt=0)
+    amount_sell: Decimal = Field(alias="amountSell", gt=0, max_digits=20, decimal_places=8)
     currency_buy: str = Field(alias="currencyBuy", min_length=3, max_length=20)
     amount_buy: float = Field(alias="amountBuy", gt=0)
     rate: float = Field(gt=0)
@@ -260,7 +260,7 @@ class MiniappOrderItem(BaseModel):
     cityId: int | None
     country: str
     currencySell: str
-    amountSell: int
+    amountSell: float
     currencyBuy: str
     amountBuy: float | None
     rate: float | None

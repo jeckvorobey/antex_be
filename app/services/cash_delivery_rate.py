@@ -12,6 +12,7 @@ from app.models.rate import Rate
 CASH_DELIVERY_USDT_AMOUNT = Decimal("10")
 CASH_DELIVERY_THRESHOLDS = {"RUB": 100_000, "USDT": 1_200}
 MONEY_QUANTUM = Decimal("0.01")
+AMOUNT_SELL_QUANTUM = Decimal("0.00000001")
 
 
 @dataclass(frozen=True, slots=True)
@@ -32,21 +33,26 @@ class CashDeliveryRatePolicy:
         method_get: MethodGet | str | None,
         currency_sell: str,
         currency_buy: str,
-        amount_sell: int,
+        amount_sell: Decimal,
         base_rate: float,
     ) -> CashDeliveryRateResult:
         """Рассчитывает итог и точный прямой курс без раскрытия внутренней суммы."""
         if base_rate <= 0:
             raise _rate_unavailable()
 
-        amount_buy = round(amount_sell * base_rate, 2)
+        amount_decimal = Decimal(str(amount_sell))
+        rate_decimal = Decimal(str(base_rate))
+        amount_buy = (amount_decimal * rate_decimal).quantize(
+            MONEY_QUANTUM,
+            rounding=ROUND_HALF_EVEN,
+        )
         if method_get != MethodGet.CASH:
-            return CashDeliveryRateResult(amount_buy=amount_buy, delivery_rate=None)
+            return CashDeliveryRateResult(amount_buy=float(amount_buy), delivery_rate=None)
 
         normalized_sell = currency_sell.upper()
         threshold = CASH_DELIVERY_THRESHOLDS.get(normalized_sell)
-        if threshold is None or amount_sell >= threshold:
-            return CashDeliveryRateResult(amount_buy=amount_buy, delivery_rate=base_rate)
+        if threshold is None or amount_decimal >= threshold:
+            return CashDeliveryRateResult(amount_buy=float(amount_buy), delivery_rate=base_rate)
 
         normalized_buy = currency_buy.upper()
         conversion_rate = next(
@@ -64,8 +70,7 @@ class CashDeliveryRatePolicy:
         if usdt_buy_rate <= 0:
             raise _rate_unavailable()
 
-        amount_decimal = Decimal(amount_sell)
-        gross_amount = (amount_decimal * Decimal(str(base_rate))).quantize(
+        gross_amount = (amount_decimal * rate_decimal).quantize(
             MONEY_QUANTUM,
             rounding=ROUND_HALF_EVEN,
         )
@@ -85,6 +90,69 @@ class CashDeliveryRatePolicy:
             amount_buy=float(authoritative_amount),
             delivery_rate=float(delivery_rate),
         )
+
+    def calculate_amount_sell(
+        self,
+        rates: list[Rate],
+        *,
+        method_get: MethodGet | str | None,
+        currency_sell: str,
+        currency_buy: str,
+        amount_buy: Decimal,
+        base_rate: float,
+    ) -> Decimal:
+        """Обращает действующую policy и подтверждает результат прямым расчётом."""
+        rate_decimal = Decimal(str(base_rate))
+        if rate_decimal <= 0 or amount_buy <= 0:
+            raise _rate_unavailable()
+
+        fee = Decimal("0")
+        threshold = CASH_DELIVERY_THRESHOLDS.get(currency_sell.upper())
+        if method_get == MethodGet.CASH and threshold is not None:
+            conversion_rate = next(
+                (rate for rate in rates if rate.currency.upper() == f"USDT{currency_buy.upper()}"),
+                None,
+            )
+            if conversion_rate is None:
+                raise _rate_unavailable()
+            usdt_buy_rate = Decimal(str(conversion_rate.price)) * (
+                Decimal("1") - Decimal(str(conversion_rate.margin)) / Decimal("100")
+            )
+            fee = (CASH_DELIVERY_USDT_AMOUNT * usdt_buy_rate).to_integral_value(
+                rounding=ROUND_CEILING
+            )
+
+        amount_sell = ((amount_buy + fee) / rate_decimal).quantize(
+            AMOUNT_SELL_QUANTUM,
+            rounding=ROUND_HALF_EVEN,
+        )
+        if method_get == MethodGet.CASH and threshold is not None and amount_sell >= threshold:
+            amount_sell = (amount_buy / rate_decimal).quantize(
+                AMOUNT_SELL_QUANTUM,
+                rounding=ROUND_HALF_EVEN,
+            )
+
+        verified = self.calculate(
+            rates,
+            method_get=method_get,
+            currency_sell=currency_sell,
+            currency_buy=currency_buy,
+            amount_sell=amount_sell,
+            base_rate=base_rate,
+        )
+        if Decimal(str(verified.amount_buy)).quantize(MONEY_QUANTUM) != amount_buy.quantize(
+            MONEY_QUANTUM
+        ):
+            raise _amount_not_representable()
+        return amount_sell
+
+
+def _amount_not_representable() -> AntExException:
+    return AntExException(
+        "Requested amount cannot be represented with available rate",
+        code="AMOUNT_NOT_REPRESENTABLE",
+        status_code=422,
+    )
 
 
 def _rate_unavailable() -> AntExException:

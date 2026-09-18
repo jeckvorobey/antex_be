@@ -11,18 +11,19 @@ from app.services import order_notifications
 from app.services.order_notifications import (
     DeliveryOutcome,
     _build_manager_order_text,
+    _replace_user_status_message,
     build_manager_status_text,
     edit_manager_order_card,
     notify_order_created,
     notify_order_status_changed,
     send_customer_handoff,
-    send_or_replace_user_status_message,
 )
 from app.telegram.i18n import get_translator
 
 
 class _FakeBot:
     def __init__(self) -> None:
+        self.events: list[tuple[str, int | None]] = []
         self.deleted: list[tuple[int, int]] = []
         self.edited: list[dict[str, object]] = []
         self.sent: list[dict[str, object]] = []
@@ -31,8 +32,12 @@ class _FakeBot:
         self.rich_edit_error: Exception | None = None
         self.rich_error: Exception | None = None
         self.send_error: Exception | None = None
+        self.delete_error: Exception | None = None
 
     async def delete_message(self, chat_id: int, message_id: int) -> None:
+        self.events.append(("delete", message_id))
+        if self.delete_error is not None:
+            raise self.delete_error
         self.deleted.append((chat_id, message_id))
 
     async def edit_message_text(
@@ -43,6 +48,7 @@ class _FakeBot:
         reply_markup=None,
         rich_message=None,
     ):
+        self.events.append(("edit", message_id))
         error = self.rich_edit_error if rich_message is not None else self.edit_error
         if error is not None:
             raise error
@@ -60,6 +66,7 @@ class _FakeBot:
         if self.send_error is not None:
             raise self.send_error
         self.sent.append({"chat_id": chat_id, "text": text, "reply_markup": reply_markup})
+        self.events.append(("send", 88))
         return SimpleNamespace(message_id=88)
 
     async def send_rich_message(self, chat_id: int, rich_message, reply_markup=None):
@@ -68,6 +75,7 @@ class _FakeBot:
         self.rich_sent.append(
             {"chat_id": chat_id, "rich_message": rich_message, "reply_markup": reply_markup}
         )
+        self.events.append(("send_rich", 89))
         return SimpleNamespace(message_id=89)
 
 
@@ -85,11 +93,11 @@ class _FakeEditableMessage:
 
 
 @pytest.mark.asyncio
-async def test_user_status_message_edits_previous_message() -> None:
+async def test_user_status_message_sends_new_then_deletes_previous() -> None:
     bot = _FakeBot()
     order = SimpleNamespace(userNotificationMessageId=77)
 
-    new_message_id = await send_or_replace_user_status_message(
+    delivery, new_message_id = await _replace_user_status_message(
         bot=bot,
         chat_id=700002,
         order=order,
@@ -97,27 +105,62 @@ async def test_user_status_message_edits_previous_message() -> None:
         reply_markup=None,
     )
 
-    assert bot.edited == [
-        {
-            "chat_id": 700002,
-            "message_id": 77,
-            "text": "updated",
-            "rich_message": None,
-            "reply_markup": None,
-        }
-    ]
+    assert delivery == DeliveryOutcome.SENT
+    assert bot.edited == []
+    assert bot.events == [("send", 88), ("delete", 77)]
+    assert bot.deleted == [(700002, 77)]
+    assert new_message_id == 88
+    assert order.userNotificationMessageId == 88
+
+
+@pytest.mark.asyncio
+async def test_user_status_message_keeps_previous_when_send_fails() -> None:
+    bot = _FakeBot()
+    bot.send_error = TelegramBadRequest(method="sendMessage", message="temporary failure")
+    order = SimpleNamespace(userNotificationMessageId=77)
+
+    delivery, new_message_id = await _replace_user_status_message(
+        bot=bot,
+        chat_id=700002,
+        order=order,
+        text="updated",
+        reply_markup=None,
+    )
+
+    assert delivery == DeliveryOutcome.FAILED
+    assert bot.edited == []
     assert bot.sent == []
-    assert new_message_id == 77
+    assert bot.deleted == []
+    assert new_message_id is None
     assert order.userNotificationMessageId == 77
 
 
 @pytest.mark.asyncio
-async def test_user_status_message_treats_not_modified_as_success() -> None:
+async def test_status_delivery_only_replaces_message_for_its_own_order() -> None:
     bot = _FakeBot()
-    bot.edit_error = TelegramBadRequest(method="editMessageText", message="message is not modified")
+    first_order = SimpleNamespace(userNotificationMessageId=77)
+    second_order = SimpleNamespace(userNotificationMessageId=78)
+
+    await _replace_user_status_message(
+        bot=bot,
+        chat_id=700002,
+        order=first_order,
+        text="first updated",
+        reply_markup=None,
+    )
+
+    assert bot.deleted == [(700002, 77)]
+    assert first_order.userNotificationMessageId == 88
+    assert second_order.userNotificationMessageId == 78
+
+
+@pytest.mark.asyncio
+async def test_user_status_message_keeps_new_id_when_previous_delete_fails() -> None:
+    bot = _FakeBot()
+    bot.delete_error = TelegramBadRequest(method="deleteMessage", message="message is too old")
     order = SimpleNamespace(userNotificationMessageId=77)
 
-    new_message_id = await send_or_replace_user_status_message(
+    delivery, new_message_id = await _replace_user_status_message(
         bot=bot,
         chat_id=700002,
         order=order,
@@ -125,10 +168,32 @@ async def test_user_status_message_treats_not_modified_as_success() -> None:
         reply_markup=None,
     )
 
-    assert bot.edited == []
-    assert bot.sent == []
-    assert new_message_id == 77
-    assert order.userNotificationMessageId == 77
+    assert delivery == DeliveryOutcome.SENT
+    assert bot.events == [("send", 88), ("delete", 77)]
+    assert new_message_id == 88
+    assert order.userNotificationMessageId == 88
+
+
+@pytest.mark.asyncio
+async def test_cancelled_status_sends_new_message_and_deletes_previous(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    bot = _FakeBot()
+    order = SimpleNamespace(
+        id=8,
+        publicNumber="2026050008",
+        status=4,
+        user=SimpleNamespace(telegram_id=700002, language_code="ru"),
+        userNotificationMessageId=55,
+    )
+    monkeypatch.setattr(order_notifications, "_get_telegram_bot", lambda: bot)
+
+    delivery = await notify_order_status_changed(order)
+
+    assert delivery == DeliveryOutcome.SENT
+    assert bot.events == [("send", 88), ("delete", 55)]
+    assert "отменена" in bot.sent[0]["text"]
+    assert order.userNotificationMessageId == 88
 
 
 @pytest.mark.asyncio
@@ -292,7 +357,7 @@ async def test_customer_handoff_falls_back_once_to_regular_html(
     assert delivery == DeliveryOutcome.FALLBACK
     assert bot.rich_sent == []
     assert len(bot.sent) == 1
-    assert "просто отправьте сообщение этому боту" in bot.sent[0]["text"]
+    assert "менеджер долго не выходит на связь, отправьте сообщение в бот" in bot.sent[0]["text"]
 
 
 @pytest.mark.asyncio
@@ -408,7 +473,7 @@ async def test_customer_handoff_falls_back_to_new_regular_notification_and_delet
 
     assert delivery == DeliveryOutcome.FALLBACK
     assert bot.edited == []
-    assert "просто отправьте сообщение этому боту" in bot.sent[0]["text"]
+    assert "менеджер долго не выходит на связь, отправьте сообщение в бот" in bot.sent[0]["text"]
     assert bot.deleted == [(700002, 55)]
     assert bot.rich_sent == []
 
@@ -615,7 +680,7 @@ def test_build_manager_status_text_uses_new_middle_format_for_processing() -> No
     assert "✅ Заявка #2026050020 принята в работу" in text
     assert "Страна: <b>Таиланд</b>" in text
     assert "Город: <b>Бангкок</b>" in text
-    assert "Курс: <b>32.8723</b>" in text
+    assert "Курс: <b>32.87</b>" in text
     assert "Отдаёте: <b>2 350 ₮ USDT</b>" in text
     assert "Получаете: <b>77 250 🇹🇭 THB</b>" in text
     assert "Способ получения: <b>Наличные по QR</b>" in text
@@ -707,16 +772,17 @@ async def test_notify_order_status_changed_adds_summary_for_completed_order(
 
     await notify_order_status_changed(order)
 
-    assert len(bot.edited) == 1
-    assert bot.edited[0]["message_id"] == 55
-    assert bot.deleted == []
-    assert bot.rich_sent == []
-    rich = str(bot.edited[0]["rich_message"].html)
+    assert bot.edited == []
+    assert bot.events == [("send_rich", 89), ("delete", 55)]
+    assert bot.deleted == [(700002, 55)]
+    assert len(bot.rich_sent) == 1
+    assert order.userNotificationMessageId == 89
+    rich = str(bot.rich_sent[0]["rich_message"].html)
     assert "🎉 Заявка #2026050009 успешно завершена." in rich
     assert "<table bordered striped>" in rich
     assert "Страна</td><td><b>Таиланд" in rich
     assert "Город</td><td><b>Бангкок" in rich
-    assert "Курс</td><td><b>31.5" in rich
+    assert "Курс</td><td><b>31.50" in rich
     assert "Отдаёте</td><td><b>1 500 ₮ USDT" in rich
     assert "Получаете</td><td><b>47 250 🇹🇭 THB" in rich
     assert "Способ получения</td><td><b>Доставка наличных" in rich
@@ -730,7 +796,7 @@ async def test_notify_order_status_changed_adds_summary_for_completed_order(
     assert (
         "<p>⭐ <b>Будем рады вашему отзыву!</b><br/>Это помогает нам становиться лучше.</p>"
     ) in rich
-    reply_markup = cast(Any, bot.edited[0]["reply_markup"])
+    reply_markup = cast(Any, bot.rich_sent[0]["reply_markup"])
     assert reply_markup.inline_keyboard[0][0].text == "⭐ Оставить отзыв"
     assert reply_markup.inline_keyboard[1][0].text == "🏠 Главное меню"
     assert reply_markup.inline_keyboard[1][0].callback_data == "fsm:cancel"
@@ -759,9 +825,11 @@ async def test_notify_order_status_changed_has_no_chat_button_for_processing(
 
     await notify_order_status_changed(order)
 
-    assert bot.edited[0]["chat_id"] == 700002
-    assert "принята в работу" in bot.edited[0]["text"]
-    assert bot.edited[0]["reply_markup"] is None
+    assert bot.edited == []
+    assert bot.sent[0]["chat_id"] == 700002
+    assert "принята в работу" in bot.sent[0]["text"]
+    assert bot.sent[0]["reply_markup"] is None
+    assert bot.deleted == [(700002, 55)]
 
 
 def test_notify_order_created_manager_keyboard_has_no_chat_button() -> None:
@@ -792,7 +860,7 @@ def test_build_manager_order_text_uses_new_created_format() -> None:
     assert "🆕 Новая заявка #2026050019" in text
     assert "Страна: <b>Таиланд</b>" in text
     assert "Город: <b>Паттайя</b>" in text
-    assert "Курс: <b>31</b>" in text
+    assert "Курс: <b>31.00</b>" in text
     assert "Отдаёте: <b>1 000 ₮ USDT</b>" in text
     assert "Получаете: <b>31 000 🇹🇭 THB</b>" in text
     assert "Способ получения: <b>Доставка наличных</b>" in text

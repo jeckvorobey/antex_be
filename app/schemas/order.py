@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 from datetime import datetime
+from decimal import Decimal
 from typing import Literal
 
 from pydantic import BaseModel, Field
@@ -19,7 +20,7 @@ class OrderCreate(BaseModel):
     CityId: int | None = None
     country: Country
     currencySell: str = Field(min_length=3, max_length=20)
-    amountSell: int = Field(gt=0)
+    amountSell: Decimal = Field(gt=0, max_digits=20, decimal_places=8)
     currencyBuy: str = Field(min_length=3, max_length=20)
     amountBuy: float = Field(gt=0)
     rate: float = Field(gt=0)
@@ -41,7 +42,7 @@ class OrderOut(BaseModel):
     CityId: int | None
     country: Country
     currencySell: str
-    amountSell: int
+    amountSell: float
     currencyBuy: str
     amountBuy: float | None
     rate: float | None

@@ -6,12 +6,15 @@ import html
 import logging
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
+from urllib.parse import urlsplit, urlunsplit
 from uuid import uuid4
 
 from aiogram.exceptions import TelegramBadRequest, TelegramForbiddenError, TelegramNotFound
-from aiogram.types import ReplyParameters
+from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup, ReplyParameters, WebAppInfo
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core import redis as redis_module
+from app.core.config import settings
 from app.models.chat import ChatConversation, ChatMessage
 from app.models.order import Order
 from app.models.user import User
@@ -27,7 +30,11 @@ from app.schemas.chat import (
     ManagerOrderSummary,
 )
 from app.services.chat_delivery_errors import telegram_rejection_reason
-from app.services.chat_realtime import manager_realtime_hub, trigger_manager_refresh
+from app.services.chat_realtime import (
+    is_manager_miniapp_open,
+    manager_realtime_hub,
+    trigger_manager_refresh,
+)
 from app.services.order_notifications import (
     DeliveryOutcome,
     is_permanent_telegram_delivery_error,
@@ -38,6 +45,7 @@ from app.telegram.i18n import get_user_translator
 
 logger = logging.getLogger(__name__)
 TEXT_DELIVERY_LEASE = timedelta(minutes=2)
+MANAGER_CHAT_NOTIFICATION_PREFIX = "antex:manager:chat:notification:"
 
 
 @dataclass(frozen=True, slots=True)
@@ -531,9 +539,12 @@ class ChatService:
         message: ChatMessage,
         conversation: ChatConversation,
     ) -> None:
-        """Доставляет новое входящее уведомление независимо от presence менеджера."""
+        """Заменяет Telegram-уведомление, только когда Manager Mini App закрыт."""
+        del message
         manager = await self._conversation_manager(conversation)
         if manager is None or manager.telegram_id is None:
+            return
+        if await is_manager_miniapp_open(manager):
             return
         customer = conversation.user
         translate = get_user_translator(manager)
@@ -544,29 +555,78 @@ class ChatService:
             if customer.username
             else translate("manager-chat-fallback-anonymous", user_id=customer.id)
         )
-        preview = (
-            message.text
-            or message.caption
-            or translate(
-                "manager-chat-fallback-media",
-                media_type=message.message_type,
-            )
+        escaped_name = html.escape(display_name)
+        customer_link = (
+            f'<a href="tg://user?id={customer.telegram_id}">{escaped_name}</a>'
+            if customer.telegram_id is not None
+            else escaped_name
         )
-        if len(preview) > 300:
-            preview = f"{preview[:297]}…"
-        text = (
-            f"<b>{html.escape(translate('manager-chat-fallback-title'))}</b>\n\n"
-            f"<b>{html.escape(display_name)}</b>\n"
-            f"{html.escape(preview)}"
+        text = f"{html.escape(translate('manager-chat-fallback-title'))} {customer_link}"
+        reply_markup = self._manager_chat_notification_markup(
+            conversation.id,
+            translate("manager-chat-open-button"),
         )
+        notification_key = f"{MANAGER_CHAT_NOTIFICATION_PREFIX}{manager.id}"
         try:
             async with sender_bot() as bot:
-                await bot.send_message(
+                sent = await bot.send_message(
                     chat_id=manager.telegram_id,
                     text=text,
+                    reply_markup=reply_markup,
                 )
+                previous_message_id: int | None = None
+                try:
+                    stored_message_id = await redis_module.redis_client.set(
+                        notification_key,
+                        str(sent.message_id),
+                        get=True,
+                    )
+                    if stored_message_id is not None:
+                        previous_message_id = int(stored_message_id)
+                except (TypeError, ValueError):
+                    logger.warning(
+                        "Ignoring invalid manager notification message id: manager_id=%s",
+                        manager.id,
+                    )
+                except Exception:
+                    logger.warning(
+                        "Manager notification state write failed: manager_id=%s", manager.id
+                    )
+                if previous_message_id is not None and previous_message_id != sent.message_id:
+                    try:
+                        await bot.delete_message(
+                            chat_id=manager.telegram_id,
+                            message_id=previous_message_id,
+                        )
+                    except Exception:
+                        logger.warning(
+                            "Previous manager notification deletion failed: manager_id=%s",
+                            manager.id,
+                        )
         except Exception:
             logger.warning(
                 "Manager chat notification delivery failed: manager_id=%s",
                 manager.id,
             )
+
+    @staticmethod
+    def _manager_chat_notification_markup(
+        conversation_id: int,
+        button_text: str,
+    ) -> InlineKeyboardMarkup | None:
+        """Открывает Manager Mini App сразу на указанной беседе."""
+        if not settings.frontend_webapp_url:
+            return None
+        parsed = urlsplit(settings.frontend_webapp_url)
+        path = f"{parsed.path.rstrip('/')}/manager/chats/{conversation_id}"
+        chat_url = urlunsplit((parsed.scheme, parsed.netloc, path, "", ""))
+        return InlineKeyboardMarkup(
+            inline_keyboard=[
+                [
+                    InlineKeyboardButton(
+                        text=button_text,
+                        web_app=WebAppInfo(url=chat_url),
+                    )
+                ]
+            ]
+        )

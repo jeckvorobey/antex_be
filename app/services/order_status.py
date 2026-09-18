@@ -85,6 +85,7 @@ async def update_order_status(
     status: OrderStatus | int,
     notify_user: bool = True,
     manager_id: int | None = None,
+    allowed_source_statuses: frozenset[OrderStatus] | None = None,
 ) -> object:
     """Атомарно меняет статус и восстанавливает назначение после снятия роли менеджера."""
     try:
@@ -99,6 +100,16 @@ async def update_order_status(
     )
     if order is None:
         raise AntExException("Order not found", code="ORDER_NOT_FOUND", status_code=404)
+
+    if (
+        allowed_source_statuses is not None
+        and OrderStatus(int(order.status)) not in allowed_source_statuses
+    ):
+        raise AntExException(
+            "Order status transition is not allowed",
+            code="ORDER_STATUS_CONFLICT",
+            status_code=409,
+        )
 
     reassign_manager = await _can_reassign_inactive_manager(db, order, manager_id)
     validate_order_status_transition(

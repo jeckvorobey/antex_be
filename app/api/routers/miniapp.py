@@ -2,9 +2,10 @@
 
 from __future__ import annotations
 
+from decimal import Decimal
 from typing import Annotated
 
-from fastapi import APIRouter, Query, Response, status
+from fastapi import APIRouter, HTTPException, Query, Response, status
 
 from app.api.deps import DbDep, MiniappUser
 from app.enums.order import MethodGet
@@ -65,14 +66,24 @@ async def get_exchange_quote(
     _: MiniappUser,
     currency_sell: str = Query(alias="currencySell", min_length=3, max_length=20),
     currency_buy: str = Query(alias="currencyBuy", min_length=3, max_length=20),
-    amount_sell: int = Query(alias="amountSell", gt=0),
+    amount_sell: Annotated[
+        Decimal | None,
+        Query(alias="amountSell", gt=0, max_digits=20, decimal_places=8),
+    ] = None,
+    amount_buy: Annotated[
+        Decimal | None,
+        Query(alias="amountBuy", gt=0, max_digits=20, decimal_places=2),
+    ] = None,
     method_get: Annotated[MethodGet | None, Query(alias="methodGet")] = None,
 ) -> MiniappQuoteResponse:
+    if (amount_sell is None) == (amount_buy is None):
+        raise HTTPException(status_code=422, detail="Exactly one exchange amount is required")
     return await calculate_miniapp_quote(
         db,
         currency_sell,
         currency_buy,
         amount_sell,
+        amount_buy=amount_buy,
         method_get=method_get,
     )
 

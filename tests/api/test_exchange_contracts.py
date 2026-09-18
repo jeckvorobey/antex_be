@@ -628,6 +628,76 @@ async def test_miniapp_quote_rejects_unknown_receive_method(
 
 
 @pytest.mark.asyncio
+async def test_miniapp_quote_accepts_receive_amount_only(
+    api_client: tuple[AsyncClient, AsyncSession],
+) -> None:
+    client, db_session = api_client
+    _, customer = await seed_admin_exchange_data(db_session)
+    token = create_access_token({"sub": str(customer.id), "role": customer.role})
+
+    response = await client.get(
+        "/api/miniapp/exchange/quote",
+        headers={"Authorization": f"Bearer {token}"},
+        params={"currencySell": "RUB", "currencyBuy": "THB", "amountBuy": "9000.00"},
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["amountBuy"] == pytest.approx(9000.0)
+    assert payload["amountSell"] == pytest.approx(22630.12320845)
+    assert payload["rate"] == pytest.approx(0.3977)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("amount_params", [{}, {"amountSell": 25000, "amountBuy": 9000}])
+async def test_miniapp_quote_requires_exactly_one_amount(
+    api_client: tuple[AsyncClient, AsyncSession],
+    amount_params: dict[str, object],
+) -> None:
+    client, db_session = api_client
+    _, customer = await seed_admin_exchange_data(db_session)
+    token = create_access_token({"sub": str(customer.id), "role": customer.role})
+
+    response = await client.get(
+        "/api/miniapp/exchange/quote",
+        headers={"Authorization": f"Bearer {token}"},
+        params={"currencySell": "RUB", "currencyBuy": "THB", **amount_params},
+    )
+
+    assert response.status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_miniapp_order_preserves_fractional_sell_and_recalculates_derivatives(
+    api_client: tuple[AsyncClient, AsyncSession],
+) -> None:
+    client, db_session = api_client
+    _, customer = await seed_admin_exchange_data(db_session)
+    token = create_access_token({"sub": str(customer.id), "role": customer.role})
+
+    response = await client.post(
+        "/api/miniapp/orders",
+        headers={"Authorization": f"Bearer {token}"},
+        json={
+            "country": "thailand",
+            "cityId": None,
+            "currencySell": "RUB",
+            "amountSell": 22630.12320845,
+            "currencyBuy": "THB",
+            "amountBuy": 1,
+            "rate": 99,
+            "methodGet": "qrcode",
+        },
+    )
+
+    assert response.status_code == 201
+    order = (await db_session.scalars(select(Order).where(Order.UserId == customer.id))).one()
+    assert float(order.amountSell) == pytest.approx(22630.12320845)
+    assert order.amountBuy == pytest.approx(9000.0)
+    assert order.rate == pytest.approx(0.3977)
+
+
+@pytest.mark.asyncio
 async def test_orders_api_recalculates_preliminary_values_and_returns_display_snapshot(
     api_client: tuple[AsyncClient, AsyncSession],
 ) -> None:
