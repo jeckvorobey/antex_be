@@ -545,22 +545,19 @@ def referral_bonus_reversed(
 def _order_contact_message(
     view: OrderMessageView,
     *,
-    reminder: bool,
     rich: bool,
     translator: Translate | None,
     locale: str | None,
 ) -> str:
-    """Единая инструкция прямой связи для принятия заявки и напоминания."""
+    """Единая инструкция прямой связи после принятия заявки."""
     translate = _resolve_translator(translator, locale)
     current_locale = locale or "ru"
     template = ORDER_CONTACT_RICH_TEMPLATE if rich else ORDER_CONTACT_HTML_TEMPLATE
     renderer = render_order_rich if rich else render_order_regular
-    title_key = "order-reminder-title" if reminder else "order-handoff-title"
-    footer_key = "order-reminder-footer" if reminder else "manager-order-card-footer"
     return _strip_fluent_isolates(
         template.format(
-            footer=escape(translate(footer_key)),
-            title=escape(translate(title_key, id=view.public_number)),
+            footer=escape(translate("manager-order-card-footer")),
+            title=escape(translate("order-handoff-title", id=view.public_number)),
             lead=escape(translate("order-contact-lead")),
             summary=renderer(view, locale=current_locale),
             heading=escape(translate("order-contact-heading")),
@@ -579,7 +576,6 @@ def order_handoff_rich(
     """Rich-сообщение принятия заявки с общей инструкцией."""
     return _order_contact_message(
         view,
-        reminder=False,
         rich=True,
         translator=translator,
         locale=locale,
@@ -595,39 +591,6 @@ def order_handoff_html(
     """HTML fallback принятия заявки с общей инструкцией."""
     return _order_contact_message(
         view,
-        reminder=False,
-        rich=False,
-        translator=translator,
-        locale=locale,
-    )
-
-
-def order_reminder_rich(
-    view: OrderMessageView,
-    *,
-    translator: Translate | None = None,
-    locale: str | None = None,
-) -> str:
-    """Rich-сообщение напоминания с общей инструкцией."""
-    return _order_contact_message(
-        view,
-        reminder=True,
-        rich=True,
-        translator=translator,
-        locale=locale,
-    )
-
-
-def order_reminder_html(
-    view: OrderMessageView,
-    *,
-    translator: Translate | None = None,
-    locale: str | None = None,
-) -> str:
-    """HTML fallback напоминания с общей инструкцией."""
-    return _order_contact_message(
-        view,
-        reminder=True,
         rich=False,
         translator=translator,
         locale=locale,

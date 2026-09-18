@@ -168,8 +168,6 @@ order-country-vietnam = Вьетнам
 order-country-georgia = Грузия
 order-country-internal = Внутренний обмен
 order-handoff-title = ✅ Заявка #{ $id } принята в работу
-order-reminder-footer = Напоминание по заявке
-order-reminder-title = 🔔 Менеджер ожидает ваше сообщение по заявке #{ $id }
 order-contact-lead = Менеджер готов продолжить обмен.
 order-contact-heading = Связь с менеджером
 customer-chat-instruction = 💬 Если менеджер долго не выходит на связь, отправьте сообщение в бот — он обязательно его увидит.
@@ -179,7 +177,7 @@ manager-order-created-title = 🆕 Новая заявка #{ $id }
 manager-order-created-lead = Ожидает решения менеджера.
 manager-order-processing-title = ✅ Заявка #{ $id } принята в работу
 manager-order-processing-lead = Клиенту отправлена просьба начать диалог. Ожидайте сообщения клиента.
-manager-order-processing-failed-lead = Заявка в работе, но сообщение клиенту не доставлено. Отправьте напоминание после проверки настроек связи.
+manager-order-processing-failed-lead = Заявка в работе, но сообщение клиенту не доставлено. Проверьте доступность официального чата с ботом.
 manager-order-completed-title = ✅ Заявка #{ $id } завершена
 manager-order-completed-lead = Обмен успешно выполнен.
 manager-order-cancelled-title = ❌ Заявка #{ $id } отменена
@@ -209,7 +207,6 @@ order-completed-bottom-rich =
     <aside>💰 За видео-отзыв (кружок) предоставляем <b>бонус 5$ к следующему обмену 💰</b></aside>
     <p>⭐ <b>Будем рады вашему отзыву!</b><br/>Это помогает нам становиться лучше.</p>
 order-cancelled = ❌ Заявка #{ $id } отменена.
-btn-remind-client = 🔔 Напомнить клиенту
 manager-chat-fallback-title = Новое сообщение от
 manager-chat-open-button = Открыть чат
 manager-chat-fallback-anonymous = Клиент #{ $user_id }
@@ -217,10 +214,7 @@ manager-chat-fallback-media = Вложение: { $media_type }
 operator-order-not-found = Заявка не найдена
 operator-order-status-changed = Заявка уже изменила статус
 operator-card-update-failed = Не удалось обновить карточку заявки
-operator-handoff-delivery-failed = Заявка принята, но клиенту не удалось отправить инструкцию. Проверьте доступность официального чата с ботом и повторите напоминание.
-operator-reminder-processing-only = Напоминание доступно только для заявки в работе
-operator-reminder-failed = Не удалось отправить напоминание. Попробуйте ещё раз.
-operator-reminder-sent = 🔔 Напоминание отправлено клиенту
+operator-handoff-delivery-failed = Заявка принята, но клиенту не удалось отправить инструкцию. Проверьте доступность официального чата с ботом.
 operator-order-cancelled = Заявка отменена
 referral-bonus-credited =
     🎁 Вознаграждение по реферальной программе: +{ $amount } ATXG

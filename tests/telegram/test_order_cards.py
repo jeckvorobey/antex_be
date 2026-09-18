@@ -156,21 +156,6 @@ def test_handoff_copy_uses_official_bot_conversation(
         assert required_copy in regular
 
 
-def test_reminder_reuses_handoff_details_and_instructions(order_view: OrderMessageView) -> None:
-    rich = messages.order_reminder_rich(order_view, locale="ru")
-    regular = messages.order_reminder_html(order_view, locale="ru")
-
-    assert "#2026080096" in rich
-    assert "Менеджер ожидает ваше сообщение" in rich
-    assert "<table bordered striped>" in rich
-    assert "Связь с менеджером" in rich
-    assert "менеджер долго не выходит на связь, отправьте сообщение в бот" in rich
-    assert "<blockquote>" not in rich
-    assert "<details>" not in rich
-    assert "Менеджер ответит здесь через официальный бот" in rich
-    assert "Менеджер ответит здесь через официальный бот" in regular
-
-
 @pytest.mark.parametrize(
     ("status", "ru_title", "en_title"),
     [

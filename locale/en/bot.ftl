@@ -165,8 +165,6 @@ order-country-vietnam = Vietnam
 order-country-georgia = Georgia
 order-country-internal = Internal exchange
 order-handoff-title = ✅ Order #{ $id } is being processed
-order-reminder-footer = Order reminder
-order-reminder-title = 🔔 The manager is waiting for your message about order #{ $id }
 order-contact-lead = The manager is ready to continue the exchange.
 order-contact-heading = Contact the manager
 customer-chat-instruction = 💬 If the manager doesn't respond for a while, send a message to the bot — they'll definitely see it.
@@ -176,7 +174,7 @@ manager-order-created-title = 🆕 New order #{ $id }
 manager-order-created-lead = Waiting for a manager decision.
 manager-order-processing-title = ✅ Order #{ $id } is being processed
 manager-order-processing-lead = The customer was asked to open the conversation. Wait for their message.
-manager-order-processing-failed-lead = The order is being processed, but the message was not delivered to the customer. Check the contact settings, then send a reminder.
+manager-order-processing-failed-lead = The order is being processed, but the message was not delivered to the customer. Check access to the official bot chat.
 manager-order-completed-title = ✅ Order #{ $id } completed
 manager-order-completed-lead = The exchange has been completed successfully.
 manager-order-cancelled-title = ❌ Order #{ $id } cancelled
@@ -204,7 +202,6 @@ order-completed-bottom-rich =
     <aside>💰 Send a video review (a video note) and receive a <b>$5 bonus for your next exchange 💰</b></aside>
     <p>⭐ <b>We’d be glad to receive your review!</b><br/>It helps us improve.</p>
 order-cancelled = ❌ Order #{ $id } cancelled.
-btn-remind-client = 🔔 Remind client
 manager-chat-fallback-title = New message from
 manager-chat-open-button = Open chat
 manager-chat-fallback-anonymous = Customer #{ $user_id }
@@ -212,10 +209,7 @@ manager-chat-fallback-media = Attachment: { $media_type }
 operator-order-not-found = Order not found
 operator-order-status-changed = The order status has already changed
 operator-card-update-failed = Could not update the order card
-operator-handoff-delivery-failed = The order was accepted, but the instruction could not be delivered. Check the official bot chat and send the reminder again.
-operator-reminder-processing-only = Reminders are available only while the order is in progress
-operator-reminder-failed = Could not send the reminder. Please try again.
-operator-reminder-sent = 🔔 Reminder sent to the customer
+operator-handoff-delivery-failed = The order was accepted, but the instruction could not be delivered. Check access to the official bot chat.
 operator-order-cancelled = Order cancelled
 referral-bonus-credited =
     🎁 Referral program reward: +{ $amount } ATXG
